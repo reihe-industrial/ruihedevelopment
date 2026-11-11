@@ -283,6 +283,15 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
 <dialog id="dlg-owner" aria-label="地主詳情"><div class="dlg" id="owner-body"></div></dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<div id="login" style="display:none"><div class="lcard">
+  <h1>土地開發紀錄系統</h1>
+  <p class="small muted" style="margin:0 0 14px">請用公司登記的信箱登入。系統會寄 6 位數驗證碼給您。</p>
+  <div id="g-wrap" style="display:none"><div id="g-btn" style="display:flex;justify-content:center"></div><p class="small muted" style="text-align:center;margin:12px 0">或用信箱驗證碼登入</p></div>
+  <div id="login-step1"><label for="lg-email">信箱</label><input type="email" id="lg-email" autocomplete="email" placeholder="name@company.com"><button class="btn primary" type="button" id="lg-send" style="margin-top:12px;width:100%">寄送驗證碼</button></div>
+  <div id="login-step2" style="display:none"><label for="lg-code">驗證碼(6 位數)</label><input type="text" id="lg-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><button class="btn primary" type="button" id="lg-verify" style="margin-top:12px;width:100%">登入</button><button class="btn" type="button" id="lg-back" style="margin-top:8px;width:100%">換一個信箱</button></div>
+  <p id="lg-msg" class="small" style="margin:12px 0 0;min-height:20px"></p>
+</div></div>
+<style>#login{position:fixed;inset:0;z-index:200;background:var(--bg,#EEF2EF);align-items:center;justify-content:center;padding:20px}.lcard{background:var(--surface,#fff);border:1px solid var(--line,#D5DDD8);border-radius:14px;padding:28px;width:100%;max-width:380px}.lcard h1{font-size:22px;margin:0 0 6px}.lcard label{display:block;font-size:13px;margin:0 0 4px}</style>
 <script>
 (function(){
 'use strict';
@@ -3994,7 +4003,9 @@ $('#reset').addEventListener('click',function(){
 window.addEventListener('hashchange',route);
 
 /* ---------- production: login, API, adapter ---------- */
-var API_URL='PASTE_YOUR_WEB_APP_URL_HERE';
+var API_URL='https://script.google.com/macros/s/AKfycbwhelUD2Yi2ZI-TomN72vjnTMO8VKRaYYOcwg3K5r4QOfzZfmmIeW5-K3hJosYQpKdyaQ/exec';
+/* pages removed from the production build */
+function renderData(){}function renderImport(){}function renderDeeds(){}function renderReports(){}
 var TOKEN='';
 try{TOKEN=sessionStorage.getItem('ldt')||''}catch(e){}
 var SRV={own:{},par:{}},GEOC={},USERS=[];
@@ -4054,7 +4065,25 @@ function initLogin(){
   $('#lg-email').addEventListener('keydown',function(e){if(e.key==='Enter')$('#lg-send').click()});
   $('#lg-code').addEventListener('keydown',function(e){if(e.key==='Enter')$('#lg-verify').click()});
   $('#logout').onclick=function(){TOKEN='';try{sessionStorage.removeItem('ldt')}catch(e){}location.reload()};
+  api('getConfig').then(function(c){if(c&&c.googleClientId)initGoogle(c.googleClientId)}).catch(function(){});
   if(TOKEN){bootstrap().catch(function(e){showLogin(e.auth?'':'')})}else showLogin('');
+}
+function initGoogle(cid){
+  function go(){
+    window.google.accounts.id.initialize({client_id:cid,callback:onGoogle,auto_select:false});
+    $('#g-wrap').style.display='';
+    window.google.accounts.id.renderButton($('#g-btn'),{theme:'outline',size:'large',text:'signin_with',locale:'zh-TW',width:320});
+  }
+  if(window.google&&window.google.accounts&&window.google.accounts.id){go();return}
+  var sc=document.createElement('script');sc.src='https://accounts.google.com/gsi/client';sc.async=true;sc.defer=true;sc.onload=go;sc.onerror=function(){};document.head.appendChild(sc);
+}
+async function onGoogle(resp){
+  $('#lg-msg').textContent='驗證中…';
+  try{
+    var d=await api('googleLogin',{credential:resp.credential});
+    TOKEN=d.token;try{sessionStorage.setItem('ldt',TOKEN)}catch(e){}
+    $('#login').style.display='none';await bootstrap();
+  }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- load + adapt ---- */
 async function bootstrap(){
@@ -4224,13 +4253,5 @@ DB=emptyDB();indexDB();
 initMapEvents();initDownloads();initLogin();
 })();
 </script>
-<div id="login" style="display:none"><div class="lcard">
-  <h1>土地開發紀錄系統</h1>
-  <p class="small muted" style="margin:0 0 14px">請用公司登記的信箱登入。系統會寄 6 位數驗證碼給您。</p>
-  <div id="login-step1"><label for="lg-email">信箱</label><input type="email" id="lg-email" autocomplete="email" placeholder="name@company.com"><button class="btn primary" type="button" id="lg-send" style="margin-top:12px;width:100%">寄送驗證碼</button></div>
-  <div id="login-step2" style="display:none"><label for="lg-code">驗證碼(6 位數)</label><input type="text" id="lg-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><button class="btn primary" type="button" id="lg-verify" style="margin-top:12px;width:100%">登入</button><button class="btn" type="button" id="lg-back" style="margin-top:8px;width:100%">換一個信箱</button></div>
-  <p id="lg-msg" class="small" style="margin:12px 0 0;min-height:20px"></p>
-</div></div>
-<style>#login{position:fixed;inset:0;z-index:200;background:var(--bg,#EEF2EF);align-items:center;justify-content:center;padding:20px}.lcard{background:var(--surface,#fff);border:1px solid var(--line,#D5DDD8);border-radius:14px;padding:28px;width:100%;max-width:380px}.lcard h1{font-size:22px;margin:0 0 6px}.lcard label{display:block;font-size:13px;margin:0 0 4px}</style>
 </body>
 </html>
