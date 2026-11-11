@@ -205,12 +205,13 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
 }
 @media (prefers-reduced-motion:reduce){.p,.toast{transition:none}}
 </style>
+<link rel="icon" type="image/png" href="images/icon.png">
 </head>
 <body>
 <div class="app">
   <header class="top">
     <div class="brand">
-      <svg viewBox="0 0 34 34" role="img" aria-label="地號圖示"><rect width="34" height="34" rx="8" fill="#1F5C46"/><g stroke="#1F5C46" stroke-width="1.5" stroke-linejoin="round"><polygon points="5,6 16,5 15,16 5,15" fill="#7FD1AC"/><polygon points="16,5 29,7 28,17 15,16" fill="#9DBEE8"/><polygon points="5,15 15,16 16,28 6,27" fill="#E3B341"/><polygon points="15,16 28,17 29,28 16,28" fill="#CBD3CE"/></g></svg>
+      <img src="images/icon.png" alt="瑞禾開發" width="36" height="36" style="width:36px;height:36px;flex:none">
       <div><strong>土地開發紀錄系統</strong><small id="whoami">請先登入</small></div>
     </div>
     <nav class="tabs" aria-label="主要功能">
@@ -284,6 +285,7 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <div id="login" style="display:none"><div class="lcard">
+  <div style="background:#fff;border-radius:10px;padding:10px;margin:0 0 16px;text-align:center"><img src="images/logo-full.jpg" alt="瑞禾開發 建築・地產整合團隊" style="max-width:100%;height:auto;display:block;margin:0 auto"></div>
   <h1>土地開發紀錄系統</h1>
   <p class="small muted" style="margin:0 0 14px">請用公司登記的信箱登入。系統會寄 6 位數驗證碼給您。</p>
   <div id="g-wrap" style="display:none"><div id="g-btn" style="display:flex;justify-content:center"></div><p class="small muted" style="text-align:center;margin:12px 0">或用信箱驗證碼登入</p></div>
