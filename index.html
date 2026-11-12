@@ -219,6 +219,7 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
       <a href="#visits" data-v="visits">案件拜訪總覽</a>
       <a href="#tasks" data-v="tasks">行事曆與待辦</a>
       <a href="#meetings" data-v="meetings">會議紀錄</a>
+      <a href="#reports" data-v="reports" id="tab-reports">報表</a>
       <a href="#stats" data-v="stats">統計</a>
       <a href="#admin" data-v="admin" id="tab-admin">後台</a>
     </nav>
@@ -599,7 +600,7 @@ function fuClass(n){
 /* ---------- state ---------- */
 var ME='';
 var S={role:'admin',proj:'A',vw:'proj',vproj:'all',vasg:'all',vlv:'all',vquick:'all',vq:'',vsel:{},atab:'staff',adel:null,popen:null,oopen:null,dopen:null,focusOwner:null,mode:'int',levels:{A:1,B:1,C:1,D:1,E:1,N:1},block:'all',q:'',sel:null,thr:60,fuWho:'all',ownerQ:''};
-var VIEWS=['projects','map','visits','tasks','meetings','stats','admin'];
+var VIEWS=['projects','map','visits','tasks','meetings','reports','stats','admin'];
 var vb={x:0,y:0,w:1000,h:660};
 var els=[];
 
@@ -1175,6 +1176,7 @@ function openOwner0(id){
     h+=osec('deal','價格與簽約'+(dealOf(o,pid).stage!=='未開始'?'(目前:'+esc(dealOf(o,pid).stage)+')':''),ownerDealHTML(o,pid),false);
     h+=osec('family','繼承與家族'+(inh?'(繼承:'+esc(inh)+')':''),ownerFamilyHTML(o,pid),false);
     h+=osec('task','任務('+openTasksOf(o,pid).length+' 項待辦)',ownerTasksHTML(o,pid),false);
+    h+=osec('file','附件('+DB.files.filter(function(f){return f.pid===pid&&f.owner===o.id}).length+')',ownerFilesHTML(o,pid),false);
     h+=osec('edit','更新姓名與聯絡資料',ownerEditHTML(o),o.pending);
     h+='</div>';
   }
@@ -3791,13 +3793,15 @@ function route(){
   var r=(location.hash||'#projects').slice(1);
   if(VIEWS.indexOf(r)<0)r='projects';
   if(r==='admin'&&S.role!=='admin')r='projects';
+  if(r==='reports'&&S.role==='staff')r='projects';
   $$('.view').forEach(function(v){v.classList.toggle('on',v.id==='view-'+r)});
   $$('.tabs a').forEach(function(a){if(a.dataset.v===r||(r==='map'&&a.dataset.v==='projects'))a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
   $('#tab-admin').style.display=S.role==='admin'?'':'none';
+  $('#tab-reports').style.display=S.role==='staff'?'none':'';
   if(r==='map')setTimeout(function(){paintMap()},0);
 }
 function renderAll(){
-  indexDB();renderProjSelect();renderProjects();renderSide();paintMap();renderDetail();renderVisits();renderTasks();renderMeetings();renderStats();renderAdmin();
+  indexDB();renderProjSelect();renderProjects();renderSide();paintMap();renderDetail();renderVisits();renderTasks();renderMeetings();renderReports();renderStats();renderAdmin();
 }
 function goParcel(id){
   $('#dlg-owner').open&&$('#dlg-owner').close();
@@ -3871,7 +3875,7 @@ document.addEventListener('click',function(e){
   if((b=t.closest('[data-file-add]'))){addFile(+b.dataset.fileAdd);return}
   if((b=t.closest('[data-file-del]'))){
     var fx=DB.files.filter(function(x){return x.id===+b.dataset.fileDel})[0];
-    if(fx){DB.files=DB.files.filter(function(x){return x.id!==fx.id});DB.log.unshift({ts:new Date(),user:ROLE_LABEL[S.role],action:'刪除附件',detail:fx.kind+' '+fx.name});S.oopen='file';renderAll();openOwner(fx.owner);toast('已刪除附件。')}
+    if(fx){if(S.role==='staff'&&fx.by!==ME){toast('只能刪除自己上傳的附件。');return}if(!window.confirm('刪除這個附件?刪除後無法復原。\n\n'+fx.name))return;if(fx.sid)apiSync('deleteAttachment',{projectId:fx.pid,id:fx.sid});DB.files=DB.files.filter(function(x){return x.id!==fx.id});DB.log.unshift({ts:new Date(),user:ROLE_LABEL[S.role],action:'刪除附件',detail:fx.kind+' '+fx.name});S.oopen='file';renderAll();openOwner(fx.owner);toast('已刪除附件。')}
     return;
   }
   if((b=t.closest('[data-owner-save]'))){saveOwner(+b.dataset.ownerSave);return}
@@ -4018,7 +4022,7 @@ window.addEventListener('hashchange',route);
 /* ---------- production: login, API, adapter ---------- */
 var API_URL='https://script.google.com/macros/s/AKfycbwhelUD2Yi2ZI-TomN72vjnTMO8VKRaYYOcwg3K5r4QOfzZfmmIeW5-K3hJosYQpKdyaQ/exec';
 /* pages removed from the production build */
-function renderData(){}function renderImport(){}function renderDeeds(){}function renderReports(){}
+function renderData(){}function renderImport(){}function renderDeeds(){}
 var TOKEN='';
 try{TOKEN=sessionStorage.getItem('ldt')||''}catch(e){}
 var SRV={own:{},par:{}},GEOC={},USERS=[];
@@ -4199,6 +4203,11 @@ async function adapt(data){
     SRV.par[r['地號ID']]=np.id;db.parcels.push(np);
   });
   db.skipped=skipped;
+  // 現場踏勘、附件、簽約階段紀錄
+  (data.surveys||[]).forEach(function(r){var p=db.parcels[SRV.par[r['地號ID']]];if(p)p.surveys.push({id:r['踏勘ID'],date:r['日期']||'',by:r['記錄人']||'',note:r['現況描述']||'',photos:num_(r['照片數'])})});
+  db.parcels.forEach(function(p){p.surveys.sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:(a.id<b.id?1:-1)})});
+  (data.attachments||[]).forEach(function(r){db.files.push({id:++db.fid,sid:r['附件ID'],pid:r['專案ID'],owner:r['地主ID']?(SRV.own[r['地主ID']]||null):null,parcel:null,kind:r['種類']||'其他',name:r['檔名']||'',mime:guessMime(r['檔名']),size:0,by:r['上傳者']||'',date:r['日期']||''})});
+  (data.stageLog||[]).slice().sort(function(a,b){return a['日期']<b['日期']?-1:a['日期']>b['日期']?1:0}).forEach(function(r){var d=db.deals[r['專案ID']+'|'+SRV.own[r['地主ID']]];if(d)d.stageLog.push({date:r['日期'],stage:r['階段'],by:r['記錄人']||''})});
   // geometry:只先讀「目前要顯示的專案」的圖資,其他專案切過去才讀(專案多時才不會拖慢登入)
   if(data.geoFirst&&data.geoFirst.projectId&&GEOC[data.geoFirst.projectId]===undefined)GEOC[data.geoFirst.projectId]=data.geoFirst.geo||null;
   var curP=db.projects.some(function(p){return p.id===S.proj})?S.proj:(db.projects[0]?db.projects[0].id:'');
@@ -4256,6 +4265,13 @@ function parcelExtraHTML(p){
       +'<div class="field"><label for="fc-name">工廠名稱</label><input type="text" id="fc-name" maxlength="100" value="'+esc((p.factory&&p.factory.name)||'')+'" placeholder="例:○○機械"></div>'
       +'<div class="actions"><button class="btn small primary" type="button" data-factory-save="'+p.id+'">儲存</button></div></div>';
   }else if(isFactory(p))h+='<div class="small" style="margin-top:8px"><b>*</b> 特定工廠'+((p.factory&&p.factory.name)?':'+esc(p.factory.name):'')+'</div>';
+  var svl=p.surveys||[];
+  var sb=svl.length?'<ul class="tl">'+svl.map(function(x){return '<li><div class="t">'+esc(x.date)+' · '+esc(x.by)+'</div><div class="small" style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(x.note)+'</div>'+(x.photos?'<button class="btn small" type="button" data-sv-photos="'+esc(x.id)+'" style="margin-top:4px">看照片('+x.photos+')</button><div id="svp-'+esc(x.id)+'"></div>':'')+'</li>'}).join('')+'</ul>':'<p class="small muted" style="margin:0 0 6px">還沒有踏勘紀錄。</p>';
+  if(canEditParcel(p))sb+='<div class="field"><label for="sv-date">踏勘日期</label><input type="date" id="sv-date" value="'+iso(new Date())+'"></div>'
+    +'<div class="field"><label for="sv-note">現況描述</label><textarea id="sv-note" rows="3" placeholder="例:南側有鐵皮屋占用,北側有農路可進出"></textarea></div>'
+    +'<div class="field"><span class="lab">現場照片</span><div style="display:flex;gap:8px;flex-wrap:wrap"><label class="btn" style="cursor:pointer">拍照<input type="file" id="sv-cam" accept="image/*" capture="environment" style="display:none"></label><label class="btn" style="cursor:pointer">從相簿選<input type="file" id="sv-pick" accept="image/*" multiple style="display:none"></label></div><div id="sv-pending" class="small" style="margin-top:6px">'+svPendingHTML(p.id)+'</div></div>'
+    +'<div class="actions"><button class="btn primary" type="button" data-survey-add="'+p.id+'">加入踏勘紀錄</button></div>';
+  h+=psec('survey','現場踏勘('+svl.length+')',sb,false);
   return h;
 }
 document.addEventListener('click',function(e){
@@ -4265,6 +4281,118 @@ document.addEventListener('click',function(e){
   p.factory={on:on,name:name};
   apiSync('setFactory',{projectId:p.proj,parcelId:p._srv,on:on,name:name});
   renderAll();toast('已儲存特定工廠設定。');
+});
+/* ---- 現場踏勘、附件、下載(第二輪) ---- */
+var SV={pid:null,pending:[],busy:false};
+function guessMime(name){
+  var m=String(name||'').toLowerCase().match(/\.([a-z0-9]+)$/);if(!m)return '';
+  return {jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',heic:'image/heic',heif:'image/heif',pdf:'application/pdf',mp3:'audio/mpeg',m4a:'audio/mp4',wav:'audio/wav',aac:'audio/aac',amr:'audio/amr',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',txt:'text/plain',csv:'text/csv'}[m[1]]||'';
+}
+function fileToB64(blob){return new Promise(function(res,rej){var fr=new FileReader();fr.onload=function(){res(String(fr.result).split(',')[1]||'')};fr.onerror=function(){rej(new Error('讀不到檔案'))};fr.readAsDataURL(blob)})}
+// 照片上傳前先縮到最長邊 1600、轉 JPEG(手機照片通常從 5 MB 降到 300 KB 左右);不支援就原檔上傳
+async function prepFile(file){
+  var name=file.name||'file',mime=file.type||guessMime(name),blob=file;
+  if(/^image\/(jpeg|png|webp|heic|heif)/.test(mime)&&typeof createImageBitmap==='function'){
+    try{
+      var bmp=await createImageBitmap(file),sc=Math.min(1,1600/Math.max(bmp.width,bmp.height)),cv=document.createElement('canvas');
+      cv.width=Math.max(1,Math.round(bmp.width*sc));cv.height=Math.max(1,Math.round(bmp.height*sc));
+      cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height);if(bmp.close)bmp.close();
+      var out=await new Promise(function(r){cv.toBlob(r,'image/jpeg',0.82)});
+      if(out&&out.size&&out.size<file.size){blob=out;mime='image/jpeg';name=name.replace(/\.[^.]*$/,'')+'.jpg'}
+    }catch(e){}
+  }
+  return {name:name,mime:mime,size:blob.size,data:await fileToB64(blob)};
+}
+function downloadBlob(name,blob){
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(function(){try{URL.revokeObjectURL(a.href)}catch(e){}a.remove()},1000);
+}
+function downloadB64(name,mime,b64){
+  var bin=atob(b64),u8=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+  downloadBlob(name,new Blob([u8],{type:mime}));
+}
+function initDownloads(){dl={};dlState='ok'}
+function saveFile(name,data,label){
+  try{downloadBlob(name,new Blob([data],{type:'text/csv;charset=utf-8'}))}catch(e){toast('匯出沒有完成,請再試一次。');return}
+  api('logExport',{label:label,name:name}).catch(function(){});
+  toast('已匯出:'+name);
+}
+function svPendingHTML(pid){
+  if(SV.pid!==pid||!SV.pending.length)return '';
+  return '已選 '+SV.pending.length+' 張(最多 8 張)<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">'+SV.pending.map(function(f,i){return '<span style="position:relative;display:inline-block"><img src="'+f.url+'" alt="已選照片" style="width:64px;height:64px;object-fit:cover;border-radius:6px"><button type="button" data-sv-rm="'+i+'" aria-label="移除這張" style="position:absolute;top:-6px;right:-6px;border:1px solid var(--line);background:var(--surface);border-radius:50%;width:22px;height:22px;line-height:18px;padding:0;cursor:pointer">×</button></span>'}).join('')+'</div>';
+}
+function svRefresh(){var el=$('#sv-pending');if(el)el.innerHTML=svPendingHTML(S.sel)}
+document.addEventListener('change',function(e){
+  var t=e.target;if(!t||(t.id!=='sv-cam'&&t.id!=='sv-pick'))return;
+  if(SV.pid!==S.sel){SV.pid=S.sel;SV.pending=[]}
+  Array.prototype.slice.call(t.files||[]).forEach(function(f){if(/^image\//.test(f.type||guessMime(f.name))&&SV.pending.length<8)SV.pending.push({file:f,url:URL.createObjectURL(f)})});
+  t.value='';svRefresh();
+});
+async function addSurvey(pid){
+  var p=DB.parcels[pid];if(!p||!canEditParcel(p)){toast('只能修改自己負責地主的地號。');return}
+  var note=($('#sv-note').value||'').trim();if(!note){toast('請先寫現況描述。');return}
+  if(SV.busy)return;SV.busy=true;
+  var btn=$('[data-survey-add]');if(btn){btn.disabled=true;btn.textContent='上傳中…'}
+  try{
+    var photos=[],list=SV.pid===pid?SV.pending:[];
+    for(var i=0;i<list.length;i++)photos.push(await prepFile(list[i].file));
+    var date=$('#sv-date').value||iso(new Date());
+    var r=await api('addSurvey',{projectId:p.proj,parcelId:p._srv,date:date,note:note,photos:photos.map(function(x){return {name:x.name,mime:x.mime,data:x.data}})});
+    p.surveys.unshift({id:r.id,date:date,by:ME,note:note,photos:r.photos});
+    SV.pending=[];SV.pid=null;S.dopen='survey';renderDetail();toast('已加入踏勘紀錄。');
+  }catch(e){
+    if(e.auth){showLogin('登入已過期,請重新登入')}else{toast('儲存失敗:'+(e.userMessage||e.message));if(btn){btn.disabled=false;btn.textContent='加入踏勘紀錄'}}
+  }finally{SV.busy=false}
+}
+function ownerFilesHTML(o,pid){
+  var list=DB.files.filter(function(f){return f.pid===pid&&f.owner===o.id});
+  var h='';
+  if(!list.length)h+='<p class="small muted" style="margin:0 0 6px">還沒有附件。</p>';
+  list.forEach(function(f){
+    h+='<div class="orow" style="margin-bottom:6px;align-items:flex-start"><div class="small" style="min-width:0;overflow-wrap:anywhere"><b>'+esc(f.kind)+'</b> · '+esc(f.name)+' · '+esc(f.date)+' · '+esc(f.by)+'<div id="fv-'+esc(f.sid)+'"></div></div><span style="display:flex;gap:6px"><button class="btn small" type="button" data-file-open="'+esc(f.sid)+'">開啟</button><button class="btn small" type="button" data-file-del="'+f.id+'">刪除</button></span></div>';
+  });
+  h+='<div class="row2" style="margin-top:8px"><div class="field" style="margin-top:0"><label for="of-kind">種類</label><select id="of-kind">'+FILE_KINDS.map(function(x){return '<option>'+x+'</option>'}).join('')+'</select></div><div class="field" style="margin-top:0"><label for="of-file">選擇檔案(可用手機直接拍照)</label><input type="file" id="of-file" accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"></div></div>';
+  h+='<div class="actions"><button class="btn primary" type="button" data-file-add="'+o.id+'">加入附件</button></div><p class="small muted" style="margin:4px 0 0">單檔 8 MB 以內,照片會自動縮小。</p>';
+  return h;
+}
+async function addFile(id){
+  var o=OWN[id],inp=$('#of-file'),f=inp&&inp.files&&inp.files[0];
+  if(!canSeeOwner(o)){toast('只能修改自己負責的地主。');return}
+  if(!f){toast('請先選擇檔案。');return}
+  if(SV.busy)return;SV.busy=true;
+  var btn=$('[data-file-add]');if(btn){btn.disabled=true;btn.textContent='上傳中…'}
+  try{
+    var kind=$('#of-kind').value,pf=await prepFile(f);
+    if(pf.size>8*1024*1024)throw {userMessage:'檔案超過 8 MB。'};
+    var r=await api('addAttachment',{projectId:S.proj,ownerId:o._srv,kind:kind,file:{name:pf.name,mime:pf.mime,data:pf.data}});
+    DB.files.push({id:++DB.fid,sid:r.id,pid:S.proj,owner:id,parcel:null,kind:kind,name:r.name,mime:pf.mime,size:pf.size,by:ME,date:iso(new Date())});
+    S.oopen='file';renderAll();openOwner(id);toast('已加入附件。');
+  }catch(e){
+    if(e.auth){showLogin('登入已過期,請重新登入')}else{toast('上傳失敗:'+(e.userMessage||e.message));if(btn){btn.disabled=false;btn.textContent='加入附件'}}
+  }finally{SV.busy=false}
+}
+document.addEventListener('click',function(e){
+  var t=e.target;if(!t||!t.closest)return;var b;
+  if((b=t.closest('[data-sv-rm]'))){SV.pending.splice(+b.dataset.svRm,1);svRefresh();return}
+  if((b=t.closest('[data-sv-photos]'))){
+    var sid=b.dataset.svPhotos,box=$('#svp-'+sid);if(!box)return;
+    b.disabled=true;b.textContent='載入中…';
+    api('getSurveyPhotos',{projectId:S.proj,surveyId:sid}).then(function(list){
+      box.innerHTML=list.length?list.map(function(x){return '<img src="data:'+x.mime+';base64,'+x.data+'" alt="現場照片" style="max-width:100%;border-radius:8px;margin:6px 0;display:block">'}).join(''):'<span class="small muted">讀不到照片</span>';
+      b.style.display='none';
+    }).catch(function(er){b.disabled=false;b.textContent='看照片';if(er.auth)showLogin('登入已過期,請重新登入');else toast('讀不到照片:'+(er.userMessage||er.message))});
+    return;
+  }
+  if((b=t.closest('[data-file-open]'))){
+    var fid=b.dataset.fileOpen;b.disabled=true;
+    api('getAttachment',{projectId:S.proj,id:fid}).then(function(r){
+      b.disabled=false;var box=$('#fv-'+fid);
+      if(/^image\//.test(r.mime)&&box)box.innerHTML='<img src="data:'+r.mime+';base64,'+r.data+'" alt="'+esc(r.name)+'" style="max-width:100%;border-radius:8px;margin-top:6px;display:block">';
+      else if(/^audio\//.test(r.mime)&&box)box.innerHTML='<audio controls src="data:'+r.mime+';base64,'+r.data+'" style="max-width:100%;margin-top:6px"></audio>';
+      else downloadB64(r.name,r.mime,r.data);
+    }).catch(function(er){b.disabled=false;if(er.auth)showLogin('登入已過期,請重新登入');else toast('打不開附件:'+(er.userMessage||er.message))});
+    return;
+  }
 });
 /* ---- admin: users ---- */
 var UL={done:false,busy:false};
