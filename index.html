@@ -550,7 +550,7 @@ function isMine(o,pid){return asgOf(o,pid)===ME||asg2Of(o,pid)===ME}
 function asgText(o,pid){var a=asgOf(o,pid),b=asg2Of(o,pid);return '主要 '+a+(b?' · 次要 '+b:'')}
 function visibleProjects(){return DB.projects.filter(function(pr){return ACCESS[S.role].indexOf(pr.id)>=0})}
 function resetFilters(){S.sel=null;S.q='';S.block='all';S.levels={A:1,B:1,C:1,D:1,E:1,N:1};S.ownerQ='';S.fuWho='all'}
-function switchProject(id){
+function switchProject0(id){
   if(!PRJ[id])return;
   S.focusOwner=null;
   if(S.mode==='zone'&&!PRJ[id].geo)S.mode='int';
@@ -4047,7 +4047,9 @@ function ownerFieldsFor(o,changed){
   return f;
 }
 /* ---- login ---- */
-var CFG=null;
+var CFG=null,GCID='';
+function cfgLoad(){try{return JSON.parse(localStorage.getItem('ldcfg')||'null')}catch(e){return null}}
+function cfgSave(c){try{localStorage.setItem('ldcfg',JSON.stringify({googleClientId:c.googleClientId||'',emailCode:c.emailCode}))}catch(e){}}
 function showLogin(msg){$('#login').style.display='flex';$('#lg-msg').textContent=msg||'';$('#login-step1').style.display=(CFG&&CFG.emailCode!==false)?'':'none';$('#login-step2').style.display='none'}
 function applyLoginConfig(c){
   CFG=c||{};
@@ -4078,10 +4080,12 @@ function initLogin(){
   $('#lg-email').addEventListener('keydown',function(e){if(e.key==='Enter')$('#lg-send').click()});
   $('#lg-code').addEventListener('keydown',function(e){if(e.key==='Enter')$('#lg-verify').click()});
   $('#logout').onclick=function(){TOKEN='';try{sessionStorage.removeItem('ldt')}catch(e){}location.reload()};
-  api('getConfig').then(function(c){applyLoginConfig(c);if(c&&c.googleClientId)initGoogle(c.googleClientId)}).catch(function(){applyLoginConfig({emailCode:true})});
+  var cc=cfgLoad();if(cc){applyLoginConfig(cc);if(cc.googleClientId)initGoogle(cc.googleClientId)}
+  api('getConfig').then(function(c){c=c||{};cfgSave(c);applyLoginConfig(c);if(c.googleClientId)initGoogle(c.googleClientId)}).catch(function(){if(!cc)applyLoginConfig({emailCode:true})});
   if(TOKEN){bootstrap().catch(function(e){showLogin(e.auth?'':'')})}else showLogin('');
 }
 function initGoogle(cid){
+  if(GCID===cid)return;GCID=cid;
   function go(){
     window.google.accounts.id.initialize({client_id:cid,callback:onGoogle,auto_select:false});
     $('#g-wrap').style.display='';
@@ -4093,15 +4097,15 @@ function initGoogle(cid){
 async function onGoogle(resp){
   $('#lg-msg').textContent='驗證中…';
   try{
-    var d=await api('googleLogin',{credential:resp.credential});
+    var d=await api('googleLogin',{credential:resp.credential,withData:true});
     TOKEN=d.token;try{sessionStorage.setItem('ldt',TOKEN)}catch(e){}
-    $('#login').style.display='none';await bootstrap();
+    $('#login').style.display='none';await bootstrap(d.boot);
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- load + adapt ---- */
-async function bootstrap(){
-  var data;
-  try{data=await api('getData')}catch(e){if(e.auth){showLogin('登入已過期,請重新登入');return}throw e}
+async function bootstrap(data0){
+  var data=data0;
+  if(!data){try{data=await api('getData')}catch(e){if(e.auth){showLogin('登入已過期,請重新登入');return}throw e}}
   S.role={'管理員':'admin','專案負責人':'lead','業務人員':'staff'}[data.me.role]||'staff';
   ME=data.me.name;MT.data={};MT.err={};MT.loading={};MT.form=null;MT.saving=false;
   await adapt(data);
@@ -4112,10 +4116,10 @@ async function bootstrap(){
   if(S.proj){resetFilters();buildMap();renderAll();pickStart()}
   else{renderProjects();$('#projects-page').innerHTML='<h1>專案總覽</h1><div class="notice">目前沒有你可以看的專案。請聯絡管理員把你加入專案。</div>'}
   route();
-  if(S.role==='admin')loadUsers();
+  UL.done=false;UL.busy=false;
 }
 async function refreshData(){
-  try{var data=await api('getData');await adapt(data);indexDB();if(PRJ[S.proj]){buildMap();renderAll();pickStart()}else renderAll()}
+  try{var data=await api('getData',{noGeo:true});await adapt(data);indexDB();if(PRJ[S.proj]){buildMap();renderAll();pickStart()}else renderAll()}
   catch(e){if(e.auth)showLogin('登入已過期,請重新登入')}
 }
 function gridLayout(list){
@@ -4125,6 +4129,31 @@ function gridLayout(list){
     var x=40+(i%cols)*cw+2,y=40+Math.floor(i/cols)*ch+2,w=cw-4,h=ch-4;
     p.pts=[[x,y],[x+w,y],[x+w,y+h],[x,y+h]];p.cx=x+w/2;p.cy=y+h/2;p.lf=Math.max(5,Math.min(13,Math.min(w,h)*0.33));
   });
+}
+function applyGeo(pr,plist,geo){
+  if(geo&&geo.parcels){
+    pr.geo={ctx:geo.ctx||[],ctxlab:geo.ctxlab||[],zones:geo.zones||{},dev:geo.dev||[],scale:geo.scale||1,zc:geo.zc};pr.schematic=false;
+    var miss=[];
+    plist.forEach(function(p){
+      var gq=geo.parcels[p.no];
+      if(gq){p.pts=gq.pts;p.cx=gq.c[0];p.cy=gq.c[1];p.lf=gq.lf;p.mix=gq.mix;p.polyArea=gq.poly_m2;p.planZone=domZone(gq)}
+      else miss.push(p);
+    });
+    miss.forEach(function(p,mi){var mx=40+(mi%40)*20,my=600+Math.floor(mi/40)*20;p.pts=[[mx,my],[mx+16,my],[mx+16,my+16],[mx,my+16]];p.cx=mx+8;p.cy=my+8;p.lf=5});
+  }else gridLayout(plist);
+}
+// 切到還沒讀圖資的專案:先照示意排列切過去,圖資讀回來再重畫地圖
+function ensureGeo(id){
+  var pr=PRJ[id];if(!pr||!pr._geoLazy)return Promise.resolve();
+  return api('getGeo',{projectId:id}).catch(function(e){if(e.auth)throw e;return null}).then(function(g){
+    GEOC[id]=g;pr._geoLazy=false;applyGeo(pr,DB.parcels.filter(function(p){return p.proj===id}),g);
+    if(S.proj===id){buildMap();renderAll()}
+  });
+}
+function switchProject(id){
+  switchProject0(id);
+  var pr=PRJ[id];
+  if(pr&&pr._geoLazy){toast('載入地圖圖資…');ensureGeo(id).catch(function(e){if(e.auth)showLogin('登入已過期,請重新登入')})}
 }
 async function adapt(data){
   var db=emptyDB();
@@ -4161,23 +4190,16 @@ async function adapt(data){
     SRV.par[r['地號ID']]=np.id;db.parcels.push(np);
   });
   db.skipped=skipped;
-  // geometry
+  // geometry:只先讀「目前要顯示的專案」的圖資,其他專案切過去才讀(專案多時才不會拖慢登入)
+  if(data.geoFirst&&data.geoFirst.projectId&&GEOC[data.geoFirst.projectId]===undefined)GEOC[data.geoFirst.projectId]=data.geoFirst.geo||null;
+  var curP=db.projects.some(function(p){return p.id===S.proj})?S.proj:(db.projects[0]?db.projects[0].id:'');
   for(var pi=0;pi<db.projects.length;pi++){
     var pr=db.projects[pi],plist=db.parcels.filter(function(p){return p.proj===pr.id}),geo=null;
     if(pr._geoId){
-      if(GEOC[pr.id]===undefined){try{GEOC[pr.id]=await api('getGeo',{projectId:pr.id})}catch(e){if(e.auth)throw e;GEOC[pr.id]=null}}
-      geo=GEOC[pr.id];
+      if(GEOC[pr.id]===undefined&&pr.id===curP){try{GEOC[pr.id]=await api('getGeo',{projectId:pr.id})}catch(e){if(e.auth)throw e;GEOC[pr.id]=null}}
+      if(GEOC[pr.id]!==undefined)geo=GEOC[pr.id];else pr._geoLazy=true;
     }
-    if(geo&&geo.parcels){
-      pr.geo={ctx:geo.ctx||[],ctxlab:geo.ctxlab||[],zones:geo.zones||{},dev:geo.dev||[],scale:geo.scale||1,zc:geo.zc};pr.schematic=false;
-      var miss=[];
-      plist.forEach(function(p){
-        var gq=geo.parcels[p.no];
-        if(gq){p.pts=gq.pts;p.cx=gq.c[0];p.cy=gq.c[1];p.lf=gq.lf;p.mix=gq.mix;p.polyArea=gq.poly_m2;p.planZone=domZone(gq)}
-        else miss.push(p);
-      });
-      miss.forEach(function(p,mi){var mx=40+(mi%40)*20,my=600+Math.floor(mi/40)*20;p.pts=[[mx,my],[mx+16,my],[mx+16,my+16],[mx,my+16]];p.cx=mx+8;p.cy=my+8;p.lf=5});
-    }else gridLayout(plist);
+    applyGeo(pr,plist,geo);
   }
   var ivid=0;
   data.interviews.forEach(function(r){
@@ -4230,7 +4252,8 @@ function ownerFamilyHTML(o,pid){
   return h+'<div class="actions"><button class="btn primary" type="button" data-fam-save="'+o.id+'">儲存</button></div>';
 }
 /* ---- admin: users ---- */
-async function loadUsers(){try{USERS=await api('listUsers');renderAdmin()}catch(e){if(e.auth)showLogin('登入已過期,請重新登入')}}
+var UL={done:false,busy:false};
+async function loadUsers(){UL.busy=true;try{USERS=await api('listUsers');UL.done=true;UL.busy=false;renderAdmin()}catch(e){UL.busy=false;if(e.auth)showLogin('登入已過期,請重新登入')}}
 function usProjText(u){
   var r=u['角色'];
   if(r==='管理員')return '全部專案';
@@ -4248,10 +4271,11 @@ function usToggleProj(){var w=$('#us-proj-wrap'),r=$('#us-role');if(w&&r)w.style
 function renderAdmin(){
   var el=$('#admin-page');if(!el)return;
   if(S.role!=='admin'){el.innerHTML='';return}
+  if(!UL.done&&!UL.busy&&location.hash==='#admin')loadUsers();
   var h='<h1>後台:使用者</h1><p class="muted" style="margin:0">管理誰可以登入。信箱要填對方用來登入 Google 的信箱。專案負責人請勾選負責的專案,業務由專案成員決定能看到哪些專案。</p>';
   h+='<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>信箱</th><th>姓名</th><th>角色</th><th>啟用</th><th>負責專案</th><th></th></tr></thead><tbody>';
   USERS.forEach(function(u,i){h+='<tr><td>'+esc(u['信箱'])+'</td><td>'+esc(u['姓名'])+'</td><td>'+esc(u['角色'])+'</td><td>'+esc(u['啟用'])+'</td><td>'+esc(usProjText(u))+'</td><td><button class="btn small" type="button" data-user-edit="'+i+'">編輯</button></td></tr>'});
-  h+='</tbody></table></div>';
+  h+='</tbody></table></div>'+(UL.done?'':'<p class="small muted">載入中…</p>');
   h+='<div class="panel" style="margin-top:14px"><h2>新增或修改使用者</h2><div class="row2"><div class="field" style="margin-top:0"><label for="us-email">信箱</label><input type="email" id="us-email"></div><div class="field" style="margin-top:0"><label for="us-name">姓名</label><input type="text" id="us-name"></div></div>'
     +'<div class="field"><label for="us-role">角色</label><select id="us-role"><option>業務人員</option><option>專案負責人</option><option>管理員</option></select></div>'
     +'<div class="field" id="us-proj-wrap" style="display:none"><span class="lab">負責專案(勾選)</span>'+usProjHTML()+'</div>'
@@ -4309,7 +4333,7 @@ function renderMeetings(){
   if(!vis.length){el.innerHTML=h+'<div class="notice">目前沒有你可以看的專案。</div>';return}
   if(!MT.proj||!vis.some(function(p){return p.id===MT.proj}))MT.proj=vis.some(function(p){return p.id===S.proj})?S.proj:vis[0].id;
   var pid=MT.proj,d=MT.data[pid];
-  if(d===undefined&&!MT.loading[pid]&&!MT.err[pid])loadMeetings(pid);
+  if(d===undefined&&!MT.loading[pid]&&!MT.err[pid]&&location.hash==='#meetings')loadMeetings(pid);
   h+='<div class="bar-tools">'+(vis.length>1?'<label class="small muted" for="mt-proj">專案</label><select id="mt-proj">'+vis.map(function(p){return '<option value="'+esc(p.id)+'"'+(p.id===pid?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select>':'<b>'+esc(vis[0].name)+'</b>')+'</div>';
   if(MT.err[pid]){el.innerHTML=h+'<div class="notice">讀不到會議紀錄:'+esc(MT.err[pid])+' <button class="btn small" type="button" data-mt-retry>重試</button></div>';return}
   if(!d){el.innerHTML=h+'<p class="muted">載入中…</p>';return}
@@ -4331,6 +4355,7 @@ function mtSync(t){
   if(t.id==='mt-date')f.date=t.value;else if(t.id==='mt-title')f.title=t.value;else if(t.id==='mt-other')f.other=t.value;else if(t.id==='mt-disc')f.disc=t.value;else if(t.id==='mt-dec')f.dec=t.value;
   else if(t.dataset&&t.dataset.mtT){var p=t.dataset.mtT.split(':');if(f.tasks[+p[0]])f.tasks[+p[0]][p[1]]=t.value}
 }
+window.addEventListener('hashchange',function(){if(location.hash==='#meetings')renderMeetings();else if(location.hash==='#admin')renderAdmin()});
 document.addEventListener('input',function(e){var t=e.target;if(t&&t.closest&&t.closest('#meetings-page'))mtSync(t)});
 document.addEventListener('change',function(e){
   var t=e.target;if(!t||!t.closest||!t.closest('#meetings-page'))return;
