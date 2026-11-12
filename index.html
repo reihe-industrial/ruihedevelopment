@@ -1414,7 +1414,10 @@ function saveFamily(id){
   var g=function(k){var e=$('#'+k);return e?e.value.trim():''};
   o.inherit={status:g('fm-inh'),missing:g('fm-miss')};
   o.family=g('fm-fam');
-  apiSync('updateOwner',{projectId:S.proj,ownerId:o._srv,fields:{'繼承狀態':o.inherit.status,'缺少文件':o.inherit.missing,'家族群組':o.family}});
+  var w=$('#fm-win');o.win=o.win||{};o.win[S.proj]=!!(w&&w.checked);
+  var ff={'繼承狀態':o.inherit.status,'缺少文件':o.inherit.missing,'家族群組':o.family};
+  if($('#fm-rep')){o.rep={name:g('fm-rep'),canSign:g('fm-sign')};ff['代表人或管理人']=o.rep.name;ff['能否代表簽約']=o.rep.canSign}
+  apiSync('updateOwner',{projectId:S.proj,ownerId:o._srv,window:!!o.win[S.proj],fields:ff});
   DB.log.unshift({ts:new Date(),user:ROLE_LABEL[S.role],action:'更新繼承與家族資料',detail:o.name});
   S.oopen='family';renderAll();openOwner(id);toast('已儲存。');
 }
@@ -3842,7 +3845,13 @@ document.addEventListener('click',function(e){
   if(t.closest('[data-route]')){openRoute();return}
   if((b=t.closest('[data-handover]'))){openHandover(b.dataset.handover);return}
   if(t.closest('[data-task-new]')){newTask();return}
-  if((b=t.closest('[data-task-del]'))){toast('正式版暫時不能刪除待辦,請標示完成。');return}
+  if((b=t.closest('[data-task-del]'))){
+    var dt=DB.tasks.filter(function(x){return x.id===+b.dataset.taskDel})[0];if(!dt)return;
+    if(S.role==='staff'&&dt.by!==ME){toast('只能刪除自己建立的待辦。');return}
+    if(!window.confirm('刪除這項待辦?刪除後無法復原。\n\n'+dt.title))return;
+    DB.tasks=DB.tasks.filter(function(x){return x.id!==dt.id});renderAll();
+    if(dt.sid)apiSync('deleteTask',{id:dt.sid});
+    toast('已刪除待辦。');return}
   if((b=t.closest('[data-rp-period]'))){RP.period=b.dataset.rpPeriod;renderReports();return}
   if(t.closest('[data-rp-export]')){if(S.role==='staff')return;saveFile('土地開發_週月報_'+iso(TODAY)+'.csv',toCSV(reportRows()),'週月報');return}
   if((b=t.closest('[data-cal-nav]'))){
@@ -4116,7 +4125,7 @@ async function bootstrap(data0){
   if(S.proj){resetFilters();buildMap();renderAll();pickStart()}
   else{renderProjects();$('#projects-page').innerHTML='<h1>專案總覽</h1><div class="notice">目前沒有你可以看的專案。請聯絡管理員把你加入專案。</div>'}
   route();
-  UL.done=false;UL.busy=false;
+  UL.done=false;UL.busy=false;LG.rows=null;LG.err='';AD.tab='users';
 }
 async function refreshData(){
   try{var data=await api('getData',{noGeo:true});await adapt(data);indexDB();if(PRJ[S.proj]){buildMap();renderAll();pickStart()}else renderAll()}
@@ -4166,7 +4175,7 @@ async function adapt(data){
   });
   data.owners.forEach(function(o,i){
     var n=i+1;SRV.own[o['地主ID']]=n;
-    db.owners.push({id:n,name:o['姓名'],type:o['身分類型']||'自然人',asg:{},asg2:{},phone:'',regAddr:'',resAddr:'',resSame:false,note:'',contact:'',src:'',pending:o['姓名狀態']==='待確認',tjName:o['謄本顯示姓名']||'',maskedId:'',idno:'',inherit:{status:o['繼承狀態']||'',missing:o['缺少文件']||''},family:o['家族群組']||'',win:{},rep:{name:'',canSign:''},_srv:o['地主ID']});
+    db.owners.push({id:n,name:o['姓名'],type:o['身分類型']||'自然人',asg:{},asg2:{},phone:'',regAddr:'',resAddr:'',resSame:false,note:'',contact:'',src:'',pending:o['姓名狀態']==='待確認',tjName:o['謄本顯示姓名']||'',maskedId:'',idno:'',inherit:{status:o['繼承狀態']||'',missing:o['缺少文件']||''},family:o['家族群組']||'',win:{},rep:{name:o['代表人或管理人']||'',canSign:o['能否代表簽約']||''},_srv:o['地主ID']});
   });
   data.projectOwners.forEach(function(po){
     var n=SRV.own[po['地主ID']];if(!n)return;var o=db.owners[n-1];
@@ -4242,15 +4251,21 @@ function parcelExtraHTML(p){
   var h='<h3>同意進度</h3><div class="ocard"><div class="small">同意 '+ag.agree+' / '+ag.heads+' 位(約 '+Math.round(ag.hp*100)+'%),持分合計 '+Math.round(ag.sp*100)+'% · '+(ok?'<span class="ok">已超過門檻</span>':'<span class="over">還沒達門檻</span>')+'</div>'
     +(un.length?'<div class="small" style="margin-top:4px">還沒同意:'+un.join('、')+'</div>':'')
     +'<div class="small muted" style="margin-top:4px">「同意」指意願 A,或已簽意願書以上。門檻目前設為人數 '+rule.headPct+'%、持分 '+rule.sharePct+'% 以上,實際請依法務確認。</div></div>';
-  if(isFactory(p))h+='<div class="small" style="margin-top:8px"><b>*</b> 特定工廠'+((p.factory&&p.factory.name)?':'+esc(p.factory.name):'')+'</div>';
+  if(S.role!=='staff'){
+    h+='<h3>特定工廠</h3><div class="ocard"><label style="display:flex;align-items:center;gap:6px;font-size:14px"><input type="checkbox" id="fc-on"'+((p.factory&&p.factory.on)?' checked':'')+' style="width:auto"> 特定工廠(地號後面標 *)</label>'
+      +'<div class="field"><label for="fc-name">工廠名稱</label><input type="text" id="fc-name" maxlength="100" value="'+esc((p.factory&&p.factory.name)||'')+'" placeholder="例:○○機械"></div>'
+      +'<div class="actions"><button class="btn small primary" type="button" data-factory-save="'+p.id+'">儲存</button></div></div>';
+  }else if(isFactory(p))h+='<div class="small" style="margin-top:8px"><b>*</b> 特定工廠'+((p.factory&&p.factory.name)?':'+esc(p.factory.name):'')+'</div>';
   return h;
 }
-function ownerFamilyHTML(o,pid){
-  var inh=o.inherit||{status:'',missing:''};
-  var h='<div class="row2"><div class="field" style="margin-top:0"><label for="fm-inh">繼承狀態</label><select id="fm-inh">'+[['','不需要或已辦妥'],['辦理中','辦理中'],['未辦繼承','未辦繼承']].map(function(x){return '<option value="'+x[0]+'"'+(inh.status===x[0]?' selected':'')+'>'+x[1]+'</option>'}).join('')+'</select></div><div class="field" style="margin-top:0"><label for="fm-miss">還缺哪些文件</label><input type="text" id="fm-miss" value="'+esc(inh.missing||'')+'" placeholder="例:戶籍謄本、遺產分割協議書"></div></div>';
-  h+='<div class="field"><label for="fm-fam">家族或親屬群組</label><input type="text" id="fm-fam" value="'+esc(o.family||'')+'" placeholder="例:陳家"></div>';
-  return h+'<div class="actions"><button class="btn primary" type="button" data-fam-save="'+o.id+'">儲存</button></div>';
-}
+document.addEventListener('click',function(e){
+  var t=e.target;if(!t||!t.closest)return;var b=t.closest('[data-factory-save]');if(!b)return;
+  var p=DB.parcels.filter(function(x){return x.id===+b.dataset.factorySave})[0];if(!p)return;
+  var on=!!$('#fc-on').checked,name=($('#fc-name').value||'').trim();
+  p.factory={on:on,name:name};
+  apiSync('setFactory',{projectId:p.proj,parcelId:p._srv,on:on,name:name});
+  renderAll();toast('已儲存特定工廠設定。');
+});
 /* ---- admin: users ---- */
 var UL={done:false,busy:false};
 async function loadUsers(){UL.busy=true;try{USERS=await api('listUsers');UL.done=true;UL.busy=false;renderAdmin()}catch(e){UL.busy=false;if(e.auth)showLogin('登入已過期,請重新登入')}}
@@ -4268,11 +4283,40 @@ function usProjHTML(){
     +ps.map(function(p){return '<label class="us-pitem" style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" data-us-proj="'+esc(p.id)+'" style="width:auto"> <span>'+esc(p.name)+' <span class="small muted">'+esc(p.id)+'</span></span></label>'}).join('')+'</div>';
 }
 function usToggleProj(){var w=$('#us-proj-wrap'),r=$('#us-role');if(w&&r)w.style.display=r.value==='專案負責人'?'':'none'}
+var AD={tab:'users'},LG={rows:null,total:0,offset:0,limit:100,actions:[],users:[],names:{},f:{user:'',act:'',q:'',from:'',to:''},busy:false,err:''};
+function loadLog(offset){
+  LG.busy=true;LG.err='';renderAdmin();
+  api('listLog',{user:LG.f.user,act:LG.f.act,q:LG.f.q,from:LG.f.from,to:LG.f.to,offset:offset||0,limit:LG.limit}).then(function(d){
+    LG.rows=d.rows;LG.total=d.total;LG.offset=d.offset;LG.actions=d.actions;LG.users=d.users;LG.names=d.names||{};LG.busy=false;renderAdmin();
+  }).catch(function(e){LG.busy=false;if(e.auth){showLogin('登入已過期,請重新登入');return}LG.err=e.userMessage||e.message;renderAdmin()});
+}
+function logHTML(){
+  var f=LG.f,nm=function(em){return LG.names[String(em).toLowerCase()]||''};
+  var h='<div class="bar-tools" style="margin-top:12px;flex-wrap:wrap">'
+    +'<label class="small muted" for="lg-user">使用者</label><select id="lg-user"><option value="">全部</option>'+LG.users.map(function(u){return '<option value="'+esc(u)+'"'+(f.user===u?' selected':'')+'>'+esc(nm(u)?nm(u)+'('+u+')':u)+'</option>'}).join('')+'</select>'
+    +'<label class="small muted" for="lg-act">動作</label><select id="lg-act"><option value="">全部</option>'+LG.actions.map(function(a){return '<option value="'+esc(a)+'"'+(f.act===a?' selected':'')+'>'+esc(a)+'</option>'}).join('')+'</select>'
+    +'<label class="small muted" for="lg-from">日期</label><input type="date" id="lg-from" value="'+esc(f.from)+'" style="width:auto"><span class="small muted">到</span><input type="date" id="lg-to" value="'+esc(f.to)+'" style="width:auto">'
+    +'<input type="search" id="lg-q" placeholder="搜尋內容" aria-label="搜尋內容" value="'+esc(f.q)+'" style="width:180px">'
+    +'<button class="btn small primary" type="button" data-lg-apply>查詢</button><button class="btn small" type="button" data-lg-reset>清除</button></div>';
+  if(LG.err)h+='<div class="notice">'+esc(LG.err)+'</div>';
+  if(LG.busy&&LG.rows===null)return h+'<p class="small muted">載入中…</p>';
+  var rows=LG.rows||[];
+  h+='<div class="tablewrap"><table><thead><tr><th>時間</th><th>誰</th><th>做了什麼</th><th>內容</th></tr></thead><tbody>'
+    +(rows.length?rows.map(function(r){return '<tr><td style="white-space:nowrap">'+esc(r['時間'])+'</td><td>'+esc(nm(r['使用者'])||r['使用者'])+'</td><td>'+esc(r['動作'])+'</td><td class="wrapcell">'+esc(r['內容'])+'</td></tr>'}).join(''):'<tr><td colspan="4" class="muted">沒有符合的紀錄。</td></tr>')+'</tbody></table></div>';
+  var from=LG.total?LG.offset+1:0,to=Math.min(LG.offset+LG.limit,LG.total);
+  h+='<div class="orow" style="margin-top:8px"><span class="small muted">共 '+LG.total+' 筆'+(LG.total?',目前顯示第 '+from+' 到 '+to+' 筆':'')+(LG.busy?'(更新中…)':'')+'</span><span style="display:flex;gap:6px"><button class="btn small" type="button" data-lg-page="-1"'+(LG.offset<=0?' disabled':'')+'>上一頁</button><button class="btn small" type="button" data-lg-page="1"'+(to>=LG.total?' disabled':'')+'>下一頁</button></span></div>';
+  return h;
+}
 function renderAdmin(){
   var el=$('#admin-page');if(!el)return;
   if(S.role!=='admin'){el.innerHTML='';return}
+  var tabs='<div class="seg" role="group" aria-label="後台功能" style="grid-template-columns:repeat(2,1fr);max-width:320px;margin-top:10px">'+[['users','使用者'],['log','異動紀錄']].map(function(x){return '<button type="button" data-ad-tab="'+x[0]+'" aria-pressed="'+(AD.tab===x[0])+'">'+x[1]+'</button>'}).join('')+'</div>';
+  if(AD.tab==='log'){
+    if(LG.rows===null&&!LG.busy&&!LG.err&&location.hash==='#admin'){loadLog(0);return}
+    el.innerHTML='<h1>後台</h1>'+tabs+logHTML();return;
+  }
   if(!UL.done&&!UL.busy&&location.hash==='#admin')loadUsers();
-  var h='<h1>後台:使用者</h1><p class="muted" style="margin:0">管理誰可以登入。信箱要填對方用來登入 Google 的信箱。專案負責人請勾選負責的專案,業務由專案成員決定能看到哪些專案。</p>';
+  var h='<h1>後台</h1>'+tabs+'<p class="muted" style="margin:12px 0 0">管理誰可以登入。信箱要填對方用來登入 Google 的信箱。專案負責人請勾選負責的專案,業務由專案成員決定能看到哪些專案。</p>';
   h+='<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>信箱</th><th>姓名</th><th>角色</th><th>啟用</th><th>負責專案</th><th></th></tr></thead><tbody>';
   USERS.forEach(function(u,i){h+='<tr><td>'+esc(u['信箱'])+'</td><td>'+esc(u['姓名'])+'</td><td>'+esc(u['角色'])+'</td><td>'+esc(u['啟用'])+'</td><td>'+esc(usProjText(u))+'</td><td><button class="btn small" type="button" data-user-edit="'+i+'">編輯</button></td></tr>'});
   h+='</tbody></table></div>'+(UL.done?'':'<p class="small muted">載入中…</p>');
@@ -4297,6 +4341,18 @@ document.addEventListener('input',function(e){
   var t=e.target;if(!t||t.id!=='us-proj-q')return;var q=t.value.trim().toLowerCase();
   $$('.us-pitem').forEach(function(l){l.style.display=(!q||l.textContent.toLowerCase().indexOf(q)>=0)?'':'none'});
 });
+
+document.addEventListener('click',function(e){
+  var t=e.target;if(!t||!t.closest)return;var b;
+  if((b=t.closest('[data-ad-tab]'))){AD.tab=b.dataset.adTab;renderAdmin();return}
+  if(t.closest('[data-lg-apply]')){loadLog(0);return}
+  if(t.closest('[data-lg-reset]')){LG.f={user:'',act:'',q:'',from:'',to:''};loadLog(0);return}
+  if((b=t.closest('[data-lg-page]'))){var o=LG.offset+(+b.dataset.lgPage)*LG.limit;loadLog(o<0?0:o);return}
+});
+function lgSync(t){var k={'lg-user':'user','lg-act':'act','lg-q':'q','lg-from':'from','lg-to':'to'}[t.id];if(k)LG.f[k]=t.value}
+document.addEventListener('input',function(e){if(e.target)lgSync(e.target)});
+document.addEventListener('change',function(e){if(e.target)lgSync(e.target)});
+document.addEventListener('keydown',function(e){if(e.key==='Enter'&&e.target&&e.target.id==='lg-q')loadLog(0)});
 
 /* ---- meetings (weekly minutes) ---- */
 var MT={proj:'',data:{},loading:{},err:{},form:null,saving:false};
