@@ -287,9 +287,9 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
 <div id="login" style="display:none"><div class="lcard">
   <div style="background:#fff;border-radius:10px;padding:10px;margin:0 0 16px;text-align:center"><img src="images/logo-full.jpg" alt="瑞禾開發 建築・地產整合團隊" style="max-width:100%;height:auto;display:block;margin:0 auto"></div>
   <h1>土地開發紀錄系統</h1>
-  <p class="small muted" style="margin:0 0 14px">請用公司登記的信箱登入。系統會寄 6 位數驗證碼給您。</p>
-  <div id="g-wrap" style="display:none"><div id="g-btn" style="display:flex;justify-content:center"></div><p class="small muted" style="text-align:center;margin:12px 0">或用信箱驗證碼登入</p></div>
-  <div id="login-step1"><label for="lg-email">信箱</label><input type="email" id="lg-email" autocomplete="email" placeholder="name@company.com"><button class="btn primary" type="button" id="lg-send" style="margin-top:12px;width:100%">寄送驗證碼</button></div>
+  <p id="lg-intro" class="small muted" style="margin:0 0 14px">請用公司登記的信箱登入。</p>
+  <div id="g-wrap" style="display:none"><div id="g-btn" style="display:flex;justify-content:center"></div><p id="g-or" class="small muted" style="text-align:center;margin:12px 0">或用信箱驗證碼登入</p></div>
+  <div id="login-step1" style="display:none"><label for="lg-email">信箱</label><input type="email" id="lg-email" autocomplete="email" placeholder="name@company.com"><button class="btn primary" type="button" id="lg-send" style="margin-top:12px;width:100%">寄送驗證碼</button></div>
   <div id="login-step2" style="display:none"><label for="lg-code">驗證碼(6 位數)</label><input type="text" id="lg-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><button class="btn primary" type="button" id="lg-verify" style="margin-top:12px;width:100%">登入</button><button class="btn" type="button" id="lg-back" style="margin-top:8px;width:100%">換一個信箱</button></div>
   <p id="lg-msg" class="small" style="margin:12px 0 0;min-height:20px"></p>
 </div></div>
@@ -4045,7 +4045,16 @@ function ownerFieldsFor(o,changed){
   return f;
 }
 /* ---- login ---- */
-function showLogin(msg){$('#login').style.display='flex';$('#lg-msg').textContent=msg||'';$('#login-step1').style.display='';$('#login-step2').style.display='none'}
+var CFG=null;
+function showLogin(msg){$('#login').style.display='flex';$('#lg-msg').textContent=msg||'';$('#login-step1').style.display=(CFG&&CFG.emailCode!==false)?'':'none';$('#login-step2').style.display='none'}
+function applyLoginConfig(c){
+  CFG=c||{};
+  var googleOnly=!!CFG.googleClientId&&CFG.emailCode===false;
+  $('#login-step1').style.display=googleOnly?'none':'';
+  if(googleOnly){$('#lg-intro').textContent='請用公司登記的 Google 帳號登入。';$('#g-or').style.display='none'}
+  else if(CFG.googleClientId){$('#lg-intro').textContent='請用公司登記的信箱登入。系統會寄 6 位數驗證碼給您。'}
+  else{$('#lg-intro').textContent='請用公司登記的信箱登入。系統會寄 6 位數驗證碼給您。'}
+}
 function initLogin(){
   $('#lg-send').onclick=async function(){
     var email=$('#lg-email').value.trim();if(!email){$('#lg-msg').textContent='請輸入信箱';return}
@@ -4067,7 +4076,7 @@ function initLogin(){
   $('#lg-email').addEventListener('keydown',function(e){if(e.key==='Enter')$('#lg-send').click()});
   $('#lg-code').addEventListener('keydown',function(e){if(e.key==='Enter')$('#lg-verify').click()});
   $('#logout').onclick=function(){TOKEN='';try{sessionStorage.removeItem('ldt')}catch(e){}location.reload()};
-  api('getConfig').then(function(c){if(c&&c.googleClientId)initGoogle(c.googleClientId)}).catch(function(){});
+  api('getConfig').then(function(c){applyLoginConfig(c);if(c&&c.googleClientId)initGoogle(c.googleClientId)}).catch(function(){applyLoginConfig({emailCode:true})});
   if(TOKEN){bootstrap().catch(function(e){showLogin(e.auth?'':'')})}else showLogin('');
 }
 function initGoogle(cid){
@@ -4077,7 +4086,7 @@ function initGoogle(cid){
     window.google.accounts.id.renderButton($('#g-btn'),{theme:'outline',size:'large',text:'signin_with',locale:'zh-TW',width:320});
   }
   if(window.google&&window.google.accounts&&window.google.accounts.id){go();return}
-  var sc=document.createElement('script');sc.src='https://accounts.google.com/gsi/client';sc.async=true;sc.defer=true;sc.onload=go;sc.onerror=function(){};document.head.appendChild(sc);
+  var sc=document.createElement('script');sc.src='https://accounts.google.com/gsi/client';sc.async=true;sc.defer=true;sc.onload=go;sc.onerror=function(){$('#lg-msg').textContent='無法載入 Google 登入,請檢查網路或關閉廣告攔截後重新整理。'};document.head.appendChild(sc);
 }
 async function onGoogle(resp){
   $('#lg-msg').textContent='驗證中…';
@@ -4223,7 +4232,7 @@ async function loadUsers(){try{USERS=await api('listUsers');renderAdmin()}catch(
 function renderAdmin(){
   var el=$('#admin-page');if(!el)return;
   if(S.role!=='admin'){el.innerHTML='';return}
-  var h='<h1>後台:使用者</h1><p class="muted" style="margin:0">管理誰可以登入。信箱要和寄驗證碼的信箱一樣。專案負責人要填負責的專案ID,業務由專案成員決定能看到哪些專案。</p>';
+  var h='<h1>後台:使用者</h1><p class="muted" style="margin:0">管理誰可以登入。信箱要填對方用來登入 Google 的信箱。專案負責人要填負責的專案ID,業務由專案成員決定能看到哪些專案。</p>';
   h+='<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>信箱</th><th>姓名</th><th>角色</th><th>啟用</th><th>負責專案</th><th></th></tr></thead><tbody>';
   USERS.forEach(function(u,i){h+='<tr><td>'+esc(u['信箱'])+'</td><td>'+esc(u['姓名'])+'</td><td>'+esc(u['角色'])+'</td><td>'+esc(u['啟用'])+'</td><td>'+esc(u['負責專案(專案ID,用逗號分開)']||'')+'</td><td><button class="btn small" type="button" data-user-edit="'+i+'">編輯</button></td></tr>'});
   h+='</tbody></table></div>';
