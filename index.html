@@ -221,6 +221,7 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
       <a href="#meetings" data-v="meetings">會議紀錄</a>
       <a href="#reports" data-v="reports" id="tab-reports">報表</a>
       <a href="#stats" data-v="stats">統計</a>
+      <a href="#data" data-v="data">匯入匯出</a>
       <a href="#admin" data-v="admin" id="tab-admin">後台</a>
     </nav>
     <div class="tools" style="display:none">
@@ -296,7 +297,7 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
   <div id="login-step2" style="display:none"><label for="lg-code">驗證碼(6 位數)</label><input type="text" id="lg-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><button class="btn primary" type="button" id="lg-verify" style="margin-top:12px;width:100%">登入</button><button class="btn" type="button" id="lg-back" style="margin-top:8px;width:100%">換一個信箱</button></div>
   <p id="lg-msg" class="small" style="margin:12px 0 0;min-height:20px"></p>
 </div></div>
-<style>#login{position:fixed;inset:0;z-index:200;background:var(--bg,#EEF2EF);align-items:center;justify-content:center;padding:20px}.lcard{background:var(--surface,#fff);border:1px solid var(--line,#D5DDD8);border-radius:14px;padding:28px;width:100%;max-width:380px}.lcard h1{font-size:22px;margin:0 0 6px}.lcard label{display:block;font-size:13px;margin:0 0 4px}</style>
+<style>#login{position:fixed;inset:0;z-index:200;background:var(--bg,#EEF2EF);align-items:center;justify-content:center;padding:20px}.lcard{background:var(--surface,#fff);border:1px solid var(--line,#D5DDD8);border-radius:14px;padding:28px;width:100%;max-width:380px}.lcard h1{font-size:22px;margin:0 0 6px}.lcard label{display:block;font-size:13px;margin:0 0 4px}@media (max-width:760px){.top{gap:6px 10px;padding:8px 10px}.brand small{max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.top>.tools:last-child{margin-left:auto}.tabs{order:3;flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:2px;padding-bottom:4px}.tabs a{flex:none;white-space:nowrap;padding:8px 12px}#who2{display:none}.page{padding:12px}}.mapwrap{position:relative}#focus-float{position:absolute;left:10px;top:10px;z-index:6;box-shadow:0 2px 8px rgba(0,0,0,.25)}</style>
 <script>
 (function(){
 'use strict';
@@ -565,7 +566,7 @@ function indexDB(){
   DB.parcels.forEach(function(p){if(!p.factory)p.factory={on:false,name:''};if(!p.constraints)p.constraints=[];if(!p.checklist)p.checklist={};if(!p.surveys)p.surveys=[];if(p.prevValue===undefined)p.prevValue=0;if(!p.idx)p.idx=1});
   DB.owners.forEach(function(o){if(!o.asg2)o.asg2={};if(!o.inherit)o.inherit={status:'',missing:''};if(o.family===undefined)o.family='';if(!o.win)o.win={};if(!o.rep)o.rep={name:'',canSign:''}});
   OWN={};DB.owners.forEach(function(o){OWN[o.id]=o;if(o.addr&&!o.regAddr)o.regAddr=o.addr});
-  PRJ={};DB.projects.forEach(function(p){PRJ[p.id]=p;if(!p.staff)p.staff=staffIds(true)});
+  PRJ={};DB.projects.forEach(function(p){PRJ[p.id]=p;if(!p.staff)p.staff=staffIds(true)});PRJ['*']={id:'*',name:'全公司',staff:COMPANY_STAFF,rule:{headPct:50,sharePct:50},blocks:[]};
   var allIds=DB.projects.map(function(p){return p.id});ACCESS.admin=allIds;ACCESS.lead=allIds.slice();ACCESS.staff=allIds.slice();
   STP={};
   var by={};
@@ -600,7 +601,7 @@ function fuClass(n){
 /* ---------- state ---------- */
 var ME='';
 var S={role:'admin',proj:'A',vw:'proj',vproj:'all',vasg:'all',vlv:'all',vquick:'all',vq:'',vsel:{},atab:'staff',adel:null,popen:null,oopen:null,dopen:null,focusOwner:null,mode:'int',levels:{A:1,B:1,C:1,D:1,E:1,N:1},block:'all',q:'',sel:null,thr:60,fuWho:'all',ownerQ:''};
-var VIEWS=['projects','map','visits','tasks','meetings','reports','stats','admin'];
+var VIEWS=['projects','map','visits','tasks','meetings','reports','data','stats','admin'];
 var vb={x:0,y:0,w:1000,h:660};
 var els=[];
 
@@ -1561,10 +1562,10 @@ function tasksVisible(){
   var vis=visibleProjects(),staff=S.role==='staff';
   if(TK.proj!=='all'&&!vis.some(function(p){return p.id===TK.proj}))TK.proj='all';
   return DB.tasks.filter(function(t){
-    if(!vis.some(function(p){return p.id===t.pid}))return false;
-    if(TK.proj!=='all'&&t.pid!==TK.proj)return false;
-    if(staff&&t.assignee!==ME)return false;
-    if(!staff&&TK.who!=='all'&&t.assignee!==TK.who)return false;
+    if(!(t.pid==='*'||vis.some(function(p){return p.id===t.pid})))return false;
+    if(TK.proj!=='all'&&t.pid!==TK.proj&&t.pid!=='*')return false;
+    if(staff&&t.assignee!==ME&&t.pid!=='*')return false;
+    if(!staff&&TK.who!=='all'&&t.assignee!==TK.who&&t.pid!=='*')return false;
     if(TK.st==='open'&&t.done)return false;
     if(TK.st==='done'&&!t.done)return false;
     return true;
@@ -1574,7 +1575,7 @@ function taskRowHTML(t,showProj){
   var o=OWN[t.owner],late=!t.done&&diffDays(parseISO(t.due))<0;
   return '<tr><td>'+(late?'<span class="over">'+esc(t.due)+'(逾期)</span>':esc(t.due))+'</td><td class="wrapcell">'+esc(t.title)+'</td>'
     +(showProj?'<td>'+esc(PRJ[t.pid].name)+'</td>':'')
-    +'<td>'+(o?'<button class="link" type="button" data-vowner="'+t.pid+'|'+o.id+'">'+esc(o.name)+'</button>':'—')+'</td><td>承辦人'+esc(t.assignee)+'</td>'
+    +'<td>'+(o?'<button class="link" type="button" data-vowner="'+t.pid+'|'+o.id+'">'+esc(o.name)+'</button>':'—')+'</td><td>'+(t.assignee==='全體'?'全體':'承辦人'+esc(t.assignee))+'</td>'
     +'<td>'+(t.done?'<span class="ok small">已完成</span>':'<button class="btn small" type="button" data-task-done="'+t.id+'">完成</button>')+' <button class="btn small" type="button" data-task-del="'+t.id+'">刪除</button></td></tr>';
 }
 function calMonth(){if(!TK.month){var t=new Date(TODAY);TK.month=t.getFullYear()+'-'+p2(t.getMonth()+1)}return TK.month}
@@ -1583,10 +1584,10 @@ function calEvents(){
   var map={},vis=visibleProjects(),staff=S.role==='staff';
   function slot(d){return map[d]=map[d]||{tasks:[],fus:[]}}
   DB.tasks.forEach(function(t){
-    if(!vis.some(function(p){return p.id===t.pid}))return;
-    if(TK.proj!=='all'&&t.pid!==TK.proj)return;
-    if(staff&&t.assignee!==ME)return;
-    if(!staff&&TK.who!=='all'&&t.assignee!==TK.who)return;
+    if(!(t.pid==='*'||vis.some(function(p){return p.id===t.pid})))return;
+    if(TK.proj!=='all'&&t.pid!==TK.proj&&t.pid!=='*')return;
+    if(staff&&t.assignee!==ME&&t.pid!=='*')return;
+    if(!staff&&TK.who!=='all'&&t.assignee!==TK.who&&t.pid!=='*')return;
     slot(t.due).tasks.push(t);
   });
   if(TK.fu)vis.forEach(function(pr){
@@ -1606,7 +1607,7 @@ function renderTasks(){
   var vis=visibleProjects(),staff=S.role==='staff',list=tasksVisible(),showProj=TK.proj==='all'&&vis.length>1;
   var ev=calEvents(),mm=calMonth().split('-'),y=+mm[0],mo=+mm[1]-1,first=new Date(y,mo,1),start=new Date(y,mo,1-first.getDay()),todayIso=iso(TODAY);
   if(!TK.day)TK.day=todayIso;
-  var all=DB.tasks.filter(function(t){return vis.some(function(p){return p.id===t.pid})&&(TK.proj==='all'||t.pid===TK.proj)&&(!staff||t.assignee===ME)&&(staff||TK.who==='all'||t.assignee===TK.who)&&!t.done});
+  var all=DB.tasks.filter(function(t){return (t.pid==='*'||vis.some(function(p){return p.id===t.pid}))&&(TK.proj==='all'||t.pid===TK.proj||t.pid==='*')&&(!staff||t.assignee===ME||t.pid==='*')&&(staff||TK.who==='all'||t.assignee===TK.who||t.pid==='*')&&!t.done});
   var nOver=all.filter(function(t){return diffDays(parseISO(t.due))<0}).length,nSoon=all.filter(function(t){var d=diffDays(parseISO(t.due));return d>=0&&d<=7}).length,nLater=all.filter(function(t){return diffDays(parseISO(t.due))>7}).length;
   var h='<h1>行事曆與待辦</h1><p class="muted" style="margin:0">'+(staff?'指派給你的待辦。':'專案內的待辦,可以指派給承辦業務。')+'補文件、準備方案、請代書、請主管出面這些,都可以排在行事曆上。</p>';
   h+='<div class="bar-tools"><label class="small muted" for="tk-f-proj">專案</label><select id="tk-f-proj"><option value="all">全部專案</option>'+vis.map(function(p){return '<option value="'+p.id+'"'+(TK.proj===p.id?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select>'
@@ -1623,15 +1624,15 @@ function renderTasks(){
     h+='<button type="button" class="cell'+(d.getMonth()!==mo?' out':'')+(di===todayIso?' today':'')+(di===TK.day?' sel':'')+'" data-cal-day="'+di+'" aria-label="'+di+',共 '+items.length+' 項"><span class="dn">'+d.getDate()+'</span>'+items.slice(0,3).join('')+(items.length>3?'<div class="small muted">還有 '+(items.length-3)+' 項</div>':'')+'</button>';
   }
   h+='</div></div>';
-  var de=ev[TK.day]||{tasks:[],fus:[]},ap=TK.addProj&&vis.some(function(p){return p.id===TK.addProj})?TK.addProj:(TK.proj!=='all'?TK.proj:(vis[0]?vis[0].id:''));
+  var de=ev[TK.day]||{tasks:[],fus:[]},ap=TK.addProj&&((TK.addProj==='*'&&!staff)||vis.some(function(p){return p.id===TK.addProj}))?TK.addProj:(TK.proj!=='all'?TK.proj:(vis[0]?vis[0].id:''));
   h+='<div class="panel"><h2>'+esc(TK.day)+' 的事項</h2>';
-  if(de.tasks.length)h+='<div class="tablewrap" style="margin-top:6px"><table><thead><tr><th>待辦</th>'+(showProj?'<th>專案</th>':'')+'<th>地主</th><th>負責人</th><th></th></tr></thead><tbody>'+de.tasks.map(function(t){var o=OWN[t.owner];return '<tr><td class="wrapcell"'+(t.done?' style="text-decoration:line-through;opacity:.6"':'')+'>'+esc(t.title)+'</td>'+(showProj?'<td>'+esc(PRJ[t.pid].name)+'</td>':'')+'<td>'+(o?'<button class="link" type="button" data-vowner="'+t.pid+'|'+o.id+'">'+esc(o.name)+'</button>':'—')+'</td><td>承辦人'+esc(t.assignee)+'</td><td>'+(t.done?'<span class="ok small">已完成</span>':'<button class="btn small" type="button" data-task-done="'+t.id+'">完成</button>')+' <button class="btn small" type="button" data-task-del="'+t.id+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div>';
+  if(de.tasks.length)h+='<div class="tablewrap" style="margin-top:6px"><table><thead><tr><th>待辦</th>'+(showProj?'<th>專案</th>':'')+'<th>地主</th><th>負責人</th><th></th></tr></thead><tbody>'+de.tasks.map(function(t){var o=OWN[t.owner];return '<tr><td class="wrapcell"'+(t.done?' style="text-decoration:line-through;opacity:.6"':'')+'>'+esc(t.title)+'</td>'+(showProj?'<td>'+esc(PRJ[t.pid].name)+'</td>':'')+'<td>'+(o?'<button class="link" type="button" data-vowner="'+t.pid+'|'+o.id+'">'+esc(o.name)+'</button>':'—')+'</td><td>'+(t.assignee==='全體'?'全體':'承辦人'+esc(t.assignee))+'</td><td>'+(t.done?'<span class="ok small">已完成</span>':'<button class="btn small" type="button" data-task-done="'+t.id+'">完成</button>')+' <button class="btn small" type="button" data-task-del="'+t.id+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div>';
   else h+='<p class="small muted" style="margin:0 0 6px">這一天沒有待辦。</p>';
   if(de.fus.length)h+='<h3>這天要跟進的地主</h3>'+de.fus.map(function(f){return '<div class="small"><button class="link" type="button" data-vowner="'+f.pid+'|'+f.o.id+'">'+esc(f.o.name)+'</button> · '+esc(PRJ[f.pid].name)+'</div>'}).join('');
   if(ap){
     var apr=PRJ[ap],owners=projOwners(ap).filter(function(o){return !staff||canSeeOwner(o,ap)});
-    h+='<h3>在這一天新增待辦</h3><div class="field" style="margin-top:0"><label for="tk2-title">待辦內容</label><input type="text" id="tk2-title" placeholder="例:請代書確認持分"></div><div class="row2"><div class="field"><label for="tk2-due">日期</label><input type="date" id="tk2-due" value="'+TK.day+'"></div><div class="field"><label for="tk2-proj">專案</label><select id="tk2-proj">'+vis.map(function(p){return '<option value="'+p.id+'"'+(p.id===ap?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select></div></div>'
-      +'<div class="row2"><div class="field"><label for="tk2-owner">相關地主(選填)</label><select id="tk2-owner"><option value="">不指定</option>'+owners.map(function(o){return '<option value="'+o.id+'">'+esc(o.name)+'</option>'}).join('')+'</select></div><div class="field"><label for="tk2-who">負責人</label><select id="tk2-who">'+apr.staff.filter(function(x){return !staff||x===ME}).map(function(x){return '<option value="'+esc(x)+'">承辦人'+esc(x)+'</option>'}).join('')+'</select></div></div><div class="actions"><button class="btn primary" type="button" data-task-new>加入待辦</button></div>';
+    h+='<h3>在這一天新增待辦</h3><div class="field" style="margin-top:0"><label for="tk2-title">待辦內容</label><input type="text" id="tk2-title" placeholder="例:請代書確認持分"></div><div class="row2"><div class="field"><label for="tk2-due">日期</label><input type="date" id="tk2-due" value="'+TK.day+'"></div><div class="field"><label for="tk2-proj">專案</label><select id="tk2-proj">'+(staff?'':'<option value="*"'+(ap==='*'?' selected':'')+'>全公司(不屬於任何專案)</option>')+vis.map(function(p){return '<option value="'+p.id+'"'+(p.id===ap?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select></div></div>'
+      +'<div class="row2"><div class="field"><label for="tk2-owner">相關地主(選填)</label><select id="tk2-owner"><option value="">不指定</option>'+owners.map(function(o){return '<option value="'+o.id+'">'+esc(o.name)+'</option>'}).join('')+'</select></div><div class="field"><label for="tk2-who">負責人</label><select id="tk2-who">'+apr.staff.filter(function(x){return !staff||x===ME}).map(function(x){return '<option value="'+esc(x)+'">'+(x==='全體'?'全體':'承辦人'+esc(x))+'</option>'}).join('')+'</select></div></div><div class="actions"><button class="btn primary" type="button" data-task-new>加入待辦</button></div>';
   }
   h+='</div></div>';
   var groups=[['over','還未辦理(已逾期)',function(t){return !t.done&&diffDays(parseISO(t.due))<0}],['soon','近期辦理(未來 7 天內)',function(t){var d=diffDays(parseISO(t.due));return !t.done&&d>=0&&d<=7}],['later','未來需要辦理(7 天以後)',function(t){return !t.done&&diffDays(parseISO(t.due))>7}],['done','已完成',function(t){return t.done}]];
@@ -1650,7 +1651,7 @@ function newTask(){
   var pid=$('#tk2-proj').value,ow=$('#tk2-owner').value;
   var nt={id:++DB.tid,pid:pid,owner:ow?+ow:null,title:title,assignee:$('#tk2-who').value,due:$('#tk2-due').value||iso(addDays(7)),done:false,by:ROLE_LABEL[S.role],created:iso(TODAY)};
   DB.tasks.push(nt);
-  apiSync('addTask',{projectId:pid,ownerId:nt.owner?OWN[nt.owner]._srv:'',title:title,assignee:nt.assignee,due:nt.due}).then(function(d){nt.sid=d.id});
+  apiSync('addTask',{projectId:pid==='*'?'':pid,ownerId:nt.owner?OWN[nt.owner]._srv:'',title:title,assignee:nt.assignee,due:nt.due}).then(function(d){nt.sid=d.id});
   DB.log.unshift({ts:new Date(),user:ROLE_LABEL[S.role],action:'新增待辦',detail:PRJ[pid].name+':'+title});
   var dd=$('#tk2-due').value;if(dd){TK.day=dd;TK.month=dd.slice(0,7)}
   renderAll();toast('已加入待辦。');
@@ -3801,7 +3802,7 @@ function route(){
   if(r==='map')setTimeout(function(){paintMap()},0);
 }
 function renderAll(){
-  indexDB();renderProjSelect();renderProjects();renderSide();paintMap();renderDetail();renderVisits();renderTasks();renderMeetings();renderReports();renderStats();renderAdmin();
+  indexDB();renderProjSelect();renderProjects();renderSide();paintMap();renderDetail();renderVisits();renderTasks();renderMeetings();renderReports();renderData();renderStats();renderAdmin();
 }
 function goParcel(id){
   $('#dlg-owner').open&&$('#dlg-owner').close();
@@ -3869,7 +3870,7 @@ document.addEventListener('click',function(e){
   if((b=t.closest('[data-task-add]'))){addTask(+b.dataset.taskAdd);return}
   if((b=t.closest('[data-task-done]'))){
     var tk2=DB.tasks.filter(function(x){return x.id===+b.dataset.taskDone})[0];
-    if(tk2){tk2.done=true;if(tk2.sid)apiSync('completeTask',{id:tk2.sid});DB.log.unshift({ts:new Date(),user:ROLE_LABEL[S.role],action:'完成任務',detail:tk2.title});S.oopen='task';renderAll();if($('#dlg-owner').open)openOwner(tk2.owner);toast('已標示完成。')}
+    if(tk2){if(S.role==='staff'&&tk2.pid==='*'&&tk2.by!==ME){toast('全公司的事項要由專案負責人以上標示完成。');return}tk2.done=true;if(tk2.sid)apiSync('completeTask',{id:tk2.sid});DB.log.unshift({ts:new Date(),user:ROLE_LABEL[S.role],action:'完成任務',detail:tk2.title});S.oopen='task';renderAll();if($('#dlg-owner').open)openOwner(tk2.owner);toast('已標示完成。')}
     return;
   }
   if((b=t.closest('[data-file-add]'))){addFile(+b.dataset.fileAdd);return}
@@ -4022,7 +4023,7 @@ window.addEventListener('hashchange',route);
 /* ---------- production: login, API, adapter ---------- */
 var API_URL='https://script.google.com/macros/s/AKfycbwhelUD2Yi2ZI-TomN72vjnTMO8VKRaYYOcwg3K5r4QOfzZfmmIeW5-K3hJosYQpKdyaQ/exec';
 /* pages removed from the production build */
-function renderData(){}function renderImport(){}function renderDeeds(){}
+function renderImport(){}function renderDeeds(){}
 var TOKEN='';
 try{TOKEN=sessionStorage.getItem('ldt')||''}catch(e){}
 var SRV={own:{},par:{}},GEOC={},USERS=[];
@@ -4229,9 +4230,10 @@ async function adapt(data){
     db.interviews.push({id:++ivid,synthetic:true,owner:n,proj:r['專案ID'],date:parseISO(r['日期']),method:'',by:'',summary:'(不是你負責的地主,內容不顯示)',level:r['意願']||'N',next:r['下次跟進日']?parseISO(r['下次跟進日']):null,tags:[]});
   });
   db.seq=ivid;
+  COMPANY_STAFF=['全體'].concat(data.people||[]);
   data.tasks.forEach(function(r){
     var n=r['地主ID']?SRV.own[r['地主ID']]:null;
-    db.tasks.push({id:++db.tid,sid:r['任務ID'],pid:r['專案ID'],owner:n||null,title:r['內容'],assignee:r['負責人'],due:r['期限'],done:r['完成']==='是',by:r['建立者']||'',created:r['建立日期']||''});
+    db.tasks.push({id:++db.tid,sid:r['任務ID'],pid:r['專案ID']||'*',owner:n||null,title:r['內容'],assignee:r['負責人'],due:r['期限'],done:r['完成']==='是',by:r['建立者']||'',created:r['建立日期']||''});
   });
   DB=db;
 }
@@ -4282,6 +4284,23 @@ document.addEventListener('click',function(e){
   apiSync('setFactory',{projectId:p.proj,parcelId:p._srv,on:on,name:name});
   renderAll();toast('已儲存特定工廠設定。');
 });
+var COMPANY_STAFF=['全體'];
+function projColor(pid){if(pid==='*')return '#6B7A74';var i=0;DB.projects.forEach(function(p,k){if(p.id===pid)i=k});return OWN_PAL[i%OWN_PAL.length]}
+/* ---- 框選:地圖上直接可以取消 ---- */
+function syncFocusFloat(){
+  var wrap=document.querySelector('.mapwrap');if(!wrap)return;
+  var b=document.getElementById('focus-float'),o=S.focusOwner!==null?OWN[S.focusOwner]:null;
+  if(!o){if(b)b.style.display='none';return}
+  if(!b){b=document.createElement('button');b.id='focus-float';b.type='button';b.className='btn small primary';b.setAttribute('data-focus-clear','');wrap.appendChild(b)}
+  b.textContent='✕ 取消框選:'+o.name;b.style.display='';
+}
+function focusBanner(){
+  syncFocusFloat();
+  if(S.focusOwner===null)return '';
+  var o=OWN[S.focusOwner];if(!o)return '';
+  var n=PP().filter(function(p){return p.owners.some(function(po){return po.owner===o.id})}).length;
+  return '<div class="notice" style="margin:0 0 10px"><b>正在框選:'+esc(o.name)+'</b><div class="small" style="margin:4px 0">他在這個專案有 '+n+' 筆地號,已用橘色框出來(虛線框是全部範圍)。</div><button class="btn small" type="button" data-focus-clear>清除框選</button></div>';
+}
 /* ---- 現場踏勘、附件、下載(第二輪) ---- */
 var SV={pid:null,pending:[],busy:false};
 function guessMime(name){
@@ -4392,6 +4411,98 @@ document.addEventListener('click',function(e){
       else downloadB64(r.name,r.mime,r.data);
     }).catch(function(er){b.disabled=false;if(er.auth)showLogin('登入已過期,請重新登入');else toast('打不開附件:'+(er.userMessage||er.message))});
     return;
+  }
+});
+/* ---- 匯入匯出 ---- */
+var DX={proj:'',text:'',check:null,rows:null,msg:''};
+var DX_HEAD=['日期','地主','方式','記錄人','內容摘要','意願','下次跟進日','關切標籤'];
+function dxParse(text){
+  text=String(text||'').replace(/^\uFEFF/,'');
+  if(!text.trim())return {err:'請先選擇檔案或貼上內容。'};
+  var first=text.split(/\r?\n/)[0],delim=(first.indexOf('\t')>=0&&first.indexOf(',')<0)?'\t':',';
+  var rows=parseCSV(text,delim);
+  if(rows.length<2)return {err:'除了標題列,還要有至少一筆資料。'};
+  var head=rows[0].map(function(x){return String(x).trim()}),ix=function(n){return head.indexOf(n)};
+  var miss=['日期','地主','內容摘要','意願'].filter(function(n){return ix(n)<0});
+  if(miss.length)return {err:'標題列缺少:'+miss.join('、')+'。'};
+  return {rows:rows.slice(1).map(function(r){var g=function(n){var i=ix(n);return i<0?'':String(r[i]===undefined?'':r[i]).trim()};return {date:g('日期'),owner:g('地主'),method:g('方式'),by:g('記錄人'),summary:g('內容摘要'),level:g('意願'),next:g('下次跟進日'),tags:g('關切標籤')}})};
+}
+function dxResultHTML(){
+  var c=DX.check;if(!c)return DX.msg?'<p class="ok" style="margin:10px 0 0">'+esc(DX.msg)+'</p>':'';
+  if(c.parseErr)return '<p class="over" style="margin:10px 0 0">'+esc(c.parseErr)+'</p>';
+  if(c.ok)return '<p class="ok" style="margin:10px 0 0">檢查通過,共 '+c.count+' 筆可以匯入。</p><div class="actions"><button class="btn primary" type="button" data-dx-commit>匯入 '+c.count+' 筆</button></div>';
+  return '<p class="over" style="margin:10px 0 0">有 '+c.errorCount+' 列要修正(整批都還沒有匯入),修正後再檢查一次。</p><ul class="small" style="margin:6px 0 0;padding-left:18px">'+c.errors.slice(0,30).map(function(e){return '<li>第 '+(e.row+1)+' 列:'+esc(e.msg)+'</li>'}).join('')+(c.errorCount>30?'<li>還有 '+(c.errorCount-30)+' 列…</li>':'')+'</ul>';
+}
+function dxRefresh(){var el=$('#dx-result');if(el)el.innerHTML=dxResultHTML()}
+function renderData(){
+  var el=$('#data-page');if(!el)return;
+  var vis=visibleProjects(),staff=S.role==='staff',admin=S.role==='admin',h='<h1>匯入匯出</h1>';
+  if(!vis.length){el.innerHTML=h+'<div class="notice">目前沒有你可以看的專案。</div>';return}
+  if(!DX.proj||!vis.some(function(p){return p.id===DX.proj}))DX.proj=vis.some(function(p){return p.id===S.proj})?S.proj:vis[0].id;
+  h+='<div class="bar-tools">'+(vis.length>1?'<label class="small muted" for="dx-proj">專案</label><select id="dx-proj">'+vis.map(function(p){return '<option value="'+esc(p.id)+'"'+(p.id===DX.proj?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select>':'<b>'+esc(vis[0].name)+'</b>')+'</div>';
+  h+='<div class="grid2"><div class="panel"><h2>匯出</h2>';
+  if(staff)h+='<div class="notice" style="margin:0">業務人員不能匯出資料。需要資料時,請找專案負責人或管理員。</div>';
+  else{
+    [['parcels','地號清單','面積、使用分區、地主與持分(CSV)'],['owners','地主清單','含電話與地址,請妥善保管(CSV)'],['interviews','訪談紀錄','全部訪談,新到舊排列(CSV)']].forEach(function(x){
+      h+='<div class="expcard"><div><b>'+x[1]+'</b><span class="small muted">'+x[2]+'</span></div><button class="btn" type="button" data-dx-exp="'+x[0]+'">匯出</button></div>';
+    });
+    h+='<div class="expcard"><div><b>完整備份</b><span class="small muted">'+(admin?'在雲端硬碟建立整份試算表的副本,含全部專案與個資':'只有管理員可以建立,因為含全部專案與個資')+'</span></div><button class="btn" type="button" data-dx-backup'+(admin?'':' disabled')+'>建立備份</button></div>';
+    if(DX.bk)h+='<div class="notice">已建立備份:'+esc(DX.bk.name)+(/^https:\/\//.test(DX.bk.url)?' <a href="'+esc(DX.bk.url)+'" target="_blank" rel="noopener">開啟</a>':'')+'</div>';
+  }
+  h+='</div><div class="panel"><h2>匯入訪談紀錄</h2>';
+  h+='<p class="small muted" style="margin:0">標題列要有:日期、地主、內容摘要、意願;方式、記錄人、下次跟進日、關切標籤可省略。地主姓名要和系統內一致。請存成「CSV UTF-8」。'+(staff?'只能匯入自己負責的地主的紀錄。':'')+'</p>';
+  h+='<p style="margin:10px 0 0"><button class="btn" type="button" data-dx-tpl>下載匯入範本</button></p>';
+  h+='<div class="dropzone"><label class="lab" for="dx-file">選擇檔案</label><input type="file" id="dx-file" accept=".csv,.txt"><label class="lab" for="dx-text" style="margin-top:10px">或貼上內容</label><textarea class="mono" id="dx-text" rows="5" placeholder="'+DX_HEAD.join(',')+'">'+esc(DX.text)+'</textarea>';
+  h+='<div class="actions" style="margin-top:10px"><button class="btn" type="button" data-dx-clear>清除</button><button class="btn primary" type="button" data-dx-check>檢查內容</button></div></div>';
+  h+='<div id="dx-result">'+dxResultHTML()+'</div></div></div>';
+  el.innerHTML=h;
+}
+document.addEventListener('change',function(e){
+  var t=e.target;if(!t||!t.closest||!t.closest('#data-page'))return;
+  if(t.id==='dx-proj'){DX.proj=t.value;DX.check=null;DX.msg='';renderData();return}
+  if(t.id==='dx-file'){
+    var f=t.files&&t.files[0];if(!f)return;
+    var rd=new FileReader();rd.onload=function(){DX.text=String(rd.result||'');DX.check=null;DX.msg='';var ta=$('#dx-text');if(ta)ta.value=DX.text;dxRefresh()};
+    rd.onerror=function(){toast('讀不到這個檔案,請再試一次。')};rd.readAsText(f,'utf-8');
+  }
+});
+document.addEventListener('input',function(e){var t=e.target;if(t&&t.id==='dx-text'){DX.text=t.value;DX.check=null;DX.msg='';dxRefresh()}});
+document.addEventListener('click',function(e){
+  var t=e.target;if(!t||!t.closest||!t.closest('#data-page'))return;var b;
+  var safe=function(s){return String(s||'').replace(/[\\\/:*?"<>|]+/g,'_')};
+  if((b=t.closest('[data-dx-exp]'))){
+    var kind=b.dataset.dxExp,label={parcels:'地號清單',owners:'地主清單',interviews:'訪談紀錄'}[kind];b.disabled=true;
+    api('exportData',{projectId:DX.proj,kind:kind}).then(function(r){
+      downloadBlob('土地開發_'+label+'_'+safe(r.project)+'_'+iso(new Date())+'.csv',new Blob([toCSV(r.rows)],{type:'text/csv;charset=utf-8'}));
+      toast('已匯出:'+label+'('+(r.rows.length-1)+' 筆)。');
+    }).catch(function(er){if(er.auth)showLogin('登入已過期,請重新登入');else toast('匯出失敗:'+(er.userMessage||er.message))}).then(function(){b.disabled=false});
+    return;
+  }
+  if((b=t.closest('[data-dx-backup]'))){
+    if(!window.confirm('在雲端硬碟建立整份試算表的備份?\n備份含全部專案與個資。'))return;
+    b.disabled=true;
+    api('backupSpreadsheet',{}).then(function(r){DX.bk={name:r.name,url:r.url};toast('已建立備份。');renderData()})
+      .catch(function(er){b.disabled=false;if(er.auth)showLogin('登入已過期,請重新登入');else toast('備份失敗:'+(er.userMessage||er.message))});
+    return;
+  }
+  if(t.closest('[data-dx-tpl]')){
+    downloadBlob('土地開發_訪談匯入範本.csv',new Blob([toCSV([DX_HEAD,[iso(new Date()),'(地主姓名,要和系統內一致)','拜訪','','(這次談了什麼)','B',iso(new Date(Date.now()+7*864e5)),'價格、稅負']])],{type:'text/csv;charset=utf-8'}));
+    return;
+  }
+  if(t.closest('[data-dx-clear]')){DX.text='';DX.check=null;DX.rows=null;DX.msg='';renderData();return}
+  if(t.closest('[data-dx-check]')){
+    var p=dxParse(DX.text);
+    if(p.err){DX.check={parseErr:p.err};dxRefresh();return}
+    DX.rows=p.rows;DX.msg='';b=t.closest('[data-dx-check]');b.disabled=true;
+    api('importInterviews',{projectId:DX.proj,rows:p.rows,dryRun:true}).then(function(r){DX.check=r;dxRefresh()})
+      .catch(function(er){if(er.auth)showLogin('登入已過期,請重新登入');else{DX.check={parseErr:er.userMessage||er.message};dxRefresh()}}).then(function(){b.disabled=false});
+    return;
+  }
+  if((b=t.closest('[data-dx-commit]'))){
+    if(!DX.check||!DX.check.ok||!DX.rows)return;b.disabled=true;
+    api('importInterviews',{projectId:DX.proj,rows:DX.rows,dryRun:false}).then(function(r){
+      DX.msg='已匯入 '+r.count+' 筆訪談紀錄。';DX.text='';DX.check=null;DX.rows=null;toast(DX.msg);renderData();refreshData();
+    }).catch(function(er){b.disabled=false;if(er.auth)showLogin('登入已過期,請重新登入');else toast('匯入失敗:'+(er.userMessage||er.message))});
   }
 });
 /* ---- admin: users ---- */
