@@ -218,6 +218,7 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
       <a href="#projects" data-v="projects">專案總覽</a>
       <a href="#visits" data-v="visits">案件拜訪總覽</a>
       <a href="#tasks" data-v="tasks">行事曆與待辦</a>
+      <a href="#meetings" data-v="meetings">會議紀錄</a>
       <a href="#stats" data-v="stats">統計</a>
       <a href="#admin" data-v="admin" id="tab-admin">後台</a>
     </nav>
@@ -256,6 +257,7 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
     <section id="view-visits" class="view"><div class="page" id="visits-page"></div></section>
     <section id="view-deeds" class="view"><div class="page" id="deeds-page"></div></section>
     <section id="view-tasks" class="view"><div class="page" id="tasks-page"></div></section>
+    <section id="view-meetings" class="view"><div class="page" id="meetings-page"></div></section>
     <section id="view-reports" class="view"><div class="page" id="reports-page"></div></section>
     <section id="view-stats" class="view"><div class="page" id="stats-page"></div></section>
     <section id="view-data" class="view"><div class="page" id="data-page"></div></section>
@@ -597,7 +599,7 @@ function fuClass(n){
 /* ---------- state ---------- */
 var ME='';
 var S={role:'admin',proj:'A',vw:'proj',vproj:'all',vasg:'all',vlv:'all',vquick:'all',vq:'',vsel:{},atab:'staff',adel:null,popen:null,oopen:null,dopen:null,focusOwner:null,mode:'int',levels:{A:1,B:1,C:1,D:1,E:1,N:1},block:'all',q:'',sel:null,thr:60,fuWho:'all',ownerQ:''};
-var VIEWS=['projects','map','visits','tasks','stats','admin'];
+var VIEWS=['projects','map','visits','tasks','meetings','stats','admin'];
 var vb={x:0,y:0,w:1000,h:660};
 var els=[];
 
@@ -3792,7 +3794,7 @@ function route(){
   if(r==='map')setTimeout(function(){paintMap()},0);
 }
 function renderAll(){
-  indexDB();renderProjSelect();renderProjects();renderSide();paintMap();renderDetail();renderVisits();renderTasks();renderStats();renderAdmin();
+  indexDB();renderProjSelect();renderProjects();renderSide();paintMap();renderDetail();renderVisits();renderTasks();renderMeetings();renderStats();renderAdmin();
 }
 function goParcel(id){
   $('#dlg-owner').open&&$('#dlg-owner').close();
@@ -4101,7 +4103,7 @@ async function bootstrap(){
   var data;
   try{data=await api('getData')}catch(e){if(e.auth){showLogin('登入已過期,請重新登入');return}throw e}
   S.role={'管理員':'admin','專案負責人':'lead','業務人員':'staff'}[data.me.role]||'staff';
-  ME=data.me.name;
+  ME=data.me.name;MT.data={};MT.err={};MT.loading={};MT.form=null;MT.saving=false;
   await adapt(data);
   $('#whoami').textContent=data.me.name+'('+data.me.role+')';$('#who2').textContent=data.me.name+' · '+data.me.role;
   visitDefaults();
@@ -4229,15 +4231,30 @@ function ownerFamilyHTML(o,pid){
 }
 /* ---- admin: users ---- */
 async function loadUsers(){try{USERS=await api('listUsers');renderAdmin()}catch(e){if(e.auth)showLogin('登入已過期,請重新登入')}}
+function usProjText(u){
+  var r=u['角色'];
+  if(r==='管理員')return '全部專案';
+  if(r!=='專案負責人')return '—';
+  return L_(u['負責專案(專案ID,用逗號分開)']).map(function(id){var p=DB.projects.filter(function(x){return x.id===id})[0];return p?p.name:id}).join('、')||'(未選)';
+}
+function usProjHTML(){
+  var ps=DB.projects;
+  if(!ps.length)return '<div class="small muted">還沒有專案。</div>';
+  return (ps.length>8?'<input type="search" id="us-proj-q" placeholder="搜尋專案" aria-label="搜尋專案" style="margin-bottom:6px">':'')
+    +'<div id="us-proj-list" style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px;display:flex;flex-direction:column;gap:6px">'
+    +ps.map(function(p){return '<label class="us-pitem" style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" data-us-proj="'+esc(p.id)+'" style="width:auto"> <span>'+esc(p.name)+' <span class="small muted">'+esc(p.id)+'</span></span></label>'}).join('')+'</div>';
+}
+function usToggleProj(){var w=$('#us-proj-wrap'),r=$('#us-role');if(w&&r)w.style.display=r.value==='專案負責人'?'':'none'}
 function renderAdmin(){
   var el=$('#admin-page');if(!el)return;
   if(S.role!=='admin'){el.innerHTML='';return}
-  var h='<h1>後台:使用者</h1><p class="muted" style="margin:0">管理誰可以登入。信箱要填對方用來登入 Google 的信箱。專案負責人要填負責的專案ID,業務由專案成員決定能看到哪些專案。</p>';
+  var h='<h1>後台:使用者</h1><p class="muted" style="margin:0">管理誰可以登入。信箱要填對方用來登入 Google 的信箱。專案負責人請勾選負責的專案,業務由專案成員決定能看到哪些專案。</p>';
   h+='<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>信箱</th><th>姓名</th><th>角色</th><th>啟用</th><th>負責專案</th><th></th></tr></thead><tbody>';
-  USERS.forEach(function(u,i){h+='<tr><td>'+esc(u['信箱'])+'</td><td>'+esc(u['姓名'])+'</td><td>'+esc(u['角色'])+'</td><td>'+esc(u['啟用'])+'</td><td>'+esc(u['負責專案(專案ID,用逗號分開)']||'')+'</td><td><button class="btn small" type="button" data-user-edit="'+i+'">編輯</button></td></tr>'});
+  USERS.forEach(function(u,i){h+='<tr><td>'+esc(u['信箱'])+'</td><td>'+esc(u['姓名'])+'</td><td>'+esc(u['角色'])+'</td><td>'+esc(u['啟用'])+'</td><td>'+esc(usProjText(u))+'</td><td><button class="btn small" type="button" data-user-edit="'+i+'">編輯</button></td></tr>'});
   h+='</tbody></table></div>';
   h+='<div class="panel" style="margin-top:14px"><h2>新增或修改使用者</h2><div class="row2"><div class="field" style="margin-top:0"><label for="us-email">信箱</label><input type="email" id="us-email"></div><div class="field" style="margin-top:0"><label for="us-name">姓名</label><input type="text" id="us-name"></div></div>'
-    +'<div class="row2"><div class="field"><label for="us-role">角色</label><select id="us-role"><option>業務人員</option><option>專案負責人</option><option>管理員</option></select></div><div class="field"><label for="us-proj">負責專案ID(專案負責人才需要,逗號分開)</label><input type="text" id="us-proj" placeholder="P001,P002"></div></div>'
+    +'<div class="field"><label for="us-role">角色</label><select id="us-role"><option>業務人員</option><option>專案負責人</option><option>管理員</option></select></div>'
+    +'<div class="field" id="us-proj-wrap" style="display:none"><span class="lab">負責專案(勾選)</span>'+usProjHTML()+'</div>'
     +'<label style="display:flex;align-items:center;gap:6px;font-size:14px"><input type="checkbox" id="us-active" checked style="width:auto"> 啟用</label><div class="actions"><button class="btn primary" type="button" data-user-save>儲存</button></div></div>';
   el.innerHTML=h;
 }
@@ -4245,10 +4262,108 @@ document.addEventListener('click',function(e){
   var t=e.target;if(!t.closest)return;var b;
   if((b=t.closest('[data-user-edit]'))){
     var u=USERS[+b.dataset.userEdit];if(!u)return;
-    $('#us-email').value=u['信箱'];$('#us-name').value=u['姓名'];$('#us-role').value=u['角色'];$('#us-proj').value=u['負責專案(專案ID,用逗號分開)']||'';$('#us-active').checked=u['啟用']!=='否';return;
+    $('#us-email').value=u['信箱'];$('#us-name').value=u['姓名'];$('#us-role').value=u['角色'];usToggleProj();var sel=L_(u['負責專案(專案ID,用逗號分開)']);$$('[data-us-proj]').forEach(function(c){c.checked=sel.indexOf(c.dataset.usProj)>=0});$('#us-active').checked=u['啟用']!=='否';return;
   }
   if(t.closest('[data-user-save]')){
-    api('saveUser',{email:$('#us-email').value,name:$('#us-name').value,role:$('#us-role').value,projects:L_($('#us-proj').value),active:$('#us-active').checked}).then(function(){toast('已儲存使用者。');loadUsers()}).catch(function(e){toast(e.userMessage||e.message)});
+    api('saveUser',{email:$('#us-email').value,name:$('#us-name').value,role:$('#us-role').value,projects:$('#us-role').value==='專案負責人'?$$('[data-us-proj]').filter(function(c){return c.checked}).map(function(c){return c.dataset.usProj}):[],active:$('#us-active').checked}).then(function(){toast('已儲存使用者。');loadUsers()}).catch(function(e){toast(e.userMessage||e.message)});
+  }
+});
+document.addEventListener('change',function(e){if(e.target&&e.target.id==='us-role')usToggleProj()});
+document.addEventListener('input',function(e){
+  var t=e.target;if(!t||t.id!=='us-proj-q')return;var q=t.value.trim().toLowerCase();
+  $$('.us-pitem').forEach(function(l){l.style.display=(!q||l.textContent.toLowerCase().indexOf(q)>=0)?'':'none'});
+});
+
+/* ---- meetings (weekly minutes) ---- */
+var MT={proj:'',data:{},loading:{},err:{},form:null,saving:false};
+function mtBlank(){return {id:'',date:iso(new Date()),title:'',att:[],other:'',disc:'',dec:'',tasks:[]}}
+function loadMeetings(pid){
+  MT.loading[pid]=true;
+  api('getMeetings',{projectId:pid}).then(function(d){MT.data[pid]=d;delete MT.err[pid]}).catch(function(e){
+    if(e.auth){showLogin('登入已過期,請重新登入');return}
+    MT.err[pid]=e.userMessage||e.message;
+  }).then(function(){MT.loading[pid]=false;renderMeetings()});
+}
+function mtFormHTML(d){
+  var f=MT.form,people=d.people||[];
+  var h='<div class="panel" style="margin-top:12px"><h2>'+(f.id?'修改會議紀錄':'新增會議紀錄')+'</h2>';
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap"><div class="field" style="margin-top:0;flex:1 1 150px"><label for="mt-date">開會日期</label><input type="date" id="mt-date" value="'+esc(f.date)+'"></div>'
+    +'<div class="field" style="margin-top:0;flex:2 1 220px"><label for="mt-title">標題(選填)</label><input type="text" id="mt-title" maxlength="100" value="'+esc(f.title)+'" placeholder="例:第 46 週例會"></div></div>';
+  h+='<div class="field"><span class="lab">出席者</span><div style="display:flex;flex-wrap:wrap;gap:6px 14px">'+people.map(function(n){return '<label style="display:flex;align-items:center;gap:6px;font-size:14px"><input type="checkbox" data-mt-att="'+esc(n)+'"'+(f.att.indexOf(n)>=0?' checked':'')+' style="width:auto"> '+esc(n)+'</label>'}).join('')+'</div>'
+    +'<input type="text" id="mt-other" value="'+esc(f.other)+'" placeholder="其他出席者,用頓號分開" aria-label="其他出席者" style="margin-top:8px"></div>';
+  h+='<div class="field"><label for="mt-disc">討論事項</label><textarea id="mt-disc" rows="6">'+esc(f.disc)+'</textarea><div class="small muted" style="margin-top:4px">請勿填身分證字號、電話、地址、出價。</div></div>';
+  h+='<div class="field"><label for="mt-dec">決議</label><textarea id="mt-dec" rows="4">'+esc(f.dec)+'</textarea></div>';
+  h+='<h3>待辦(選填)</h3>';
+  f.tasks.forEach(function(t,i){
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center"><input type="text" data-mt-t="'+i+':title" value="'+esc(t.title)+'" placeholder="待辦內容" aria-label="待辦內容" maxlength="200" style="flex:2 1 220px">'
+      +'<select data-mt-t="'+i+':assignee" aria-label="負責人" style="flex:1 1 110px"><option value="">我自己</option>'+people.map(function(n){return '<option value="'+esc(n)+'"'+(t.assignee===n?' selected':'')+'>'+esc(n)+'</option>'}).join('')+'</select>'
+      +'<input type="date" data-mt-t="'+i+':due" value="'+esc(t.due)+'" aria-label="期限" style="flex:1 1 140px"><button class="btn small" type="button" data-mt-deltask="'+i+'">移除</button></div>';
+  });
+  h+='<button class="btn small" type="button" data-mt-addtask>新增一列待辦</button>';
+  h+='<div class="actions"><button class="btn" type="button" data-mt-cancel>取消</button><button class="btn primary" type="button" data-mt-save>儲存</button></div></div>';
+  return h;
+}
+function renderMeetings(){
+  var el=$('#meetings-page');if(!el)return;
+  var vis=visibleProjects(),h='<h1>會議紀錄</h1>';
+  if(!vis.length){el.innerHTML=h+'<div class="notice">目前沒有你可以看的專案。</div>';return}
+  if(!MT.proj||!vis.some(function(p){return p.id===MT.proj}))MT.proj=vis.some(function(p){return p.id===S.proj})?S.proj:vis[0].id;
+  var pid=MT.proj,d=MT.data[pid];
+  if(d===undefined&&!MT.loading[pid]&&!MT.err[pid])loadMeetings(pid);
+  h+='<div class="bar-tools">'+(vis.length>1?'<label class="small muted" for="mt-proj">專案</label><select id="mt-proj">'+vis.map(function(p){return '<option value="'+esc(p.id)+'"'+(p.id===pid?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select>':'<b>'+esc(vis[0].name)+'</b>')+'</div>';
+  if(MT.err[pid]){el.innerHTML=h+'<div class="notice">讀不到會議紀錄:'+esc(MT.err[pid])+' <button class="btn small" type="button" data-mt-retry>重試</button></div>';return}
+  if(!d){el.innerHTML=h+'<p class="muted">載入中…</p>';return}
+  var canEdit=!!d.canEdit;
+  if(canEdit&&!MT.form)h+='<div class="actions" style="justify-content:flex-start;margin-top:12px"><button class="btn primary" type="button" data-mt-new>新增會議紀錄</button></div>';
+  if(MT.form)h+=mtFormHTML(d);
+  if(!d.meetings.length)h+='<div class="empty">還沒有會議紀錄。</div>';
+  d.meetings.forEach(function(m){
+    h+='<div class="panel" style="margin-top:12px"><div class="orow"><b style="font-size:16px">'+esc(m['日期'])+(m['標題']?'　'+esc(m['標題']):'')+'</b>'+(canEdit&&!MT.form?'<button class="btn small" type="button" data-mt-edit="'+esc(m['會議ID'])+'">修改</button>':'')+'</div>';
+    if(m['出席者'])h+='<div class="small muted" style="margin-top:4px">出席:'+esc(m['出席者'])+'</div>';
+    if(m['討論事項'])h+='<h3>討論事項</h3><div style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(m['討論事項'])+'</div>';
+    if(m['決議'])h+='<h3>決議</h3><div style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(m['決議'])+'</div>';
+    h+='<div class="small muted" style="margin-top:10px">記錄:'+esc(m['建立者']||'')+(m['建立日期']?'('+esc(m['建立日期'])+')':'')+(m['修改者']?' · 最後修改:'+esc(m['修改者'])+'('+esc(m['修改日期']||'')+')':'')+'</div></div>';
+  });
+  el.innerHTML=h;
+}
+function mtSync(t){
+  var f=MT.form;if(!f)return;
+  if(t.id==='mt-date')f.date=t.value;else if(t.id==='mt-title')f.title=t.value;else if(t.id==='mt-other')f.other=t.value;else if(t.id==='mt-disc')f.disc=t.value;else if(t.id==='mt-dec')f.dec=t.value;
+  else if(t.dataset&&t.dataset.mtT){var p=t.dataset.mtT.split(':');if(f.tasks[+p[0]])f.tasks[+p[0]][p[1]]=t.value}
+}
+document.addEventListener('input',function(e){var t=e.target;if(t&&t.closest&&t.closest('#meetings-page'))mtSync(t)});
+document.addEventListener('change',function(e){
+  var t=e.target;if(!t||!t.closest||!t.closest('#meetings-page'))return;
+  if(t.id==='mt-proj'){MT.proj=t.value;MT.form=null;renderMeetings();return}
+  if(MT.form&&t.dataset&&t.dataset.mtAtt!==undefined){var a=MT.form.att,i=a.indexOf(t.dataset.mtAtt);if(t.checked&&i<0)a.push(t.dataset.mtAtt);if(!t.checked&&i>=0)a.splice(i,1);return}
+  mtSync(t);
+});
+document.addEventListener('click',function(e){
+  var t=e.target;if(!t||!t.closest||!t.closest('#meetings-page'))return;var b,d=MT.data[MT.proj];
+  function focusForm(){var x=$('#mt-date');if(x&&x.scrollIntoView)x.scrollIntoView({block:'center'})}
+  if(t.closest('[data-mt-new]')){MT.form=mtBlank();renderMeetings();focusForm();return}
+  if(t.closest('[data-mt-retry]')){delete MT.err[MT.proj];renderMeetings();return}
+  if((b=t.closest('[data-mt-edit]'))){
+    var m=((d&&d.meetings)||[]).filter(function(x){return x['會議ID']===b.dataset.mtEdit})[0];if(!m)return;
+    var names=String(m['出席者']||'').split('、').filter(Boolean),people=d.people||[];
+    MT.form={id:m['會議ID'],date:m['日期'],title:m['標題']||'',att:names.filter(function(n){return people.indexOf(n)>=0}),other:names.filter(function(n){return people.indexOf(n)<0}).join('、'),disc:m['討論事項']||'',dec:m['決議']||'',tasks:[]};
+    renderMeetings();focusForm();return;
+  }
+  if(t.closest('[data-mt-cancel]')){MT.form=null;renderMeetings();return}
+  if(t.closest('[data-mt-addtask]')){if(MT.form){MT.form.tasks.push({title:'',assignee:'',due:''});renderMeetings()}return}
+  if((b=t.closest('[data-mt-deltask]'))){if(MT.form){MT.form.tasks.splice(+b.dataset.mtDeltask,1);renderMeetings()}return}
+  if((b=t.closest('[data-mt-save]'))){
+    var f=MT.form;if(!f||MT.saving)return;
+    MT.saving=true;b.disabled=true;
+    var att=f.att.concat(String(f.other||'').split(/[,、;]+/).map(function(x){return x.trim()}).filter(Boolean)),pid=MT.proj;
+    api('saveMeeting',{projectId:pid,id:f.id||undefined,date:f.date,title:f.title,attendees:att,discussion:f.disc,decisions:f.dec,tasks:f.tasks}).then(function(r){
+      toast('已儲存會議紀錄'+(r.tasksAdded?',新增 '+r.tasksAdded+' 項待辦':'')+'。');
+      MT.form=null;MT.saving=false;delete MT.data[pid];loadMeetings(pid);if(r.tasksAdded)refreshData();
+    }).catch(function(e){
+      MT.saving=false;b.disabled=false;
+      if(e.auth){showLogin('登入已過期,請重新登入');return}
+      toast(e.userMessage||e.message);
+    });
   }
 });
 
