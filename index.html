@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>土地開發紀錄系統 示範</title>
+<title>土地開發紀錄系統</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
 <style>
 :root{
@@ -298,6 +298,7 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
   <div id="login-step1" style="display:none"><label for="lg-email">信箱</label><input type="email" id="lg-email" autocomplete="email" placeholder="name@company.com"><button class="btn primary" type="button" id="lg-send" style="margin-top:12px;width:100%">寄送驗證碼</button></div>
   <div id="login-step2" style="display:none"><label for="lg-code">驗證碼(6 位數)</label><input type="text" id="lg-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"><button class="btn primary" type="button" id="lg-verify" style="margin-top:12px;width:100%">登入</button><button class="btn" type="button" id="lg-back" style="margin-top:8px;width:100%">換一個信箱</button></div>
   <p id="lg-msg" class="small" style="margin:12px 0 0;min-height:20px"></p>
+  <p class="small muted" style="margin:6px 0 0;text-align:center"><a href="privacy.html">隱私權政策</a> · <a href="terms.html">服務條款</a></p>
 </div></div>
 <style>#login{position:fixed;inset:0;z-index:200;background:var(--bg,#EEF2EF);align-items:center;justify-content:center;padding:20px}.lcard{background:var(--surface,#fff);border:1px solid var(--line,#D5DDD8);border-radius:14px;padding:28px;width:100%;max-width:380px}.lcard h1{font-size:22px;margin:0 0 6px}.lcard label{display:block;font-size:13px;margin:0 0 4px}@media (max-width:760px){.top{gap:6px 10px;padding:8px 10px}.brand small{max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.top>.tools:last-child{margin-left:auto}.tabs{order:3;flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:2px;padding-bottom:4px}.tabs a{flex:none;white-space:nowrap;padding:8px 12px}#who2{display:none}.page{padding:12px}}.mapwrap{position:relative}#focus-float{position:absolute;left:10px;top:10px;z-index:6;box-shadow:0 2px 8px rgba(0,0,0,.25)}</style>
 <script>
@@ -3525,7 +3526,7 @@ function saveOwner(id){
 var UP={pid:'',recs:[],files:[],msgs:[],items:[],seq:0,unmatched:[],same:0,matchedIds:{}};
 var DEED_EXPIRE_DAYS=180;
 function deedAge(p){return p.deedDate?-diffDays(parseISO(p.deedDate)):null}
-function deedBadge(p){var a=deedAge(p);if(a===null)return '還沒有紀錄';return esc(p.deedDate)+'('+a+' 天前)'+(a>DEED_EXPIRE_DAYS?' <span class="over">已過期</span>':'')}
+function deedBadge(p){if(p.registryOnly)return '以清冊為準'+(p.deedDate?'(最近一份謄本 '+esc(String(p.deedDate).slice(0,10))+')':'');var a=deedAge(p);if(a===null)return '還沒有紀錄';return esc(p.deedDate)+'('+a+' 天前)'+(a>DEED_EXPIRE_DAYS?' <span class="over">已過期</span>':'')}
 function goneLabel(kind,other){return kind==='deal'?'已成交':kind==='other'?(other||'其他'):'已轉手'}
 function dealCount(){var n=0;PP().forEach(function(p){(p.goneOwners||[]).forEach(function(g){if(g.kind==='deal')n++})});return n}
 function ownerKeysOf(o){return [o.name,o.tjName].filter(Boolean)}
@@ -3744,9 +3745,9 @@ function renderDeeds(){
   var el=$('#deeds-page');if(!el)return;
   if(UP.pid!==S.proj){UP={pid:S.proj,recs:[],files:[],msgs:[],items:[],seq:0,unmatched:[],same:0,matchedIds:{}}}
   var pr=PRJ[S.proj],ps=PP(),exp=[],ok=0,chg=0;
-  ps.forEach(function(p){var a=deedAge(p);if(a===null||a>DEED_EXPIRE_DAYS)exp.push(p);else ok++;if(p.changed)chg++});
+  var regN=0;ps.forEach(function(p){if(p.changed)chg++;if(p.registryOnly){regN++;return}var a=deedAge(p);if(a===null||a>DEED_EXPIRE_DAYS)exp.push(p);else ok++});
   var h='<div class="orow"><div><h1>謄本更新</h1><p class="muted" style="margin:0">跟進的土地有新的謄本時,上傳後先和現有資料比對,確認差異再套用。</p></div></div>'+projSwitchHTML();
-  h+='<div class="kpis">'+kpi('謄本在 '+DEED_EXPIRE_DAYS+' 天內',ok+' 筆')+kpi('謄本已過期',exp.length+' 筆')+kpi('謄本有異動待處理',chg+' 筆')+kpi('已成交地主',dealCount()+' 位')+'</div>';
+  h+='<div class="kpis">'+kpi('謄本在 '+DEED_EXPIRE_DAYS+' 天內',ok+' 筆')+kpi('謄本已過期',exp.length+' 筆')+kpi('謄本有異動待處理',chg+' 筆')+kpi('已成交地主',dealCount()+' 位')+kpi('以清冊為準',regN+' 筆')+'</div>';
   h+='<div class="panel" style="margin-top:14px"><h2>1. 上傳新的土地謄本</h2><p class="small muted" style="margin:0">'+esc(pr.name)+'。可以一次選好幾份 PDF(地政電子謄本或電傳資料)。所有人都可以上傳並看比對結果,只有專案負責人以上可以按「套用」。</p>';
   h+='<div class="dropzone"><input type="file" id="up-file" accept="application/pdf" multiple aria-label="選擇謄本 PDF">';
   h+='<details style="margin-top:8px"><summary class="small">PDF 讀不出來?改貼上謄本文字</summary><textarea class="mono" id="up-text" rows="5" placeholder="從 PDF 複製整份土地謄本的文字" style="margin-top:6px"></textarea><div class="actions" style="margin-top:8px"><button class="btn primary" type="button" data-up-text>讀取貼上的文字</button></div></details>';
@@ -3768,16 +3769,7 @@ function renderDeeds(){
     h+='</tbody></table></div>';
   }
   h+='</div>';
-  exp.sort(function(a,b){return (deedAge(b)||9999)-(deedAge(a)||9999)});
-  h+='<div class="panel" style="margin-top:14px"><div class="orow"><h2>需要重新申請的謄本(超過 '+DEED_EXPIRE_DAYS+' 天,'+exp.length+' 筆)</h2>'+(S.role==='staff'?'':'<button class="btn small" type="button" data-up-export'+(dlState==='none'?' disabled':'')+'>匯出清單(CSV)</button>')+'</div>';
-  if(!exp.length)h+='<p class="small muted" style="margin:0">這個專案的謄本都在期限內。</p>';
-  else{
-    h+='<div class="tablewrap" style="margin-top:8px;max-height:320px"><table><thead><tr><th>地號</th><th>謄本取得日期</th><th>距今</th></tr></thead><tbody>';
-    exp.slice(0,60).forEach(function(p){var a=deedAge(p);h+='<tr><td>'+esc(pname(p))+'</td><td>'+esc(p.deedDate||'沒有紀錄')+'</td><td>'+(a===null?'—':a+' 天')+'</td></tr>'});
-    h+='</tbody></table></div>';
-    if(exp.length>60)h+='<p class="small muted" style="margin:6px 0 0">只顯示前 60 筆,匯出的 CSV 有全部。</p>';
-  }
-  h+='</div>';
+  h+=expPanelHTML_(exp);
   el.innerHTML=h;
   var f=$('#up-file');
   if(f)f.onchange=function(){if(f.files&&f.files.length)handleUpdateFiles(f.files);f.value=''};
@@ -3927,8 +3919,7 @@ document.addEventListener('click',function(e){
   if(t.closest('[data-up-clear]')){UP={pid:S.proj,recs:[],files:[],msgs:[],items:[],seq:0,unmatched:[],same:0,matchedIds:{}};renderDeeds();return}
   if(t.closest('[data-up-export]')){
     if(S.role==='staff'){toast('業務人員不能匯出資料。');return}
-    var er=[['專案','段別','地號','謄本取得日期','距今天數']];
-    PP().filter(function(p){var a=deedAge(p);return a===null||a>DEED_EXPIRE_DAYS}).forEach(function(p){var a=deedAge(p);er.push([PRJ[p.proj].name,secOf(p),p.no,p.deedDate||'',a===null?'':a])});
+    var er=expRows_();
     saveFile('土地開發_待更新謄本_'+iso(TODAY)+'.csv',toCSV(er),'待更新謄本清單');return;
   }
   if((b=t.closest('[data-changed-clear]'))){var cp=DB.parcels[+b.dataset.changedClear];if(cp){cp.changed=false;cp.changeNotes=[];DB.log.unshift({ts:new Date(),user:ROLE_LABEL[S.role],action:'標示謄本異動已處理',detail:pname(cp)});renderAll();toast('已標示處理完成。')}return}
@@ -4194,6 +4185,8 @@ function switchProject(id){
   var pr=PRJ[id];
   if(pr&&pr._geoLazy){toast('載入地圖圖資…');ensureGeo(id).catch(function(e){if(e.auth)showLogin('登入已過期,請重新登入')})}
 }
+// 地號、段別只會有數字、中文、連字號;出現 < > " ' ` & 一律拿掉(防止有人在試算表裡塞入網頁程式碼)
+function cleanTxt_(v){return String(v==null?'':v).replace(/[<>"'`&]/g,'')}
 async function adapt(data){
   var db=emptyDB();
   db.staff=(data.staffNames||[]).map(function(n){return {id:n,active:true}});
@@ -4218,7 +4211,7 @@ async function adapt(data){
   data.buildings.forEach(function(r){(bdBy[r['地號ID']]=bdBy[r['地號ID']]||[]).push({no:r['建號'],addr:r['門牌']||'',area:num_(r['面積㎡']),use:r['主要用途']||'',done:r['完成日']||''})});
   var skipped=0;
   data.parcels.forEach(function(r){
-    var np={id:db.parcels.length,proj:r['專案ID'],no:r['地號'],sec:r['段別']||'',region:(r['縣市']||'')+(r['鄉鎮市區']||''),block:0,pts:null,cx:0,cy:0,area:num_(r['面積㎡']),use:r['使用分區']||'',cat:r['使用地類別']||'',value:num_(r['公告現值(元/㎡)']),status:'',lien:!!r['他項權利'],lienTxt:r['他項權利']||'',buildings:bdBy[r['地號ID']]||[],deedDate:r['謄本取得日期']||'',deedHistory:[],goneOwners:[],changed:r['謄本有異動']==='是',changeNotes:String(r['異動說明']||'').split('\n').filter(Boolean),owners:[],factory:{on:r['特定工廠']==='是',name:r['工廠名稱']||''},constraints:[],checklist:{},surveys:[],prevValue:num_(r['前次移轉現值(元/㎡)']),idx:num_(r['物價指數倍率'])||1,_srv:r['地號ID']};
+    var np={id:db.parcels.length,proj:r['專案ID'],no:cleanTxt_(r['地號']),sec:cleanTxt_(r['段別']||''),region:(r['縣市']||'')+(r['鄉鎮市區']||''),block:0,pts:null,cx:0,cy:0,area:num_(r['面積㎡']),use:r['使用分區']||'',cat:r['使用地類別']||'',value:num_(r['公告現值(元/㎡)']),status:'',lien:!!r['他項權利'],lienTxt:r['他項權利']||'',buildings:bdBy[r['地號ID']]||[],deedDate:r['謄本取得日期']||'',deedHistory:[],goneOwners:[],changed:r['謄本有異動']==='是',registryOnly:r['以清冊為準']==='是',changeNotes:String(r['異動說明']||'').split('\n').filter(Boolean),owners:[],factory:{on:r['特定工廠']==='是',name:r['工廠名稱']||''},constraints:[],checklist:{},surveys:[],prevValue:num_(r['前次移轉現值(元/㎡)']),idx:num_(r['物價指數倍率'])||1,_srv:r['地號ID']};
     (shBy[r['地號ID']]||[]).forEach(function(sr){
       var n=SRV.own[sr['地主ID']];if(!n)return;
       var sh=normShare(sr['持分分數']),st=sr['狀態']||'現有',it={owner:n,share:sh?sh.txt:(sr['持分分數']||''),frac:sh?sh.f:(num_(sr['持分比例'])||0),reason:sr['登記原因']||'',rdate:sr['登記日期']||''};
@@ -4781,8 +4774,120 @@ async function ocrDeedAddresses(f,items){
   }
   IM.deed.info.push('「'+f.name+'」住址是圖片,已用文字辨識讀出 '+(hi+lo)+' 條('+hi+' 條信心高、'+lo+' 條信心低'+(bad?'、'+bad+' 條讀不出來':'')+')。辨識結果可能有錯字,每位地主的備註都會註明「OCR 辨識,請核對」。');
 }
-window.__landTest={readPdfAddrStrips:readPdfAddrStrips,pickAddr_:pickAddr_,ocrDeedAddresses:ocrDeedAddresses,deedToImport:deedToImport,parseDeedPages_:parseDeedPages_};   // 測試用
+window.__landTest={readPdfAddrStrips:readPdfAddrStrips,pickAddr_:pickAddr_,ocrDeedAddresses:ocrDeedAddresses,deedToImport:deedToImport,parseDeedPages_:parseDeedPages_,expRows_:expRows_};   // 測試用
 Object.defineProperty(window.__landTest,'IM',{get:function(){return IM}});
+/* ---- 修改專案(後台 → 專案 → 編輯) ---- */
+var PROJ_TYPES=['產業用地開發','工業區擴編','都市計畫變更','其他'];
+function openProjEdit(pid){
+  var pr=PRJ[pid];if(!pr)return;
+  var dlg=$('#dlg-proj');
+  if(!dlg){dlg=document.createElement('dialog');dlg.id='dlg-proj';dlg.setAttribute('aria-label','修改專案');dlg.innerHTML='<div class="dlg" id="proj-body"></div>';document.body.appendChild(dlg)}
+  var types=PROJ_TYPES.indexOf(pr.type)>=0||!pr.type?PROJ_TYPES:PROJ_TYPES.concat([pr.type]);
+  $('#proj-body').innerHTML='<div class="dlg-h"><h2>修改專案</h2><button class="btn small" type="button" data-close>關閉</button></div>'
+    +'<div class="field"><label for="pe-name">專案名稱</label><input type="text" id="pe-name" maxlength="60" value="'+esc(pr.name)+'"><p class="small muted" style="margin:4px 0 0">60 字以內,不能和其他專案同名,也不能有 \\ / : * ? " &lt; &gt; | 這些符號。</p></div>'
+    +'<div class="field"><label for="pe-type">開發類型</label><select id="pe-type">'+(pr.type?'':'<option value="">請選擇</option>')+types.map(function(t){return '<option'+(t===pr.type?' selected':'')+'>'+esc(t)+'</option>'}).join('')+'</select></div>'
+    +'<div class="row2"><div class="field"><label for="pe-head">同意門檻:人數 %</label><input type="number" id="pe-head" min="1" max="100" step="any" value="'+pr.rule.headPct+'"></div>'
+    +'<div class="field"><label for="pe-share">同意門檻:持分 %</label><input type="number" id="pe-share" min="1" max="100" step="any" value="'+pr.rule.sharePct+'"></div></div>'
+    +'<p class="small muted" style="margin:0 0 10px">門檻填 1 到 100 的數字。</p>'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="button" data-pe-save="'+esc(pid)+'">儲存</button></div>';
+  dlg.showModal();
+}
+async function saveProjEdit(pid,btn){
+  var pr=PRJ[pid];if(!pr)return;
+  var name=($('#pe-name').value||'').trim(),type=$('#pe-type').value,hp=Number($('#pe-head').value),sp=Number($('#pe-share').value);
+  if(!name){toast('請填專案名稱。');return}
+  if(!type){toast('請選擇開發類型。');return}
+  if(!(hp>=1&&hp<=100)||!(sp>=1&&sp<=100)){toast('同意門檻要填 1 到 100 的數字。');return}
+  if(name===pr.name&&type===pr.type&&hp===pr.rule.headPct&&sp===pr.rule.sharePct){toast('沒有任何變更。');return}
+  btn.disabled=true;btn.textContent='儲存中…';
+  try{
+    var r=await api('updateProject',{projectId:pid,name:name,type:type,headPct:hp,sharePct:sp});
+    $('#dlg-proj').close();await refreshData();renderAdmin();
+    toast('已更新專案「'+r.name+'」'+(r.folder==='renamed'?'(Drive 資料夾已一併改名)':'')+(r.folder==='none'?'(找不到專案的 Drive 資料夾,沒有改名)':'')+'。');
+  }catch(e){
+    btn.disabled=false;btn.textContent='儲存';
+    if(e.auth){$('#dlg-proj').close();showLogin('登入已過期,請重新登入')}else toast('儲存失敗:'+(e.userMessage||e.message));
+  }
+}
+async function resetDeedDates(pid,btn){
+  var pr=PRJ[pid];if(!pr)return;
+  if(!window.confirm('要清空「'+pr.name+'」所有地號的「謄本取得日期」嗎?\n只清這一欄,其他資料都不會動。'))return;
+  btn.disabled=true;
+  try{
+    var r=await api('resetDeedDates',{projectId:pid});
+    await refreshData();renderAdmin();toast('已清空 '+r.cleared+' 筆地號的謄本取得日期。接著到「謄本更新」重新上傳謄本。');
+  }catch(e){btn.disabled=false;if(e.auth)showLogin('登入已過期,請重新登入');else toast('重設失敗:'+(e.userMessage||e.message))}
+}
+document.addEventListener('click',function(e){
+  var b=e.target&&e.target.closest&&e.target.closest('[data-ad-resetdates]');if(b){resetDeedDates(b.dataset.adResetdates,b);return}
+  b=e.target&&e.target.closest&&e.target.closest('[data-ad-editproj]');if(b){openProjEdit(b.dataset.adEditproj);return}
+  b=e.target&&e.target.closest&&e.target.closest('[data-pe-save]');if(b)saveProjEdit(b.dataset.peSave,b);
+});
+/* ---- 需要重新申請的謄本:原因、排序、以清冊為準 ---- */
+var EXPUI={sort:'age',sel:{}};
+function parcelKey_(p){var m=String(p.no).match(/^(\d+)(?:-(\d+))?/);return [secOf(p),m?+m[1]:0,m&&m[2]?+m[2]:0]}
+function natCmp_(a,b){var x=parcelKey_(a),y=parcelKey_(b);return x[0]<y[0]?-1:x[0]>y[0]?1:(x[1]-y[1])||(x[2]-y[2])}
+function expReason_(p){var a=deedAge(p);return a===null?{k:'nodate',t:'沒有謄本取得日期'}:{k:'old',t:'謄本太舊(列印於 '+String(p.deedDate).slice(0,10)+',已 '+a+' 天)'}}
+function sortExp_(list){
+  list=list.slice();var ag=function(p){var a=deedAge(p);return a===null?99999:a};
+  if(EXPUI.sort==='no')list.sort(natCmp_);
+  else if(EXPUI.sort==='reason')list.sort(function(a,b){var ra=expReason_(a).k,rb=expReason_(b).k;return ra===rb?ag(b)-ag(a):(ra==='nodate'?-1:1)});
+  else list.sort(function(a,b){return ag(b)-ag(a)});
+  return list;
+}
+function expRows_(){
+  var rows=[['專案','段別','地號','原因','謄本取得日期','距今天數']];
+  sortExp_(PP().filter(function(p){if(p.registryOnly)return false;var a=deedAge(p);return a===null||a>DEED_EXPIRE_DAYS})).forEach(function(p){var a=deedAge(p);rows.push([PRJ[p.proj].name,secOf(p),p.no,expReason_(p).t,p.deedDate||'',a===null?'':a])});
+  return rows;
+}
+function expPanelHTML_(exp){
+  var mgr=S.role!=='staff',nodate=exp.filter(function(p){return deedAge(p)===null}).length,old=exp.length-nodate,reg=PP().filter(function(p){return p.registryOnly}),list=sortExp_(exp),LIM=300;
+  var h='<div class="panel" style="margin-top:14px"><div class="orow"><h2>需要重新申請的謄本(超過 '+DEED_EXPIRE_DAYS+' 天或沒有日期,'+exp.length+' 筆)</h2>'+(mgr?'<button class="btn small" type="button" data-up-export>匯出清單(CSV)</button>':'')+'</div>';
+  if(!exp.length)h+='<p class="small muted" style="margin:0">這個專案的謄本都在期限內'+(reg.length?',另有 '+reg.length+' 筆標為以清冊為準。':'。')+'</p>';
+  else{
+    h+='<p class="small" style="margin:0 0 8px">沒有謄本取得日期 <b>'+nodate+'</b> 筆,謄本太舊 <b>'+old+'</b> 筆。</p>';
+    h+='<div class="actions" style="margin:0 0 8px;flex-wrap:wrap"><span class="small muted" style="align-self:center">排序</span>'+[['age','天數'],['no','地號'],['reason','原因']].map(function(x){return '<button class="btn small'+(EXPUI.sort===x[0]?' primary':'')+'" type="button" data-expsort="'+x[0]+'">'+x[1]+'</button>'}).join('')
+      +(mgr?'<span style="flex:1"></span><button class="btn small" type="button" data-reg-mark>把勾選的標為以清冊為準</button>'+(nodate?'<button class="btn small" type="button" data-reg-mark-nodate>把「沒有日期」的 '+nodate+' 筆全部標為以清冊為準</button>':''):'')+'</div>';
+    h+='<div class="tablewrap" style="margin-top:0;max-height:360px"><table><thead><tr>'+(mgr?'<th style="width:32px"><input type="checkbox" data-expsel-all aria-label="全選" style="width:auto"></th>':'')+'<th>地號</th><th>原因</th><th>謄本取得日期</th><th>距今</th></tr></thead><tbody>';
+    list.slice(0,LIM).forEach(function(p){var a=deedAge(p),r=expReason_(p);h+='<tr>'+(mgr?'<td><input type="checkbox" data-expsel="'+p.id+'" aria-label="勾選 '+esc(pname(p))+'" style="width:auto"'+(EXPUI.sel[p.id]?' checked':'')+'></td>':'')+'<td>'+esc(pname(p))+'</td><td class="wrapcell">'+esc(r.t)+'</td><td>'+esc(p.deedDate?String(p.deedDate).slice(0,10):'—')+'</td><td>'+(a===null?'—':a+' 天')+'</td></tr>'});
+    h+='</tbody></table></div>';
+    if(list.length>LIM)h+='<p class="small muted" style="margin:6px 0 0">只顯示前 '+LIM+' 筆,匯出的 CSV 有全部。</p>';
+  }
+  if(reg.length){
+    h+='<details style="margin-top:12px"><summary class="small">以清冊為準的地號(<b>'+reg.length+'</b> 筆,不列入過期)</summary><div class="tablewrap" style="margin-top:8px;max-height:260px"><table><thead><tr><th>地號</th><th>最近一份謄本</th>'+(mgr?'<th></th>':'')+'</tr></thead><tbody>'+reg.sort(natCmp_).map(function(p){return '<tr><td>'+esc(pname(p))+'</td><td>'+esc(p.deedDate?String(p.deedDate).slice(0,10):'沒有')+'</td>'+(mgr?'<td><button class="btn small" type="button" data-reg-unmark="'+p.id+'">取消</button></td>':'')+'</tr>'}).join('')+'</tbody></table></div></details>';
+  }
+  return h+'</div>';
+}
+async function setRegistryOnly(idxs,value,doneText){
+  var ids=idxs.map(function(i){return DB.parcels[i]&&DB.parcels[i]._srv}).filter(Boolean);
+  if(!ids.length)return;
+  try{
+    var r=await api('setRegistryOnly',{projectId:S.proj,parcelIds:ids,value:value});
+    EXPUI.sel={};await refreshData();renderDeeds();toast(doneText.replace('{n}',r.changed));
+  }catch(e){if(e.auth)showLogin('登入已過期,請重新登入');else toast('失敗:'+(e.userMessage||e.message))}
+}
+document.addEventListener('click',function(e){
+  var t=e.target,b=t&&t.closest;if(!b)return;
+  if((b=t.closest('[data-expsort]'))){EXPUI.sort=b.dataset.expsort;renderDeeds();return}
+  if(t.closest('[data-reg-mark-nodate]')){
+    var ids=PP().filter(function(p){return !p.registryOnly&&deedAge(p)===null}).map(function(p){return p.id});
+    if(!ids.length)return;
+    if(!window.confirm('要把這 '+ids.length+' 筆「沒有謄本取得日期」的地號標為「以清冊為準」嗎?\n標了之後,不再算「謄本已過期」。'))return;
+    setRegistryOnly(ids,true,'已把 {n} 筆標為以清冊為準。');return;
+  }
+  if(t.closest('[data-reg-mark]')){
+    var sel=Object.keys(EXPUI.sel).filter(function(k){return EXPUI.sel[k]}).map(Number);
+    if(!sel.length){toast('請先勾選要標示的地號。');return}
+    if(!window.confirm('要把勾選的 '+sel.length+' 筆地號標為「以清冊為準」嗎?\n標了之後,不再算「謄本已過期」。'))return;
+    setRegistryOnly(sel,true,'已把 {n} 筆標為以清冊為準。');return;
+  }
+  if((b=t.closest('[data-reg-unmark]'))){setRegistryOnly([+b.dataset.regUnmark],false,'已取消 {n} 筆的「以清冊為準」。');return}
+});
+document.addEventListener('change',function(e){
+  var t=e.target;if(!t||!t.matches)return;
+  if(t.matches('[data-expsel]'))EXPUI.sel[t.dataset.expsel]=t.checked;
+  else if(t.matches('[data-expsel-all]'))document.querySelectorAll('[data-expsel]').forEach(function(c){c.checked=t.checked;EXPUI.sel[c.dataset.expsel]=t.checked});
+});
 /* ---- admin: users ---- */
 var UL={done:false,busy:false};
 async function loadUsers(){UL.busy=true;try{USERS=await api('listUsers');UL.done=true;UL.busy=false;renderAdmin()}catch(e){UL.busy=false;if(e.auth)showLogin('登入已過期,請重新登入')}}
@@ -4830,7 +4935,7 @@ function renderAdmin(){
   var tabs='<div class="seg" role="group" aria-label="後台功能" style="grid-template-columns:repeat(3,1fr);max-width:450px;margin-top:10px">'+[['users','使用者'],['log','異動紀錄'],['proj','專案']].map(function(x){return '<button type="button" data-ad-tab="'+x[0]+'" aria-pressed="'+(AD.tab===x[0])+'">'+x[1]+'</button>'}).join('')+'</div>';
   if(AD.tab==='proj'){
     var ph='<h1>後台</h1>'+tabs+'<p class="muted" style="margin:12px 0 0">只有還沒開始使用的專案(沒有訪談、待辦、附件、踏勘、階段變動)可以刪除,用來復原匯入錯誤。</p>';
-    ph+='<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>專案</th><th>狀態</th><th>地號</th><th>地主</th><th></th></tr></thead><tbody>'+DB.projects.map(function(p){return '<tr><td>'+esc(p.name)+'</td><td>'+esc(p.status||'')+'</td><td>'+DB.parcels.filter(function(x){return x.proj===p.id}).length+'</td><td>'+projOwners(p.id).length+'</td><td><button class="btn small" type="button" data-ad-delproj="'+esc(p.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div>';
+    ph+='<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>專案</th><th>開發類型</th><th>同意門檻(人數 / 持分)</th><th>狀態</th><th>地號</th><th>地主</th><th></th></tr></thead><tbody>'+DB.projects.map(function(p){return '<tr><td>'+esc(p.name)+'</td><td>'+esc(p.type||'')+'</td><td>'+p.rule.headPct+'% / '+p.rule.sharePct+'%</td><td>'+esc(p.status||'')+'</td><td>'+DB.parcels.filter(function(x){return x.proj===p.id}).length+'</td><td>'+projOwners(p.id).length+'</td><td><button class="btn small" type="button" data-ad-editproj="'+esc(p.id)+'">編輯</button> <button class="btn small" type="button" data-ad-resetdates="'+esc(p.id)+'">重設謄本日期</button> <button class="btn small" type="button" data-ad-delproj="'+esc(p.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div>';
     el.innerHTML=ph;return;
   }
   if(AD.tab==='log'){
