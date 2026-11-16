@@ -4147,7 +4147,7 @@ function applyCfg(c){
 async function bootstrap(data0){
   var data=data0;
   if(!data){try{data=await api('getData')}catch(e){if(e.auth){showLogin('登入已過期,請重新登入');return}throw e}}
-  S.role={'管理員':'admin','專案負責人':'lead','業務人員':'staff','業主(唯讀)':'staff'}[data.me.role]||'staff';S.viewer=data.me.role==='業主(唯讀)';document.body.classList.toggle('viewer',S.viewer);applyCfg(data.cfg);
+  S.role={'管理員':'admin','專案負責人':'lead','業務人員':'staff','業主':'staff'}[data.me.role]||'staff';S.viewer=data.me.role==='業主';document.body.classList.toggle('viewer',S.viewer);applyCfg(data.cfg);
   ME=data.me.name;MT.data=null;MT.err='';MT.loading=false;MT.form=null;MT.saving=false;
   await adapt(data);
   $('#whoami').textContent=data.me.name+'('+data.me.role+')';$('#who2').textContent=data.me.name+' · '+data.me.role;
@@ -4174,9 +4174,13 @@ function gridLayout(list){
 function applyGeo(pr,plist,geo){
   if(geo&&geo.parcels){
     pr.geo={ctx:geo.ctx||[],ctxlab:geo.ctxlab||[],zones:geo.zones||{},dev:geo.dev||[],scale:geo.scale||1,zc:geo.zc};pr.schematic=false;
-    var miss=[];
+    var miss=[],byNo={};
+    Object.keys(geo.parcels).forEach(function(k){var i=k.indexOf('|');if(i>=0){var n=k.slice(i+1);byNo[n]=byNo[n]===undefined?geo.parcels[k]:null}});
+    // 圖資編號是「段別|地號」;舊圖資只有地號,也照樣對得上。沒填段別的地號,只在全圖只有一個同號時才對應
     plist.forEach(function(p){
-      var gq=geo.parcels[p.no];
+      var gq=geo.parcels[(p.sec||'')+'|'+p.no];
+      if(!gq){var o=geo.parcels[p.no];if(o&&(!o.sec||!p.sec||o.sec===p.sec))gq=o}
+      if(!gq&&!p.sec&&byNo[p.no])gq=byNo[p.no];
       if(gq){p.pts=gq.pts;p.cx=gq.c[0];p.cy=gq.c[1];p.lf=gq.lf;p.mix=gq.mix;p.polyArea=gq.poly_m2;p.planZone=domZone(gq)}
       else miss.push(p);
     });
@@ -4945,7 +4949,7 @@ async function loadUsers(){UL.busy=true;try{USERS=await api('listUsers');UL.done
 function usProjText(u){
   var r=u['角色'];
   if(r==='管理員')return '全部專案';
-  if(r!=='專案負責人'&&r!=='業主(唯讀)')return '—';
+  if(r!=='專案負責人'&&r!=='業主')return '—';
   return L_(u['負責專案(專案ID,用逗號分開)']).map(function(id){var p=DB.projects.filter(function(x){return x.id===id})[0];return p?p.name:id}).join('、')||'(未選)';
 }
 function usProjHTML(){
@@ -4955,7 +4959,7 @@ function usProjHTML(){
     +'<div id="us-proj-list" style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px;display:flex;flex-direction:column;gap:6px">'
     +ps.map(function(p){return '<label class="us-pitem" style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" data-us-proj="'+esc(p.id)+'" style="width:auto"> <span>'+esc(p.name)+' <span class="small muted">'+esc(p.id)+'</span></span></label>'}).join('')+'</div>';
 }
-function usToggleProj(){var w=$('#us-proj-wrap'),r=$('#us-role');if(w&&r)w.style.display=(r.value==='專案負責人'||r.value==='業主(唯讀)')?'':'none'}
+function usToggleProj(){var w=$('#us-proj-wrap'),r=$('#us-role');if(w&&r)w.style.display=(r.value==='專案負責人'||r.value==='業主')?'':'none'}
 var AD={tab:'users'},LG={rows:null,total:0,offset:0,limit:100,actions:[],users:[],names:{},f:{user:'',act:'',q:'',from:'',to:''},busy:false,err:''};
 function loadLog(offset){
   LG.busy=true;LG.err='';renderAdmin();
@@ -4987,7 +4991,7 @@ function renderAdmin(){
   if(AD.tab==='proj'){
     if(AP.list===null&&!AP.busy&&location.hash==='#admin'){loadAP();}
     var ph='<h1>後台</h1>'+tabs+'<p class="muted" style="margin:12px 0 0">封存:專案從所有人的畫面隱藏,資料全部保留,可以還原。刪除:只有還沒開始使用的專案(沒有訪談、待辦、附件、踏勘、階段變動)可以直接刪除,用來復原匯入錯誤;測試專案已有紀錄時,確認後可連同紀錄一起刪。</p>';
-    ph+='<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>專案</th><th>開發類型</th><th>同意門檻(人數 / 持分)</th><th>狀態</th><th>地號</th><th>地主</th><th></th></tr></thead><tbody>'+DB.projects.map(function(p){return '<tr><td>'+esc(p.name)+'</td><td>'+esc(p.type||'')+'</td><td>'+p.rule.headPct+'% / '+p.rule.sharePct+'%</td><td>'+esc(p.status||'')+'</td><td>'+DB.parcels.filter(function(x){return x.proj===p.id}).length+'</td><td>'+projOwners(p.id).length+'</td><td><button class="btn small" type="button" data-ad-editproj="'+esc(p.id)+'">編輯</button> <button class="btn small" type="button" data-ad-resetdates="'+esc(p.id)+'">重設謄本日期</button> <button class="btn small" type="button" data-ad-archive="'+esc(p.id)+'">封存</button> <button class="btn small" type="button" data-ad-delproj="'+esc(p.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div>';
+    ph+='<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>專案</th><th>開發類型</th><th>同意門檻(人數 / 持分)</th><th>狀態</th><th>地號</th><th>地主</th><th></th></tr></thead><tbody>'+DB.projects.map(function(p){return '<tr><td>'+esc(p.name)+'</td><td>'+esc(p.type||'')+'</td><td>'+p.rule.headPct+'% / '+p.rule.sharePct+'%</td><td>'+esc(p.status||'')+'</td><td>'+DB.parcels.filter(function(x){return x.proj===p.id}).length+'</td><td>'+projOwners(p.id).length+'</td><td><button class="btn small" type="button" data-ad-editproj="'+esc(p.id)+'">編輯</button> <button class="btn small" type="button" data-ad-resetdates="'+esc(p.id)+'">重設謄本日期</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'">合併圖資</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'" data-replace="1">取代圖資</button> <button class="btn small" type="button" data-ad-archive="'+esc(p.id)+'">封存</button> <button class="btn small" type="button" data-ad-delproj="'+esc(p.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div><input type="file" id="ad-geofile" accept=".json,application/json" style="display:none"><p class="small muted" style="margin:6px 0 0">合併圖資:選一個新的圖資檔(.json),會排在現有地圖的右邊。同一段已經在圖上的話要改用「取代圖資」,會整張換掉。</p>';
     var arch=(AP.list||[]).filter(function(x){return x.archived});
     ph+='<div class="panel" style="margin-top:14px"><h2>已封存的專案</h2>'+(AP.err?'<div class="notice">'+esc(AP.err)+'</div>':'')+(arch.length?'<div class="tablewrap" style="margin-top:0"><table><thead><tr><th>專案</th><th>狀態</th><th></th></tr></thead><tbody>'+arch.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td>'+esc(x.status||'')+'</td><td><button class="btn small" type="button" data-ad-restore="'+esc(x.id)+'">還原</button> <button class="btn small" type="button" data-ad-delproj="'+esc(x.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div>':'<p class="small muted" style="margin:0">'+(AP.list===null?'載入中…':'沒有封存的專案。')+'</p>')+'</div>';
     el.innerHTML=ph;return;
@@ -5000,12 +5004,12 @@ function renderAdmin(){
     el.innerHTML='<h1>後台</h1>'+tabs+logHTML();return;
   }
   if(!UL.done&&!UL.busy&&location.hash==='#admin')loadUsers();
-  var h='<h1>後台</h1>'+tabs+'<p class="muted" style="margin:12px 0 0">管理誰可以登入。信箱要填對方用來登入 Google 的信箱。專案負責人和業主(唯讀)請勾選可看的專案,業務由專案成員決定能看到哪些專案。業主(唯讀)只看得到地圖與進度,看不到地主姓名與個資。</p>';
+  var h='<h1>後台</h1>'+tabs+'<p class="muted" style="margin:12px 0 0">管理誰可以登入。信箱要填對方用來登入 Google 的信箱。專案負責人和業主請勾選可看的專案,業務由專案成員決定能看到哪些專案。業主只看得到地圖與進度,看不到地主姓名與個資。</p>';
   h+='<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>信箱</th><th>姓名</th><th>角色</th><th>啟用</th><th>負責專案</th><th>最後登入</th><th></th></tr></thead><tbody>';
   USERS.forEach(function(u,i){h+='<tr><td>'+esc(u['信箱'])+'</td><td>'+esc(u['姓名'])+'</td><td>'+esc(u['角色'])+'</td><td>'+esc(u['啟用'])+'</td><td>'+esc(usProjText(u))+'</td><td class="small muted" style="white-space:nowrap">'+esc(u['最後登入']||'—')+'</td><td><button class="btn small" type="button" data-user-edit="'+i+'">編輯</button> <button class="btn small" type="button" data-user-toggle="'+i+'">'+(u['啟用']==='否'?'啟用':'停用')+'</button></td></tr>'});
   h+='</tbody></table></div>'+(UL.done?'':'<p class="small muted">載入中…</p>');
   h+='<div class="panel" style="margin-top:14px"><h2>新增或修改使用者</h2><div class="row2"><div class="field" style="margin-top:0"><label for="us-email">信箱</label><input type="email" id="us-email"></div><div class="field" style="margin-top:0"><label for="us-name">姓名</label><input type="text" id="us-name"></div></div>'
-    +'<div class="field"><label for="us-role">角色</label><select id="us-role"><option>業務人員</option><option>專案負責人</option><option>業主(唯讀)</option><option>管理員</option></select></div>'
+    +'<div class="field"><label for="us-role">角色</label><select id="us-role"><option>業務人員</option><option>專案負責人</option><option>業主</option><option>管理員</option></select></div>'
     +'<div class="field" id="us-proj-wrap" style="display:none"><span class="lab">負責專案(勾選)</span>'+usProjHTML()+'</div>'
     +'<label style="display:flex;align-items:center;gap:6px;font-size:14px"><input type="checkbox" id="us-active" checked style="width:auto"> 啟用</label><div class="actions"><button class="btn primary" type="button" data-user-save>儲存</button></div></div>';
   el.innerHTML=h;
@@ -5017,10 +5021,28 @@ document.addEventListener('click',function(e){
     $('#us-email').value=u['信箱'];$('#us-name').value=u['姓名'];$('#us-role').value=u['角色'];usToggleProj();var sel=L_(u['負責專案(專案ID,用逗號分開)']);$$('[data-us-proj]').forEach(function(c){c.checked=sel.indexOf(c.dataset.usProj)>=0});$('#us-active').checked=u['啟用']!=='否';return;
   }
   if(t.closest('[data-user-save]')){
-    api('saveUser',{email:$('#us-email').value,name:$('#us-name').value,role:$('#us-role').value,projects:($('#us-role').value==='專案負責人'||$('#us-role').value==='業主(唯讀)')?$$('[data-us-proj]').filter(function(c){return c.checked}).map(function(c){return c.dataset.usProj}):[],active:$('#us-active').checked,note:((USERS.filter(function(x){return String(x['信箱']).toLowerCase()===$('#us-email').value.trim().toLowerCase()})[0])||{})['備註']||''}).then(function(){toast('已儲存使用者。');loadUsers()}).catch(function(e){toast(e.userMessage||e.message)});
+    api('saveUser',{email:$('#us-email').value,name:$('#us-name').value,role:$('#us-role').value,projects:($('#us-role').value==='專案負責人'||$('#us-role').value==='業主')?$$('[data-us-proj]').filter(function(c){return c.checked}).map(function(c){return c.dataset.usProj}):[],active:$('#us-active').checked,note:((USERS.filter(function(x){return String(x['信箱']).toLowerCase()===$('#us-email').value.trim().toLowerCase()})[0])||{})['備註']||''}).then(function(){toast('已儲存使用者。');loadUsers()}).catch(function(e){toast(e.userMessage||e.message)});
   }
 });
 document.addEventListener('change',function(e){if(e.target&&e.target.id==='us-role')usToggleProj()});
+document.addEventListener('change',function(e){if(e.target&&e.target.id==='ad-geofile')mergeGeoUI(e.target)});
+function mergeGeoUI(inp){
+  var f=inp.files&&inp.files[0],T=AP.geoT;if(!f||!T)return;var pr=PRJ[T.id];
+  if(f.size>3000000){toast('檔案太大(上限約 3MB)。');return}
+  var rd=new FileReader();rd.onerror=function(){toast('讀不到這個檔案。')};
+  rd.onload=function(){
+    var g;try{g=JSON.parse(rd.result)}catch(x){toast('這個檔案不是正確的圖資檔(JSON 格式錯誤)。');return}
+    if(!g||!g.parcels){toast('這個檔案不是圖資檔(找不到 parcels)。');return}
+    var secs={};Object.keys(g.parcels).forEach(function(k){var i=k.indexOf('|');secs[g.parcels[k].sec||(i>=0?k.slice(0,i):'')||'(未標段別)']=1});
+    var msg=(T.replace?'取代':'合併')+'圖資到「'+(pr?pr.name:'')+'」?\n新檔含 '+Object.keys(g.parcels).length+' 筆地號,段別:'+Object.keys(secs).join('、')+(T.replace?'\n\n這會把現有整張地圖換成新檔,無法復原。':'\n\n新的一段會排在現有地圖右邊。');
+    if(!window.confirm(msg))return;
+    toast('處理中…');
+    api('mergeGeo',{projectId:T.id,geo:g,replace:T.replace,caption:T.replace?'':Object.keys(secs).length===1?Object.keys(secs)[0]:''}).then(function(r){
+      GEOC[T.id]=undefined;if(PRJ[T.id])PRJ[T.id]._geoLazy=true;AP.list=null;toast('完成:現在圖上有 '+r.parcels+' 筆地號('+r.sections.join('、')+')。');
+      return ensureGeo(T.id)}).then(function(){renderAdmin()}).catch(function(er){if(er.auth)showLogin('登入已過期,請重新登入');else toast('失敗:'+(er.userMessage||er.message))});
+  };
+  rd.readAsText(f,'UTF-8');
+}
 document.addEventListener('input',function(e){
   var t=e.target;if(!t||t.id!=='us-proj-q')return;var q=t.value.trim().toLowerCase();
   $$('.us-pitem').forEach(function(l){l.style.display=(!q||l.textContent.toLowerCase().indexOf(q)>=0)?'':'none'});
@@ -5029,6 +5051,7 @@ document.addEventListener('input',function(e){
 document.addEventListener('click',function(e){
   var t=e.target;if(!t||!t.closest)return;var b;
   if((b=t.closest('[data-ad-tab]'))){AD.tab=b.dataset.adTab;renderAdmin();return}
+  if((b=t.closest('[data-ad-geo]'))){AP.geoT={id:b.dataset.adGeo,replace:b.dataset.replace==='1'};var gf=document.getElementById('ad-geofile');if(gf){gf.value='';gf.click()}return}
   if((b=t.closest('[data-ad-archive]'))){var ap=PRJ[b.dataset.adArchive];if(!ap)return;if(!window.confirm('封存專案「'+ap.name+'」?\n封存後所有人都看不到這個專案,資料全部保留,之後可以在這裡還原。'))return;setArchive(ap.id,true,'已封存專案「'+ap.name+'」。');return}
   if((b=t.closest('[data-ad-restore]'))){var ar=(AP.list||[]).filter(function(x){return x.id===b.dataset.adRestore})[0];setArchive(b.dataset.adRestore,false,'已還原專案「'+(ar?ar.name:'')+'」。');return}
   if((b=t.closest('[data-user-toggle]'))){
