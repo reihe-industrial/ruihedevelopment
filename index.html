@@ -3531,7 +3531,8 @@ async function handleDeedFiles(fileList){
   if(st)st.innerHTML='<div class="small muted" style="margin-top:6px">讀取中…</div>';
   for(var i=0;i<files.length;i++){
     var f=files[i];
-    if(IM.deed.files.indexOf(f.name)>=0){IM.deed.msgs.push('「'+f.name+'」已經讀過了');continue}
+    var fk=f.name+'|'+f.size+'|'+(f.lastModified||0);IM.deed.keys=IM.deed.keys||[];
+    if(IM.deed.keys.indexOf(fk)>=0){IM.deed.msgs.push('「'+f.name+'」已經讀過了');continue}IM.deed.keys.push(fk);
     try{var nBefore=IM.deed.recs.length;if(addDeedPages(await readPdfPages(f),f.name))await ocrDeedAddresses(f,IM.deed.recs.slice(nBefore))}
     catch(err){IM.deed.msgs.push('「'+f.name+'」讀取失敗:'+(err&&err.message?err.message:err)+'。可以改用下方的「貼上謄本文字」。')}
   }
@@ -3727,7 +3728,8 @@ async function handleUpdateFiles(fileList){
   UP.msgs=[];
   for(var i=0;i<files.length;i++){
     var f=files[i];
-    if(UP.files.indexOf(f.name)>=0){UP.msgs.push('「'+f.name+'」已經讀過了');continue}
+    var fk2=f.name+'|'+f.size+'|'+(f.lastModified||0);UP.keys=UP.keys||[];
+    if(UP.keys.indexOf(fk2)>=0){UP.msgs.push('「'+f.name+'」已經讀過了');continue}UP.keys.push(fk2);
     try{addUpdatePages(await readPdfPages(f),f.name)}
     catch(err){UP.msgs.push('「'+f.name+'」讀取失敗:'+(err&&err.message?err.message:err)+'。可以改用「貼上謄本文字」。')}
   }
