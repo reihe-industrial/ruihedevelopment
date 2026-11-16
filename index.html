@@ -1368,11 +1368,12 @@ function ownerDealHTML(o,pid){
   if(d.stageLog.length)h+='<div class="small muted" style="margin-top:6px">階段紀錄:'+d.stageLog.slice().reverse().map(function(x){return esc(x.date)+' '+esc(stageLbl(x.stage))}).join(' → ')+'</div>';
   return h;
 }
+function famNames_(pid){var m={};projOwners(pid).forEach(function(x){if(x.family)m[x.family]=1});return Object.keys(m).sort()}
 function ownerFamilyHTML(o,pid){
   var inh=o.inherit||{status:'',missing:''},rp=o.rep||{name:'',canSign:''},special=o.type==='公同共有'||o.type==='祭祀公業';
   var fam=o.family?projOwners(pid).filter(function(x){return x.id!==o.id&&x.family===o.family}).map(function(x){return x.name+(x.win&&x.win[pid]?'(窗口)':'')}):[];
   var h='<div class="row2"><div class="field" style="margin-top:0"><label for="fm-inh">繼承狀態</label><select id="fm-inh">'+[['','不需要或已辦妥'],['辦理中','辦理中'],['未辦繼承','未辦繼承']].map(function(x){return '<option value="'+x[0]+'"'+(inh.status===x[0]?' selected':'')+'>'+x[1]+'</option>'}).join('')+'</select></div><div class="field" style="margin-top:0"><label for="fm-miss">還缺哪些文件</label><input type="text" id="fm-miss" value="'+esc(inh.missing||'')+'" placeholder="例:戶籍謄本、遺產分割協議書"></div></div>';
-  h+='<div class="row2"><div class="field"><label for="fm-fam">家族或親屬群組</label><input type="text" id="fm-fam" value="'+esc(o.family||'')+'" placeholder="例:陳家"></div><div class="field"><label>本專案的窗口</label><label style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ink)"><input type="checkbox" id="fm-win"'+(o.win&&o.win[pid]?' checked':'')+' style="width:auto"> 這位是家族的窗口(可以代表決定)</label></div></div>';
+  h+='<div class="row2"><div class="field"><label for="fm-fam">家族或親屬群組</label><input type="text" id="fm-fam" list="fm-fam-list" value="'+esc(o.family||'')+'" placeholder="例:陳家" autocomplete="off"><datalist id="fm-fam-list">'+famNames_(pid).map(function(n){return '<option value="'+esc(n)+'">'}).join('')+'</datalist><p class="small muted" style="margin:4px 0 0">有親戚關係的地主,填同一個名稱(例:陳家)。名稱要一字不差,包含空格和「家」字;已經有人填過的名稱,點輸入框可以直接選。沒有親屬關係就留空。</p></div><div class="field"><label>本專案的窗口</label><label style="display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ink)"><input type="checkbox" id="fm-win"'+(o.win&&o.win[pid]?' checked':'')+' style="width:auto"> 這位是家族的窗口(可以代表決定)</label><p class="small muted" style="margin:4px 0 0">同一個家族只勾一位,就是主要聯絡的人。</p></div></div>';
   if(special)h+='<div class="row2"><div class="field"><label for="fm-rep">'+(o.type==='祭祀公業'?'管理人':'代表人或管理人')+'</label><input type="text" id="fm-rep" value="'+esc(rp.name||'')+'"></div><div class="field"><label for="fm-sign">能否代表簽約</label><select id="fm-sign">'+['待確認','可以','不可以,需全體派下員或繼承人同意'].map(function(x){return '<option'+(rp.canSign===x?' selected':'')+'>'+x+'</option>'}).join('')+'</select></div></div>';
   if(fam.length)h+='<div class="small muted" style="margin-top:6px">同一家族:'+fam.map(esc).join('、')+'</div>';
   return h+'<div class="actions"><button class="btn primary" type="button" data-fam-save="'+o.id+'">儲存</button></div>';
@@ -4477,7 +4478,7 @@ function parcelExtraHTML(p){
       +'<div class="actions"><button class="btn small primary" type="button" data-factory-save="'+p.id+'">儲存</button></div></div>';
   }else if(isFactory(p))h+='<div class="small" style="margin-top:8px"><b>*</b> 特定工廠'+((p.factory&&p.factory.name)?':'+esc(p.factory.name):'')+'</div>';
   var svl=p.surveys||[];
-  var sb=svl.length?'<ul class="tl">'+svl.map(function(x){return '<li><div class="t">'+esc(x.date)+' · '+esc(x.by)+'</div><div class="small" style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(x.note)+'</div>'+(x.photos?'<button class="btn small" type="button" data-sv-photos="'+esc(x.id)+'" style="margin-top:4px">看照片('+x.photos+')</button><div id="svp-'+esc(x.id)+'"></div>':'')+'</li>'}).join('')+'</ul>':'<p class="small muted" style="margin:0 0 6px">還沒有踏勘紀錄。</p>';
+  var sb=svl.length?'<ul class="tl">'+svl.map(function(x){return '<li><div class="t">'+esc(x.date)+' · '+esc(x.by)+'</div><div class="small" style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(x.note)+'</div>'+(x.photos?'<button class="btn small" type="button" data-sv-photos="'+esc(x.id)+'" data-sv-n="'+(+x.photos||0)+'" style="margin-top:4px">看照片('+x.photos+')</button><div id="svp-'+esc(x.id)+'"></div>':'')+'</li>'}).join('')+'</ul>':'<p class="small muted" style="margin:0 0 6px">還沒有踏勘紀錄。</p>';
   if(canEditParcel(p))sb+='<div class="field"><label for="sv-date">踏勘日期</label><input type="date" id="sv-date" value="'+iso(new Date())+'"></div>'
     +'<div class="field"><label for="sv-note">現況描述</label><textarea id="sv-note" rows="3" placeholder="例:南側有鐵皮屋占用,北側有農路可進出"></textarea></div>'
     +'<div class="field"><span class="lab">現場照片</span><div style="display:flex;gap:8px;flex-wrap:wrap"><label class="btn" style="cursor:pointer">拍照<input type="file" id="sv-cam" accept="image/*" capture="environment" style="display:none"></label><label class="btn" style="cursor:pointer">從相簿選<input type="file" id="sv-pick" accept="image/*" multiple style="display:none"></label></div><div id="sv-pending" class="small" style="margin-top:6px">'+svPendingHTML(p.id)+'</div></div>'
@@ -4511,7 +4512,7 @@ function focusBanner(){
   return '<div class="notice" style="margin:0 0 10px"><b>正在框選:'+esc(o.name)+'</b><div class="small" style="margin:4px 0">他在這個專案有 '+n+' 筆地號,已用橘色框出來(虛線框是全部範圍)。</div><button class="btn small" type="button" data-focus-clear>清除框選</button></div>';
 }
 /* ---- 現場踏勘、附件、下載(第二輪) ---- */
-var SV={pid:null,pending:[],busy:false};
+var SV={pid:null,pending:[],busy:false},SVPC={};
 function guessMime(name){
   var m=String(name||'').toLowerCase().match(/\.([a-z0-9]+)$/);if(!m)return '';
   return {jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',heic:'image/heic',heif:'image/heif',pdf:'application/pdf',mp3:'audio/mpeg',m4a:'audio/mp4',wav:'audio/wav',aac:'audio/aac',amr:'audio/amr',doc:'application/msword',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',xls:'application/vnd.ms-excel',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',txt:'text/plain',csv:'text/csv'}[m[1]]||'';
@@ -4645,12 +4646,18 @@ document.addEventListener('click',function(e){
   var t=e.target;if(!t||!t.closest)return;var b;
   if((b=t.closest('[data-sv-rm]'))){SV.pending.splice(+b.dataset.svRm,1);svRefresh();return}
   if((b=t.closest('[data-sv-photos]'))){
-    var sid=b.dataset.svPhotos,box=$('#svp-'+sid);if(!box)return;
-    b.disabled=true;b.textContent='載入中…';
-    api('getSurveyPhotos',{projectId:S.proj,surveyId:sid}).then(function(list){
-      box.innerHTML=list.length?list.map(function(x){return '<img src="data:'+x.mime+';base64,'+x.data+'" alt="現場照片" style="max-width:100%;border-radius:8px;margin:6px 0;display:block">'}).join(''):'<span class="small muted">讀不到照片</span>';
-      b.style.display='none';
-    }).catch(function(er){b.disabled=false;b.textContent='看照片';if(er.auth)showLogin('登入已過期,請重新登入');else toast('讀不到照片:'+(er.userMessage||er.message))});
+    var sid=b.dataset.svPhotos,box=$('#svp-'+sid),n=+b.dataset.svN||0;if(!box)return;
+    if(!n){box.innerHTML='<span class="small muted">沒有照片</span>';b.style.display='none';return}
+    b.style.display='none';SVPC=SVPC||{};
+    var slots='';for(var k=0;k<n;k++)slots+='<div id="svp-'+sid+'-'+k+'" class="small muted" style="margin:6px 0;min-height:24px">載入照片 '+(k+1)+'/'+n+'…</div>';
+    box.innerHTML=slots;
+    for(var k2=0;k2<n;k2++)(function(i){
+      var show=function(x){var el=document.getElementById('svp-'+sid+'-'+i);if(el)el.outerHTML='<img src="data:'+x.mime+';base64,'+x.data+'" alt="現場照片" style="max-width:100%;border-radius:8px;margin:6px 0;display:block">'};
+      var key=sid+':'+i;if(SVPC[key]){show(SVPC[key]);return}
+      api('getSurveyPhoto',{projectId:S.proj,surveyId:sid,index:i}).then(function(x){SVPC[key]=x;show(x)}).catch(function(er){
+        if(er.auth){showLogin('登入已過期,請重新登入');return}
+        var el=document.getElementById('svp-'+sid+'-'+i);if(el)el.textContent='第 '+(i+1)+' 張讀不到('+(er.userMessage||er.message)+')'});
+    })(k2);
     return;
   }
   if((b=t.closest('[data-file-open]'))){
@@ -5218,7 +5225,7 @@ function renderAdmin(){
   if(AD.tab==='proj'){
     if(AP.list===null&&!AP.busy&&location.hash==='#admin'){loadAP();}
     var ph='<h1>後台</h1>'+tabs+'<p class="muted" style="margin:12px 0 0">封存:專案從所有人的畫面隱藏,資料全部保留,可以還原。刪除:只有還沒開始使用的專案(沒有訪談、待辦、附件、踏勘、階段變動)可以直接刪除,用來復原匯入錯誤;測試專案已有紀錄時,確認後可連同紀錄一起刪。</p>';
-    ph+='<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>專案</th><th>開發類型</th><th>同意門檻(人數 / 持分)</th><th>狀態</th><th>地號</th><th>地主</th><th></th></tr></thead><tbody>'+DB.projects.map(function(p){return '<tr><td>'+esc(p.name)+'</td><td>'+esc(p.type||'')+'</td><td>'+p.rule.headPct+'% / '+p.rule.sharePct+'%</td><td>'+esc(p.status||'')+'</td><td>'+DB.parcels.filter(function(x){return x.proj===p.id}).length+'</td><td>'+projOwners(p.id).length+'</td><td><button class="btn small" type="button" data-ad-editproj="'+esc(p.id)+'">編輯</button> <button class="btn small" type="button" data-ad-resetdates="'+esc(p.id)+'">重設謄本日期</button> <button class="btn small" type="button" data-ad-cad="'+esc(p.id)+'">上傳地籍圖</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'">合併圖資</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'" data-replace="1">取代圖資</button> <button class="btn small" type="button" data-ad-archive="'+esc(p.id)+'">封存</button> <button class="btn small" type="button" data-ad-delproj="'+esc(p.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div><input type="file" id="ad-geofile" accept=".json,application/json" style="display:none"><input type="file" id="ad-cadfile" accept="application/pdf,.pdf" style="display:none"><div class="panel" style="margin-top:8px"><p class="small muted" style="margin:0 0 6px">合併圖資:選一個新的圖資檔(.json)加到現有地圖。地籍圖謄本沒有座標,系統不知道兩段實際的相對位置,請照真實位置選方位;排得不準可以用微調,或用「取代圖資」整張重來。同一段已經在圖上的話要用「取代圖資」。</p><div class="row2"><div class="field" style="margin-top:0"><label for="ad-geodir">新的一段放在現有地圖的</label><select id="ad-geodir"><option value="E">東邊(右)</option><option value="W">西邊(左)</option><option value="N">北邊(上)</option><option value="S">南邊(下)</option><option value="NE">東北</option><option value="NW">西北</option><option value="SE">東南</option><option value="SW">西南</option></select></div><div class="field" style="margin-top:0"><label for="ad-geogap">與現有地圖的間隔(公尺)</label><input type="number" id="ad-geogap" min="0" max="2000" value="40"></div></div><div class="row2"><div class="field"><label for="ad-geoe">微調:再往東移(公尺,負數往西)</label><input type="number" id="ad-geoe" value="0"></div><div class="field"><label for="ad-geon">微調:再往北移(公尺,負數往南)</label><input type="number" id="ad-geon" value="0"></div></div></div>';
+    ph+='<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>專案</th><th>開發類型</th><th>同意門檻(人數 / 持分)</th><th>狀態</th><th>地號</th><th>地主</th><th></th></tr></thead><tbody>'+DB.projects.map(function(p){return '<tr><td>'+esc(p.name)+'</td><td>'+esc(p.type||'')+'</td><td>'+p.rule.headPct+'% / '+p.rule.sharePct+'%</td><td>'+esc(p.status||'')+'</td><td>'+DB.parcels.filter(function(x){return x.proj===p.id}).length+'</td><td>'+projOwners(p.id).length+'</td><td><button class="btn small" type="button" data-ad-editproj="'+esc(p.id)+'">編輯</button> <button class="btn small" type="button" data-ad-members="'+esc(p.id)+'">承辦人</button> <button class="btn small" type="button" data-ad-resetdates="'+esc(p.id)+'">重設謄本日期</button> <button class="btn small" type="button" data-ad-cad="'+esc(p.id)+'">上傳地籍圖</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'">合併圖資</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'" data-replace="1">取代圖資</button> <button class="btn small" type="button" data-ad-archive="'+esc(p.id)+'">封存</button> <button class="btn small" type="button" data-ad-delproj="'+esc(p.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div><input type="file" id="ad-geofile" accept=".json,application/json" style="display:none"><input type="file" id="ad-cadfile" accept="application/pdf,.pdf" style="display:none"><div class="panel" style="margin-top:8px"><p class="small muted" style="margin:0 0 6px">合併圖資:選一個新的圖資檔(.json)加到現有地圖。地籍圖謄本沒有座標,系統不知道兩段實際的相對位置,請照真實位置選方位;排得不準可以用微調,或用「取代圖資」整張重來。同一段已經在圖上的話要用「取代圖資」。</p><div class="row2"><div class="field" style="margin-top:0"><label for="ad-geodir">新的一段放在現有地圖的</label><select id="ad-geodir"><option value="E">東邊(右)</option><option value="W">西邊(左)</option><option value="N">北邊(上)</option><option value="S">南邊(下)</option><option value="NE">東北</option><option value="NW">西北</option><option value="SE">東南</option><option value="SW">西南</option></select></div><div class="field" style="margin-top:0"><label for="ad-geogap">與現有地圖的間隔(公尺)</label><input type="number" id="ad-geogap" min="0" max="2000" value="40"></div></div><div class="row2"><div class="field"><label for="ad-geoe">微調:再往東移(公尺,負數往西)</label><input type="number" id="ad-geoe" value="0"></div><div class="field"><label for="ad-geon">微調:再往北移(公尺,負數往南)</label><input type="number" id="ad-geon" value="0"></div></div></div>';
     var arch=(AP.list||[]).filter(function(x){return x.archived});
     ph+='<div class="panel" style="margin-top:14px"><h2>已封存的專案</h2>'+(AP.err?'<div class="notice">'+esc(AP.err)+'</div>':'')+(arch.length?'<div class="tablewrap" style="margin-top:0"><table><thead><tr><th>專案</th><th>狀態</th><th></th></tr></thead><tbody>'+arch.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td>'+esc(x.status||'')+'</td><td><button class="btn small" type="button" data-ad-restore="'+esc(x.id)+'">還原</button> <button class="btn small" type="button" data-ad-delproj="'+esc(x.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div>':'<p class="small muted" style="margin:0">'+(AP.list===null?'載入中…':'沒有封存的專案。')+'</p>')+'</div>';
     el.innerHTML=ph;return;
@@ -5531,6 +5538,38 @@ document.addEventListener('change',function(e){
     cadRun();cadRender();
   }
 });
+
+/* ---------- 後台:設定專案承辦人 ---------- */
+function openMembers(pid){
+  var pr=PRJ[pid];if(!pr)return;
+  var d=$('#dlg-mem');
+  if(!d){d=document.createElement('dialog');d.id='dlg-mem';d.setAttribute('aria-label','專案承辦人');d.innerHTML='<div class="dlg" id="mem-body"></div>';document.body.appendChild(d)}
+  var all=staffIds(true),cur=pr.staff||[];
+  cur.forEach(function(n){if(all.indexOf(n)<0)all.push(n)});
+  $('#mem-body').innerHTML='<div class="dlg-h"><h2>承辦人:'+esc(pr.name)+'</h2><button class="btn small" type="button" data-close>關閉</button></div>'
+    +'<p class="small muted" style="margin:0 0 8px">勾選這個專案的承辦業務,至少一位。被勾選的人登入後才看得到這個專案;專案負責人和業主不在這裡設定,到「使用者」分頁勾選。</p>'
+    +'<div id="mem-list" style="display:grid;gap:6px">'+all.map(function(n){return '<label style="display:flex;align-items:center;gap:8px;font-size:14px"><input type="checkbox" data-mem="'+esc(n)+'" style="width:auto"'+(cur.indexOf(n)>=0?' checked':'')+'> '+esc(n)+'</label>'}).join('')+'</div>'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="button" data-mem-save="'+esc(pid)+'">儲存</button></div>';
+  d.showModal();
+}
+document.addEventListener('click',function(e){
+  var t=e.target;if(!t||!t.closest)return;var b;
+  if((b=t.closest('[data-ad-members]'))){openMembers(b.dataset.adMembers);return}
+  if((b=t.closest('[data-mem-save]'))){
+    var pid=b.dataset.memSave,sel=$$('[data-mem]').filter(function(c){return c.checked}).map(function(c){return c.dataset.mem});
+    if(!sel.length){toast('至少要選一位承辦人。');return}
+    b.disabled=true;
+    api('setProjectMembers',{projectId:pid,members:sel}).then(function(){
+      PRJ[pid].staff=sel.slice().sort();var d=$('#dlg-mem');if(d&&d.open)d.close();toast('已更新承辦人。');renderAdmin();renderAll()
+    }).catch(function(er){b.disabled=false;if(er.auth)showLogin('登入已過期,請重新登入');else toast('儲存失敗:'+(er.userMessage||er.message))});
+  }
+});
+
+// 專案總覽只顯示承辦人,不在這裡修改;改到「後台 → 專案 → 承辦人」
+function staffPickerHTML(pr){
+  var names=(pr.staff||[]).map(function(x){return '承辦人'+esc(x)}).join('、')||'尚未選擇';
+  return '<div>'+names+(S.role==='admin'?' <span class="muted small">(到「後台 → 專案 → 承辦人」修改)</span>':'')+'</div>';
+}
 
 /* ---------- start ---------- */
 function pickStart(){
