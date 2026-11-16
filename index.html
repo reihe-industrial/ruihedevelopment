@@ -331,6 +331,13 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
   #mnav button svg circle{fill:currentColor;stroke:none}
   #mnav a[aria-current="page"],#mnav button.on{color:var(--brand);font-weight:700}
   #mnav a[aria-current="page"]::before,#mnav button.on::before{content:"";position:absolute;top:0;left:22%;right:22%;height:3px;border-radius:0 0 3px 3px;background:var(--brand)}
+  .side details.side-more{margin-top:10px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+  .side details.side-more>summary{cursor:pointer;min-height:48px;display:flex;align-items:center;padding:0 14px;font-weight:600;color:var(--brand);list-style:none}
+  .side details.side-more>summary::-webkit-details-marker{display:none}
+  .side details.side-more>summary::after{content:"▾";margin-left:auto}
+  .side details.side-more[open]>summary::after{content:"▴"}
+  .side details.side-more>:not(summary){margin-left:12px;margin-right:12px}
+  .side details.side-more>:last-child{margin-bottom:12px}
   #msheet:not([hidden]){display:block;position:fixed;inset:0;z-index:60}
   #msheet .mbd{position:absolute;inset:0;background:rgba(8,18,14,.5)}
   #msheet .mpanel{position:absolute;left:0;right:0;bottom:0;background:var(--surface);border-radius:16px 16px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom,0px));max-height:80vh;overflow:auto;box-shadow:0 -6px 24px rgba(0,0,0,.25)}
@@ -381,6 +388,20 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
   document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSheet(true)});
   window.addEventListener('hashchange',function(){closeSheet(false);sync()});
   if(tabsEl&&window.MutationObserver)new MutationObserver(sync).observe(tabsEl,{attributes:true,subtree:true,attributeFilter:['style','aria-current']});
+  /* 手機:地圖頁左側的專案統計、篩選、著色設定收進可展開的區塊,預設收起,方便直接看地圖與填訪談 */
+  var side=document.getElementById('side'),sideOpen=false;
+  function foldSide(){
+    if(!side||!window.matchMedia||!window.matchMedia('(max-width:760px)').matches||side.querySelector('details.side-more'))return;
+    var kids=[].slice.call(side.children),hi=-1;
+    kids.forEach(function(n,i){if(hi<0&&n.tagName==='H2')hi=i});
+    if(hi<0||kids.length<hi+3)return;
+    var det=document.createElement('details'),sum=document.createElement('summary');
+    det.className='side-more';det.open=sideOpen;sum.textContent='專案摘要與地圖設定(統計、篩選、著色)';det.appendChild(sum);
+    kids.forEach(function(n,i){if(i===1||i>hi+1){if(n.classList&&n.classList.contains('bar-tools')&&n.querySelector('select.pswitch'))return;det.appendChild(n)}});
+    det.addEventListener('toggle',function(){sideOpen=det.open});
+    side.appendChild(det);
+  }
+  if(side&&window.MutationObserver){new MutationObserver(foldSide).observe(side,{childList:true});foldSide()}
   sync();
 })();
 </script>
@@ -1798,7 +1819,7 @@ function renderReports(){
   var vis=visibleProjects();
   if(RP.proj!=='all'&&!vis.some(function(p){return p.id===RP.proj}))RP.proj='all';
   var R=reportData();
-  var h='<div class="orow"><div><h1>週報與月報</h1><p class="muted" style="margin:0">'+iso(R.r.s)+' 到 '+iso(R.r.e)+'。給主管看這段期間的拜訪推進。</p></div><button class="btn" type="button" data-rp-export'+(dlState==='none'?' disabled':'')+'>匯出報表(CSV)</button></div>';
+  var h='<div class="orow"><div><h1>週報與月報</h1><p class="muted" style="margin:0">'+iso(R.r.s)+' 到 '+iso(R.r.e)+'。給主管看這段期間的拜訪推進。</p></div><button class="btn" type="button" data-rp-export'+(dlState==='none'?' disabled':'')+'>匯出報表(Excel)</button></div>';
   h+='<div class="bar-tools"><div class="seg" role="group" aria-label="期間" style="min-width:300px;grid-template-columns:repeat(4,1fr)">'+PERIODS.map(function(x){return '<button type="button" data-rp-period="'+x[0]+'" aria-pressed="'+(RP.period===x[0])+'">'+x[1]+'</button>'}).join('')+'</div>'
     +'<label class="small muted" for="rp-proj">專案</label><select id="rp-proj"><option value="all">全部專案</option>'+vis.map(function(p){return '<option value="'+p.id+'"'+(RP.proj===p.id?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select></div>';
   h+='<div class="kpis">'+kpi('新增訪談',R.iv+' 次')+kpi('新接觸地主',R.newC+' 位')+kpi('意願升級',R.up.length+' 位')+kpi('意願下降',R.down.length+' 位')+kpi('簽約階段推進',R.moves.length+' 次')+kpi('簽買賣契約面積',comma(R.signedPg)+' 坪')+kpi('完成交易面積',comma(R.donePg)+' 坪')+kpi('目前逾期跟進',R.over+' 位')+'</div>';
@@ -2041,7 +2062,7 @@ function restoreBackup(o){
 function checkImport(text){
   var box=$('#imp-preview');if(!box)return;
   impMsg='';text=(text||'').trim();IMP=null;
-  if(!text){box.innerHTML='<p class="muted small" style="margin:10px 0 0">還沒有內容。選擇檔案或貼上 CSV 後再檢查。</p>';return}
+  if(!text){box.innerHTML='<p class="muted small" style="margin:10px 0 0">還沒有內容。選擇檔案或貼上內容後再檢查。</p>';return}
   if(text.charAt(0)==='{'){
     if(S.role!=='admin'){box.innerHTML='<p class="bad">還原完整備份只有管理者可以做。</p>';return}
     var o;try{o=JSON.parse(text)}catch(e){box.innerHTML='<p class="bad">這個 JSON 檔格式有誤,無法讀取。</p>';return}
@@ -2095,7 +2116,7 @@ function commitImport(){
   }
   var n=0;
   IMP.items.forEach(function(it){if(it.rec){DB.interviews.push({id:++DB.seq,owner:it.rec.owner,proj:S.proj,date:it.rec.date,method:it.rec.method,by:it.rec.by,summary:it.rec.summary,level:it.rec.level,next:it.rec.next});n++}});
-  DB.log.unshift({ts:new Date(),user:ROLE_LABEL[S.role],action:'匯入訪談紀錄',detail:PRJ[S.proj].name+':'+n+' 筆(CSV)'});
+  DB.log.unshift({ts:new Date(),user:ROLE_LABEL[S.role],action:'匯入訪談紀錄',detail:PRJ[S.proj].name+':'+n+' 筆(Excel)'});
   IMP=null;impMsg='已匯入 '+n+' 筆訪談紀錄。地圖顏色、統計與後台異動紀錄都已更新。';
   renderAll();toast('已匯入 '+n+' 筆訪談紀錄。');
 }
@@ -2119,16 +2140,16 @@ function renderData(){
   if(staff){
     h+='<div class="notice" style="margin:0">業務人員不能匯出資料。需要資料時,請找專案負責人或管理員。</div>';
   }else{
-    [['parcels','地號清單','區塊、面積、現況、意願,以及地主與持分(CSV)'],
-     ['owners','地主清單','名下地號、持分面積、意願、承辦人、電話與地址(CSV)'],
-     ['interviews','訪談紀錄','全部訪談,新到舊排列(CSV)'],
-     ['stats','統計摘要','地號數、面積、意願分布、承辦人進度(CSV)']].forEach(function(x){
+    [['parcels','地號清單','區塊、面積、現況、意願,以及地主與持分(Excel)'],
+     ['owners','地主清單','名下地號、持分面積、意願、承辦人、電話與地址(Excel)'],
+     ['interviews','訪談紀錄','全部訪談,新到舊排列(Excel)'],
+     ['stats','統計摘要','地號數、面積、意願分布、承辦人進度(Excel)']].forEach(function(x){
       h+='<div class="expcard"><div><b>'+x[1]+'</b><span class="small muted">'+x[2]+'</span></div><button class="btn" type="button" data-exp="'+x[0]+'"'+(dlState==='none'?' disabled':'')+'>匯出</button></div>';
     });
     h+='<div class="expcard"><div><b>完整備份</b><span class="small muted">'+(admin?'含全部專案、地圖圖形與電話等個資,可用來還原(JSON)':'只有管理者可以匯出,因為檔案含全部專案與電話等個資')+'</span></div><button class="btn" type="button" data-exp="backup"'+((admin&&dlState!=='none')?'':' disabled')+'>匯出</button></div>';
   }
   h+='</div><div class="panel"><h2>匯入</h2>';
-  h+='<p class="small muted" style="margin:0">匯入訪談紀錄(CSV)。標題列要有:日期、地主、內容摘要、意願;方式、記錄人、下次跟進日可省略。地主姓名要和系統內一致。'+(staff?'只能匯入自己負責的地主的紀錄,別人負責的地主會被擋下來。':'')+(admin?'管理者也可以在這裡還原完整備份(JSON)。':'')+'</p>';
+  h+='<p class="small muted" style="margin:0">匯入訪談紀錄(Excel)。標題列要有:日期、地主、內容摘要、意願;方式、記錄人、下次跟進日可省略。地主姓名要和系統內一致。'+(staff?'只能匯入自己負責的地主的紀錄,別人負責的地主會被擋下來。':'')+(admin?'管理者也可以在這裡還原完整備份(JSON)。':'')+'</p>';
   h+='<p style="margin:10px 0 0"><button class="btn" type="button" data-tpl'+(dlState==='none'?' disabled':'')+'>下載匯入範本</button></p>';
   h+='<div class="dropzone"><label class="lab" for="imp-file">選擇檔案</label><input type="file" id="imp-file" accept=".csv,.json,.txt"><label class="lab" for="imp-text" style="margin-top:10px">或貼上內容</label><textarea class="mono" id="imp-text" rows="5" placeholder="日期,地主,方式,記錄人,內容摘要,意願,下次跟進日"></textarea>';
   h+='<div class="actions" style="margin-top:10px"><button class="btn" type="button" data-imp-clear>清除</button><button class="btn primary" type="button" data-imp-check>檢查內容</button></div></div>';
@@ -2170,7 +2191,7 @@ function renderStats(){
   var el=$('#stats-page');if(!el)return;
   var st=stats(),cs=computeStats(),over=0;
   projOwners().forEach(function(o){var s=oState(o);if(s.next&&diffDays(s.next)<0)over++});
-  var h='<div class="orow"><div><h1>統計</h1><p class="muted" style="margin:0">'+esc(PRJ[S.proj].name)+'的全區資料,隨訪談紀錄即時更新。</p></div>'+(S.role==='staff'?'':'<div class="tools"><button class="btn primary" type="button" data-exp="statsrpt"'+(dlState==='none'?' disabled':'')+'>匯出報告(含圖表)</button><button class="btn" type="button" data-exp="stats"'+(dlState==='none'?' disabled':'')+'>匯出 CSV</button></div>')+'</div>'+projSwitchHTML();
+  var h='<div class="orow"><div><h1>統計</h1><p class="muted" style="margin:0">'+esc(PRJ[S.proj].name)+'的全區資料,隨訪談紀錄即時更新。</p></div>'+(S.role==='staff'?'':'<div class="tools"><button class="btn primary" type="button" data-exp="statsrpt"'+(dlState==='none'?' disabled':'')+'>匯出 PDF</button><button class="btn" type="button" data-exp="stats"'+(dlState==='none'?' disabled':'')+'>匯出 Excel</button></div>')+'</div>'+projSwitchHTML();
   h+='<div class="kpis">'+kpi('地號數',st.n)+kpi('總面積',(st.total/1e4).toFixed(2)+' 公頃')+kpi('地主數',cs.ownerCount)+kpi('訪談次數(累計)',cs.ivCount)+kpi('近 30 天訪談',cs.recent30)+kpi('逾期跟進',over+' 位')+kpi('已成交地主',dealCount()+' 位')+kpi('特定工廠(*)',PP().filter(isFactory).length+' 筆')+'</div>';
   h+='<div class="grid2">';
   var allBy={};LEVELS.forEach(function(l){allBy[l.k]=st.by[l.k].a});
@@ -3263,7 +3284,7 @@ function renderImResult(){
   h+='<div class="field"><span class="lab">承辦業務(勾選這個專案的成員,地主會平均分配給他們)</span><details class="spicker" open><summary>已選 '+selStaff.length+' 位 <span class="muted small">(點開勾選)</span></summary><div class="spbox"><input type="search" class="pstaff-search" placeholder="搜尋業務姓名" aria-label="搜尋業務"><div class="splist">'+staffIds(true).map(function(x){return '<label class="sprow"><input type="checkbox" data-imstaff-cb="'+esc(x)+'"'+(selStaff.indexOf(x)>=0?' checked':'')+' style="width:auto"> 承辦人'+esc(x)+'</label>'}).join('')+'</div></div></details></div>';
   h+='<p class="small muted" style="margin:10px 0 0">將建立 '+groups.length+' 個區塊:'+groups.map(function(g){return esc(g.name)+'('+g.ps.length+' 筆)'}).join('、')+'。地圖形狀是依地號排成的示意圖,取得地籍圖檔後再換成真實圖形。</p>';
   h+='<div class="actions"><button class="btn" type="button" data-im-dl-clean'+(dlState==='none'?' disabled':'')+'>下載整理後的資料(Excel)</button><button class="btn primary" type="button" data-im-create>'+(IM.opts.target?'加入既有專案並匯入 ':'建立專案並匯入 ')+res.parcels.length+' 筆地號</button></div></div>';
-  box.innerHTML=h;
+  box.innerHTML=h;renderCbPanel();
 }
 
 
@@ -4628,7 +4649,38 @@ function downloadB64(name,mime,b64){
   downloadBlob(name,new Blob([u8],{type:mime}));
 }
 function initDownloads(){dl={};dlState='ok'}
+function xlsxCellVal_(v,hdr){
+  if(typeof v!=='string')return v;
+  var s=v.replace(/^'(?=[=+\-@\t\r])/,'');
+  if(/地號|段別|持分|電話|身分證|統編|統一編號|門牌|建號|地段/.test(hdr||''))return s;
+  if(/^-?(0|[1-9]\d{0,14})(\.\d+)?$/.test(s))return Number(s);
+  return s;
+}
+function xlsxWidth_(s){var n=0;String(s==null?'':s).split('\n')[0].split('').forEach(function(ch){n+=ch.charCodeAt(0)>255?2:1});return n}
+async function saveRowsXlsx(name,rows,label,sheetName){
+  var fname=name.replace(/\.csv$/i,'.xlsx');
+  try{
+    var E=await loadExcelJS(),wb=new E.Workbook(),sn=String(sheetName||label||'資料').replace(/[\[\]:*?\/\\]/g,'').replace(/\(.*$/,'').slice(0,31)||'資料',ws=wb.addWorksheet(sn),head=rows[0]||[];
+    var textCol=head.map(function(h){return /地號|段別|持分|電話|身分證|統編|統一編號|門牌|建號|地段/.test(h||'')});
+    rows.forEach(function(r,i){ws.addRow(i?r.map(function(v,c){return xlsxCellVal_(v,head[c])}):r)});
+    textCol.forEach(function(isT,c){if(!isT)return;for(var i=2;i<=rows.length;i++){var cell=ws.getRow(i).getCell(c+1);cell.numFmt='@';cell.value=String(cell.value==null?'':cell.value)}});
+    var hr=ws.getRow(1);hr.font={bold:true,color:{argb:'FFFFFFFF'}};hr.alignment={vertical:'middle',wrapText:true};
+    hr.eachCell(function(cell){cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF1F5C46'}}});
+    ws.views=[{state:'frozen',ySplit:1}];
+    if(head.length)ws.autoFilter={from:{row:1,column:1},to:{row:1,column:head.length}};
+    head.forEach(function(h,c){var m=xlsxWidth_(h);for(var i=1;i<Math.min(rows.length,200);i++)m=Math.max(m,xlsxWidth_(rows[i][c]));ws.getColumn(c+1).width=Math.max(8,Math.min(40,m+2))});
+    var buf=await wb.xlsx.writeBuffer();
+    downloadBlob(fname,new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+    api('logExport',{label:label,name:fname}).catch(function(){});
+    toast('已匯出:'+fname);
+  }catch(e){
+    try{downloadBlob(name.replace(/\.xlsx$/i,'.csv'),new Blob([toCSV(rows)],{type:'text/csv;charset=utf-8'}))}catch(x){toast('匯出沒有完成,請再試一次。');return}
+    api('logExport',{label:label,name:name.replace(/\.xlsx$/i,'.csv')}).catch(function(){});
+    toast('Excel 元件載入失敗(請確認網路),這次先下載成 CSV。');
+  }
+}
 function saveFile(name,data,label){
+  if(/\.csv$/i.test(name)){saveRowsXlsx(name,parseCSV(String(data)),label);return}
   try{downloadBlob(name,new Blob([data],{type:'text/csv;charset=utf-8'}))}catch(e){toast('匯出沒有完成,請再試一次。');return}
   api('logExport',{label:label,name:name}).catch(function(){});
   toast('已匯出:'+name);
@@ -4649,13 +4701,82 @@ function statsReportHTML_(){
     +'<h1 style="margin:0">統計報告:'+esc(nm)+'</h1><p class="muted" style="margin:4px 0 0">製表日期 '+iso(TODAY)+(ME?' · 製表人 '+esc(ME):'')+'</p>'
     +c.innerHTML+'<p class="small muted" style="margin:18px 0 0">由土地開發紀錄系統匯出。內容含地主資料,請妥善保管,不要轉傳給無關人員。</p></div></body></html>';
 }
-function saveStatsReport(){
+var PDF_H2C='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',PDF_JSPDF='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+function loadScriptOnce_(url,ready){
+  return new Promise(function(resolve,reject){
+    if(ready()){resolve();return}
+    var sc=document.createElement('script');sc.src=url;
+    sc.onload=function(){ready()?resolve():reject(new Error('x'))};sc.onerror=function(){reject(new Error('x'))};
+    document.head.appendChild(sc);
+  });
+}
+function statsPdfHost_(){
+  var src=$('#stats-page');if(!src)return null;
+  var c=src.cloneNode(true);
+  [].slice.call(c.querySelectorAll('.bar-tools,[data-exp],select,input,textarea')).forEach(function(n){if(n.parentNode)n.parentNode.removeChild(n)});
+  if(c.firstElementChild&&c.firstElementChild.classList.contains('orow'))c.removeChild(c.firstElementChild);
+  [].slice.call(c.querySelectorAll('button')).forEach(function(b){var s=document.createElement('span');s.textContent=b.textContent;b.parentNode.replaceChild(s,b)});
+  var host=document.createElement('div'),nm=PRJ[S.proj].name;
+  host.style.cssText='position:fixed;left:-12000px;top:0;width:820px;padding:20px;background:#fff;color:#15251F;font-size:14px;line-height:1.55;font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;--bg:#fff;--surface:#fff;--surface-2:#F5F8F6;--ink:#15251F;--ink-2:#4A5B54;--line:#D5DDD8;--brand:#1F5C46;--on-brand:#fff;--danger:#B3362A';
+  host.innerHTML='<style>.grid2{grid-template-columns:1fr!important}.kpis{grid-template-columns:repeat(4,1fr)!important}.tablewrap{overflow:visible!important;max-height:none!important}th,td{white-space:normal!important}.panel td:first-child,.panel th:first-child{white-space:nowrap!important}.wrapcell{min-width:0!important}.hb{grid-template-columns:150px minmax(0,1fr) 50px!important}</style>'
+    +'<h1 style="margin:0;font-size:22px">統計報告:'+esc(nm)+'</h1><p style="margin:4px 0 0;color:#4A5B54">製表日期 '+iso(TODAY)+(ME?' · 製表人 '+esc(ME):'')+'</p>';
+  host.appendChild(c);
+  var f=document.createElement('p');f.style.cssText='margin:18px 0 0;font-size:12px;color:#4A5B54';f.textContent='由土地開發紀錄系統匯出。內容含地主資料,請妥善保管,不要轉傳給無關人員。';host.appendChild(f);
+  return host;
+}
+function pdfBreaks_(host,totalH,pageH){
+  var base=host.getBoundingClientRect().top,cand=[];
+  [].slice.call(host.querySelectorAll(':scope > h1,:scope > p,:scope > div > .kpis,:scope > div > .grid2 > .panel,:scope > div > .kpis > .kpi')).forEach(function(n){
+    var r=n.getBoundingClientRect();cand.push(r.top-base,r.bottom-base);
+  });
+  cand.sort(function(a,b){return a-b});
+  var out=[],start=0;
+  while(start<totalH-1){
+    var end=start+pageH;
+    if(end>=totalH){out.push([start,totalH]);break}
+    var best=0;cand.forEach(function(y){if(y>start+pageH*0.3&&y<=end&&y>best)best=y});
+    if(best)end=best;
+    out.push([start,end]);start=end;
+  }
+  return out;
+}
+async function saveStatsReport(){
   if(S.role==='staff'){toast('業務人員不能匯出資料。');return}
-  var name='土地開發_'+PRJ[S.proj].name.replace(/\s+/g,'')+'_統計報告_'+iso(TODAY)+'.html',html=statsReportHTML_();
-  if(!html){toast('找不到統計內容。');return}
-  try{downloadBlob(name,new Blob([html],{type:'text/html;charset=utf-8'}))}catch(e){toast('匯出沒有完成,請再試一次。');return}
-  api('logExport',{label:'統計報告('+PRJ[S.proj].name+')',name:name}).catch(function(){});
-  toast('已匯出:'+name+'。用瀏覽器打開,可按右上角「列印 / 存成 PDF」。');
+  var btn=$('[data-exp="statsrpt"]'),label=btn?btn.textContent:'',host=null;
+  if(btn){btn.disabled=true;btn.textContent='產生 PDF 中…'}
+  var name='土地開發_'+PRJ[S.proj].name.replace(/\s+/g,'')+'_統計報告_'+iso(TODAY)+'.pdf';
+  try{
+    await loadScriptOnce_(PDF_H2C,function(){return !!window.html2canvas});
+    await loadScriptOnce_(PDF_JSPDF,function(){return !!(window.jspdf&&window.jspdf.jsPDF)});
+    host=statsPdfHost_();if(!host)throw new Error('找不到統計內容');
+    document.body.appendChild(host);
+    if(document.fonts&&document.fonts.ready){try{await document.fonts.ready}catch(x){}}
+    var W=host.offsetWidth,H=host.offsetHeight,sc=Math.max(1,Math.min(2,Math.sqrt(12e6/(W*H))));
+    var cv=await window.html2canvas(host,{scale:sc,backgroundColor:'#ffffff',logging:false});
+    var pxPerMm=W/190,pageH=268*pxPerMm,pages=pdfBreaks_(host,H,pageH),ratio=cv.width/W;
+    var pdf=new window.jspdf.jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
+    pages.forEach(function(pg,i){
+      if(i)pdf.addPage();
+      var sy=Math.round(pg[0]*ratio),sh=Math.max(1,Math.round((pg[1]-pg[0])*ratio)),tmp=document.createElement('canvas');
+      tmp.width=cv.width;tmp.height=sh;var cx=tmp.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,tmp.width,tmp.height);cx.drawImage(cv,0,sy,cv.width,sh,0,0,cv.width,sh);
+      pdf.addImage(tmp.toDataURL('image/jpeg',0.92),'JPEG',10,10,190,(pg[1]-pg[0])/pxPerMm);
+      pdf.setFontSize(8);pdf.setTextColor(120);pdf.text((i+1)+' / '+pages.length,105,291,{align:'center'});
+    });
+    pdf.save(name);
+    api('logExport',{label:'統計報告(PDF)('+PRJ[S.proj].name+')',name:name}).catch(function(){});
+    toast('已匯出:'+name);
+  }catch(e){
+    var html=statsReportHTML_();
+    if(html&&(!e||e.message==='x')){
+      // PDF 元件載入失敗(沒網路):改開列印畫面,選「另存為 PDF」
+      var fr=document.createElement('iframe');fr.style.cssText='position:fixed;left:-9999px;width:900px;height:600px';fr.srcdoc=html;
+      fr.onload=function(){try{fr.contentWindow.focus();fr.contentWindow.print()}catch(x){}setTimeout(function(){fr.remove()},60000)};
+      document.body.appendChild(fr);toast('PDF 元件載入失敗,改開列印畫面:印表機選「另存為 PDF」。');
+    }else toast('產生 PDF 失敗:'+(e&&e.message?e.message:e));
+  }finally{
+    if(host&&host.parentNode)host.parentNode.removeChild(host);
+    if(btn){btn.disabled=false;btn.textContent=label}
+  }
 }
 /* ---- 整理後資料下載成 Excel:戶籍地不確定的反紅 ---- */
 var XLSX_STYLE_CDN='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
@@ -4835,16 +4956,16 @@ function renderData(){
   h+='<div class="grid2"><div class="panel"><h2>匯出</h2>';
   if(staff)h+='<div class="notice" style="margin:0">業務人員不能匯出資料。需要資料時,請找專案負責人或管理員。</div>';
   else{
-    [['parcels','地號清單','面積、使用分區、地主與持分(CSV)'],['owners','地主清單','含電話與地址,請妥善保管(CSV)'],['interviews','訪談紀錄','全部訪談,新到舊排列(CSV)']].forEach(function(x){
+    [['parcels','地號清單','面積、使用分區、地主與持分(Excel)'],['owners','地主清單','含電話與地址,請妥善保管(Excel)'],['interviews','訪談紀錄','全部訪談,新到舊排列(Excel)']].forEach(function(x){
       h+='<div class="expcard"><div><b>'+x[1]+'</b><span class="small muted">'+x[2]+'</span></div><button class="btn" type="button" data-dx-exp="'+x[0]+'">匯出</button></div>';
     });
     h+='<div class="expcard"><div><b>完整備份</b><span class="small muted">'+(admin?'在雲端硬碟建立整份試算表的副本,含全部專案與個資':'只有管理員可以建立,因為含全部專案與個資')+'</span></div><button class="btn" type="button" data-dx-backup'+(admin?'':' disabled')+'>建立備份</button></div>';
     if(DX.bk)h+='<div class="notice">已建立備份:'+esc(DX.bk.name)+(/^https:\/\//.test(DX.bk.url)?' <a href="'+esc(DX.bk.url)+'" target="_blank" rel="noopener">開啟</a>':'')+'</div>';
   }
   h+='</div><div class="panel"><h2>匯入訪談紀錄</h2>';
-  h+='<p class="small muted" style="margin:0">標題列要有:日期、地主、內容摘要、意願;方式、記錄人、下次跟進日、關切標籤可省略。地主姓名要和系統內一致。請存成「CSV UTF-8」。'+(staff?'只能匯入自己負責的地主的紀錄。':'')+'</p>';
+  h+='<p class="small muted" style="margin:0">標題列要有:日期、地主、內容摘要、意願;方式、記錄人、下次跟進日、關切標籤可省略。地主姓名要和系統內一致。可直接上傳 Excel 檔(.xlsx),也可以貼上內容。'+(staff?'只能匯入自己負責的地主的紀錄。':'')+'</p>';
   h+='<p style="margin:10px 0 0"><button class="btn" type="button" data-dx-tpl>下載匯入範本</button></p>';
-  h+='<div class="dropzone"><label class="lab" for="dx-file">選擇檔案</label><input type="file" id="dx-file" accept=".csv,.txt"><label class="lab" for="dx-text" style="margin-top:10px">或貼上內容</label><textarea class="mono" id="dx-text" rows="5" placeholder="'+DX_HEAD.join(',')+'">'+esc(DX.text)+'</textarea>';
+  h+='<div class="dropzone"><label class="lab" for="dx-file">選擇檔案</label><input type="file" id="dx-file" accept=".xlsx,.xls,.csv,.txt"><label class="lab" for="dx-text" style="margin-top:10px">或貼上內容</label><textarea class="mono" id="dx-text" rows="5" placeholder="'+DX_HEAD.join(',')+'">'+esc(DX.text)+'</textarea>';
   h+='<div class="actions" style="margin-top:10px"><button class="btn" type="button" data-dx-clear>清除</button><button class="btn primary" type="button" data-dx-check>檢查內容</button></div></div>';
   h+='<div id="dx-result">'+dxResultHTML()+'</div></div></div>';
   el.innerHTML=h;
@@ -4854,6 +4975,7 @@ document.addEventListener('change',function(e){
   if(t.id==='dx-proj'){DX.proj=t.value;DX.check=null;DX.msg='';renderData();return}
   if(t.id==='dx-file'){
     var f=t.files&&t.files[0];if(!f)return;
+    if(/\.xlsx?$/i.test(f.name)){xlsxToCsv(f).then(function(txt){DX.text=txt;DX.check=null;DX.msg='';var ta=$('#dx-text');if(ta)ta.value=txt;dxRefresh()}).catch(function(e){toast('讀不到這個 Excel 檔:'+(e&&e.message?e.message:e))});t.value='';return}
     var rd=new FileReader();rd.onload=function(){DX.text=String(rd.result||'');DX.check=null;DX.msg='';var ta=$('#dx-text');if(ta)ta.value=DX.text;dxRefresh()};
     rd.onerror=function(){toast('讀不到這個檔案,請再試一次。')};rd.readAsText(f,'utf-8');
   }
@@ -4865,7 +4987,7 @@ document.addEventListener('click',function(e){
   if((b=t.closest('[data-dx-exp]'))){
     var kind=b.dataset.dxExp,label={parcels:'地號清單',owners:'地主清單',interviews:'訪談紀錄'}[kind];b.disabled=true;
     api('exportData',{projectId:DX.proj,kind:kind}).then(function(r){
-      downloadBlob('土地開發_'+label+'_'+safe(r.project)+'_'+iso(new Date())+'.csv',new Blob([toCSV(r.rows)],{type:'text/csv;charset=utf-8'}));
+      saveRowsXlsx('土地開發_'+label+'_'+safe(r.project)+'_'+iso(new Date())+'.xlsx',r.rows,label+'('+r.project+')',label);
       toast('已匯出:'+label+'('+(r.rows.length-1)+' 筆)。');
     }).catch(function(er){if(er.auth)showLogin('登入已過期,請重新登入');else toast('匯出失敗:'+(er.userMessage||er.message))}).then(function(){b.disabled=false});
     return;
@@ -4878,7 +5000,7 @@ document.addEventListener('click',function(e){
     return;
   }
   if(t.closest('[data-dx-tpl]')){
-    downloadBlob('土地開發_訪談匯入範本.csv',new Blob([toCSV([DX_HEAD,[iso(new Date()),'(地主姓名,要和系統內一致)','拜訪','','(這次談了什麼)','B',iso(new Date(Date.now()+7*864e5)),'價格、稅負']])],{type:'text/csv;charset=utf-8'}));
+    saveRowsXlsx('土地開發_訪談匯入範本.xlsx',[DX_HEAD,[iso(new Date()),'(地主姓名,要和系統內一致)','拜訪','','(這次談了什麼)','B',iso(new Date(Date.now()+7*864e5)),'價格、稅負']],'訪談匯入範本','匯入範本');
     return;
   }
   if(t.closest('[data-dx-clear]')){DX.text='';DX.check=null;DX.rows=null;DX.msg='';renderData();return}
@@ -4954,11 +5076,18 @@ async function createFromImport(opt){
   CP.busy=true;var btn=$('[data-im-create]');if(btn){btn.disabled=true;btn.textContent='建立中…'}
   try{
     var r=await api('createProject',{projectId:target||undefined,name:name,type:IM.opts.type||'其他',status:IM.opts.status||'規劃中',staff:target?[]:staff,owners:owners,parcels:parcels});
+    var geoMsg='';
+    if(CB.items.length){
+      var fin=cbFinal_();
+      if(fin.geo){try{await api('mergeGeo',{projectId:r.projectId,geo:fin.geo,replace:!r.appended,place:{dir:'E',gap:40},caption:''});geoMsg='已存入地籍圖('+Object.keys(fin.geo.parcels).length+' 筆地號)。'}catch(ge){if(ge.auth){showLogin('登入已過期,請重新登入');return}geoMsg='專案已建立,但地籍圖沒存成功('+(ge.userMessage||ge.message)+'),請到「後台 → 專案」再上傳。'}}
+      else if(fin.err)geoMsg='專案已建立,但地籍圖合併失敗('+fin.err+'),請到「後台 → 專案」再上傳。';
+      cbReset_();
+    }
     IM.text='';IM.res=null;IM.map=null;IM.deed={files:[],recs:[],msgs:[]};IM.deedBld=[];IM.opts.name='';IM.opts.target='';
     await refreshData();
     if(PRJ[r.projectId])switchProject(r.projectId);
     location.hash='#projects';
-    toast((r.appended?'已加入專案「':'已建立專案「')+name+'」:新增 '+r.parcels+' 筆地號、'+r.owners+' 位新地主'+(r.matched?('、沿用 '+r.matched+' 位既有地主'):'')+(r.skippedParcels&&r.skippedParcels.length?('、略過 '+r.skippedParcels.length+' 筆已在專案裡的地號'):'')+(r.folderOk?'':'。專案資料夾沒建成功,請到 Drive 確認')+'。');
+    toast((r.appended?'已加入專案「':'已建立專案「')+name+'」:新增 '+r.parcels+' 筆地號、'+r.owners+' 位新地主'+(r.matched?('、沿用 '+r.matched+' 位既有地主'):'')+(r.skippedParcels&&r.skippedParcels.length?('、略過 '+r.skippedParcels.length+' 筆已在專案裡的地號'):'')+(r.folderOk?'':'。專案資料夾沒建成功,請到 Drive 確認')+'。'+geoMsg);
   }catch(e){
     if(e.auth){showLogin('登入已過期,請重新登入')}else{toast('建立失敗:'+(e.userMessage||e.message));if(btn){btn.disabled=false;btn.textContent='建立專案並匯入 '+res.parcels.length+' 筆地號'}}
   }finally{CP.busy=false}
@@ -5243,7 +5372,7 @@ function expRows_(){
 }
 function expPanelHTML_(exp){
   var mgr=S.role!=='staff',nodate=exp.filter(function(p){return deedAge(p)===null}).length,old=exp.length-nodate,reg=PP().filter(function(p){return p.registryOnly}),list=sortExp_(exp),LIM=300;
-  var h='<div class="panel" style="margin-top:14px"><div class="orow"><h2>需要重新申請的謄本(超過 '+DEED_EXPIRE_DAYS+' 天或沒有日期,'+exp.length+' 筆)</h2>'+(mgr?'<button class="btn small" type="button" data-up-export>匯出清單(CSV)</button>':'')+'</div>';
+  var h='<div class="panel" style="margin-top:14px"><div class="orow"><h2>需要重新申請的謄本(超過 '+DEED_EXPIRE_DAYS+' 天或沒有日期,'+exp.length+' 筆)</h2>'+(mgr?'<button class="btn small" type="button" data-up-export>匯出清單(Excel)</button>':'')+'</div>';
   if(!exp.length)h+='<p class="small muted" style="margin:0">這個專案的謄本都在期限內'+(reg.length?',另有 '+reg.length+' 筆標為以清冊為準。':'。')+'</p>';
   else{
     h+='<p class="small" style="margin:0 0 8px">沒有謄本取得日期 <b>'+nodate+'</b> 筆,謄本太舊 <b>'+old+'</b> 筆。</p>';
@@ -5252,7 +5381,7 @@ function expPanelHTML_(exp){
     h+='<div class="tablewrap" style="margin-top:0;max-height:360px"><table><thead><tr>'+(mgr?'<th style="width:32px"><input type="checkbox" data-expsel-all aria-label="全選" style="width:auto"></th>':'')+'<th>地號</th><th>原因</th><th>謄本取得日期</th><th>距今</th></tr></thead><tbody>';
     list.slice(0,LIM).forEach(function(p){var a=deedAge(p),r=expReason_(p);h+='<tr>'+(mgr?'<td><input type="checkbox" data-expsel="'+p.id+'" aria-label="勾選 '+esc(pname(p))+'" style="width:auto"'+(EXPUI.sel[p.id]?' checked':'')+'></td>':'')+'<td>'+esc(pname(p))+'</td><td class="wrapcell">'+esc(r.t)+'</td><td>'+esc(p.deedDate?String(p.deedDate).slice(0,10):'—')+'</td><td>'+(a===null?'—':a+' 天')+'</td></tr>'});
     h+='</tbody></table></div>';
-    if(list.length>LIM)h+='<p class="small muted" style="margin:6px 0 0">只顯示前 '+LIM+' 筆,匯出的 CSV 有全部。</p>';
+    if(list.length>LIM)h+='<p class="small muted" style="margin:6px 0 0">只顯示前 '+LIM+' 筆,匯出的 Excel 有全部。</p>';
   }
   if(reg.length){
     h+='<details style="margin-top:12px"><summary class="small">以清冊為準的地號(<b>'+reg.length+'</b> 筆,不列入過期)</summary><div class="tablewrap" style="margin-top:8px;max-height:260px"><table><thead><tr><th>地號</th><th>最近一份謄本</th>'+(mgr?'<th></th>':'')+'</tr></thead><tbody>'+reg.sort(natCmp_).map(function(p){return '<tr><td>'+esc(pname(p))+'</td><td>'+esc(p.deedDate?String(p.deedDate).slice(0,10):'沒有')+'</td>'+(mgr?'<td><button class="btn small" type="button" data-reg-unmark="'+p.id+'">取消</button></td>':'')+'</tr>'}).join('')+'</tbody></table></div></details>';
@@ -5634,15 +5763,21 @@ function cadRender(){
         h+='<p class="small muted" style="margin:0 0 6px">專案現有的圖資段別:'+cur.map(esc).join('、')+'。</p>'
           +'<label style="display:flex;gap:6px;align-items:center;font-size:14px"><input type="radio" name="cad-mode" value="merge" style="width:auto"'+(!has&&!CAD.replace?' checked':'')+(has?' disabled':'')+'> 合併:把這一段加到現有地圖旁邊'+(has?'(這一段已在圖上,不能合併)':'')+'</label>'
           +'<label style="display:flex;gap:6px;align-items:center;font-size:14px;margin-top:4px"><input type="radio" name="cad-mode" value="replace" style="width:auto"'+(has||CAD.replace?' checked':'')+'> 取代:整張地圖換成這一份(現有的其他段會消失)</label>'
-          +cadPlaceHTML_(!(has||CAD.replace));
+          +cadPlaceHTML_('cad',!(has||CAD.replace));
       }
       h+='</div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="button" data-cad-apply>套用到專案</button></div>';
     }
   }
   body.innerHTML=h;
 }
-/* ---- 合併圖資:選方位 + 預覽 + 手指拖移 ---- */
+/* ---- 地籍圖擺放:選方位 + 預覽 + 手指拖移(後台合併 'cad' 與新增專案分批上傳 'cb' 共用) ---- */
 function cadPl_(){if(!CAD.pl)CAD.pl={dir:'E',gap:40,east:0,north:0,step:50};return CAD.pl}
+function plx_(k){
+  if(k==='cad'){if(!CAD)return null;return {pl:cadPl_(),old:GEOC[CAD.pid],add:CAD.res&&CAD.res.geo}}
+  var it=CB.items[CB.sel];if(!it||CB.sel<1||!it.res||!it.res.ok)return null;
+  var old=null;try{old=cbFold_(CB.sel)}catch(x){old=null}
+  return {pl:it.pl,old:old,add:it.res.geo};
+}
 function cadGeoPts_(g,fn){
   Object.keys(g.parcels||{}).forEach(function(k){(g.parcels[k].pts||[]).forEach(fn)});
   (g.ctx||[]).forEach(function(r){r.forEach(fn)});
@@ -5656,67 +5791,93 @@ function cadCalc_(old,add,P){   // 和後端 combineGeo_ 算法一致
   var wy=dir.indexOf('S')>=0?ob[3]+gap-nb[1]:dir.indexOf('N')>=0?ob[1]-gap-nb[3]:ocy-ncy;
   return {ob:ob,nb:nb,dx:wx+(Number(P.east)||0),dy:wy-(Number(P.north)||0)};
 }
-function cadPvHTML_(){
-  var P=cadPl_(),add=CAD.res&&CAD.res.geo,old=GEOC[CAD.pid];
-  if(!add)return '';
-  if(!old)return '<p class="small muted">讀取現有地圖中…</p>';
-  var c=cadCalc_(old,add,P),so=old.scale,sn=add.scale;
+/* 把新的一段併進舊圖(和後端 combineGeo_ 一樣的算法),新增專案分批上傳時在瀏覽器端先合好 */
+function geoSecsJS_(g){var o={};Object.keys(g.parcels||{}).forEach(function(k){var i=k.indexOf('|');o[g.parcels[k].sec||(i>=0?k.slice(0,i):'')]=1});return Object.keys(o)}
+function geoCombineJS_(old,add,caption,place){
+  var oldSecs=geoSecsJS_(old),dup=geoSecsJS_(add).filter(function(x){return oldSecs.indexOf(x)>=0});
+  if(dup.length)throw new Error('「'+dup.join('、')+'」已經在圖上了,請改段別或刪掉重複的那一份。');
+  var so=old.scale,sn=add.scale,c=cadCalc_(old,add,place||{dir:'E',gap:40,east:0,north:0}),ob=c.ob,nb=c.nb,dx=c.dx,dy=c.dy;
+  var ub=[ob[0],ob[1],Math.max(ob[2],nb[2]+dx),Math.max(ob[3],nb[3]+dy)];
+  var W=ub[2]-ub[0],H=ub[3]-ub[1],sc=Math.min(920/W,580/H),ox=40+(920-W*sc)/2,oy=40+(580-H*sc)/2;
+  var r1=function(x){return Math.round(x*10)/10};
+  function mk(scale,shift){return function(p){return [r1(ox+((p[0]*scale+(shift?dx:0))-ub[0])*sc),r1(oy+((p[1]*scale+(shift?dy:0))-ub[1])*sc)]}}
+  var out={parcels:{},ctx:[],ctxlab:[],zones:{},dev:[],scale:Math.round(10000/sc)/10000};
+  [[old,so,false],[add,sn,true]].forEach(function(a){
+    var g=a[0],T=mk(a[1],a[2]),k=a[1]*sc;
+    Object.keys(g.parcels).forEach(function(key){
+      var q=g.parcels[key],i=key.indexOf('|'),sec=q.sec||(i>=0?key.slice(0,i):''),no=i>=0?key.slice(i+1):key,o={};
+      Object.keys(q).forEach(function(f){o[f]=q[f]});
+      o.sec=sec;o.pts=q.pts.map(T);o.c=T(q.c);o.lf=Math.max(2.2,r1(q.lf*k));out.parcels[sec+'|'+no]=o;
+    });
+    (g.ctx||[]).forEach(function(r){out.ctx.push(r.map(T))});
+    (g.ctxlab||[]).forEach(function(l){var o={};Object.keys(l).forEach(function(f){o[f]=l[f]});o.c=T(l.c);if(!l.big)o.f=Math.max(2.2,r1((l.f||3)*k));out.ctxlab.push(o)});
+    Object.keys(g.zones||{}).forEach(function(z){out.zones[z]=(out.zones[z]||[]).concat(g.zones[z].map(function(rings){return rings.map(function(r){return r.map(T)})}))});
+  });
+  if(old.zc||add.zc){out.zc={};[add.zc,old.zc].forEach(function(z){if(z)Object.keys(z).forEach(function(k2){out.zc[k2]=z[k2]})})}
+  if(caption)out.ctxlab.push({t:String(caption).slice(0,20),c:mk(sn,true)([(nb[0]+nb[2])/2/sn,nb[1]/sn-8/sn]),f:9,big:true});
+  return out;
+}
+function cadPvHTML_(k){
+  var X=plx_(k);if(!X||!X.add)return '';
+  if(!X.old)return '<p class="small muted">讀取現有地圖中…</p>';
+  var P=X.pl,old=X.old,add=X.add,c=cadCalc_(old,add,P),so=old.scale,sn=add.scale;
   var x0=Math.min(c.ob[0],c.nb[0]+c.dx),y0=Math.min(c.ob[1],c.nb[1]+c.dy),x1=Math.max(c.ob[2],c.nb[2]+c.dx),y1=Math.max(c.ob[3],c.nb[3]+c.dy);
   var pad=Math.max(x1-x0,y1-y0)*0.06,vb=[x0-pad,y0-pad,x1-x0+pad*2,y1-y0+pad*2];
-  function poly(g,s,color,fill){var h='';Object.keys(g.parcels).forEach(function(k){h+='<polygon points="'+g.parcels[k].pts.map(function(q){return (q[0]*s).toFixed(1)+','+(q[1]*s).toFixed(1)}).join(' ')+'" fill="'+fill+'" stroke="'+color+'" stroke-width="1" vector-effect="non-scaling-stroke"/>'});return h}
+  function poly(g,s,color,fill){var h='';Object.keys(g.parcels).forEach(function(key){h+='<polygon points="'+g.parcels[key].pts.map(function(q){return (q[0]*s).toFixed(1)+','+(q[1]*s).toFixed(1)}).join(' ')+'" fill="'+fill+'" stroke="'+color+'" stroke-width="1" vector-effect="non-scaling-stroke"/>'});return h}
   var fs=Math.max(vb[2],vb[3])/28;
-  var h='<svg id="cad-svg" viewBox="'+vb.map(function(v){return v.toFixed(1)}).join(' ')+'" style="width:100%;height:300px;touch-action:none;background:#f4f7f5;border:1px solid var(--line);border-radius:10px" role="img" aria-label="合併位置預覽">';
-  h+='<g>'+poly(old,so,'#1F5C46','#cfe6da')+'<text x="'+((c.ob[0]+c.ob[2])/2)+'" y="'+(c.ob[1]-fs*0.4)+'" text-anchor="middle" font-size="'+fs+'" fill="#1F5C46" font-weight="700">現有地圖</text></g>';
-  h+='<g id="cad-new" data-bx="'+c.dx+'" data-by="'+c.dy+'" transform="translate('+c.dx.toFixed(1)+' '+c.dy.toFixed(1)+')" style="cursor:grab">'
+  var h='<svg id="'+k+'-svg" viewBox="'+vb.map(function(v){return v.toFixed(1)}).join(' ')+'" style="width:100%;height:300px;touch-action:none;background:#f4f7f5;border:1px solid var(--line);border-radius:10px" role="img" aria-label="擺放位置預覽">';
+  h+='<g>'+poly(old,so,'#1F5C46','#cfe6da')+'<text x="'+((c.ob[0]+c.ob[2])/2)+'" y="'+(c.ob[1]-fs*0.4)+'" text-anchor="middle" font-size="'+fs+'" fill="#1F5C46" font-weight="700">'+(k==='cb'?'前面已排好的':'現有地圖')+'</text></g>';
+  h+='<g id="'+k+'-new" data-plxnew="1" data-bx="'+c.dx+'" data-by="'+c.dy+'" transform="translate('+c.dx.toFixed(1)+' '+c.dy.toFixed(1)+')" style="cursor:grab">'
     +'<rect x="'+c.nb[0]+'" y="'+c.nb[1]+'" width="'+(c.nb[2]-c.nb[0])+'" height="'+(c.nb[3]-c.nb[1])+'" fill="#e8892b" fill-opacity="0.08" stroke="#e8892b" stroke-dasharray="6 4" stroke-width="1.5" vector-effect="non-scaling-stroke"/>'
     +poly(add,sn,'#b85c00','#f7c98f')+'<text x="'+((c.nb[0]+c.nb[2])/2)+'" y="'+(c.nb[1]-fs*0.4)+'" text-anchor="middle" font-size="'+fs+'" fill="#b85c00" font-weight="700">新的一段(可拖動)</text></g></svg>';
   return h;
 }
-function cadPlaceHTML_(show){
-  var P=cadPl_(),dirs=[['NW','↖'],['N','↑'],['NE','↗'],['W','←'],['','現有'],['E','→'],['SW','↙'],['S','↓'],['SE','↘']];
-  var h='<div id="cad-place" style="margin-top:10px"'+(show?'':' hidden')+'>';
-  h+='<p class="small" style="margin:0 0 6px"><b>① 新的一段放在現有地圖的哪一邊?</b></p>';
+function cadPlaceHTML_(k,show){
+  var X=plx_(k),P=X?X.pl:{dir:'E',gap:40,east:0,north:0,step:50},dirs=[['NW','↖'],['N','↑'],['NE','↗'],['W','←'],['','前面'],['E','→'],['SW','↙'],['S','↓'],['SE','↘']];
+  var h='<div id="'+k+'-place" data-plx="'+k+'" style="margin-top:10px"'+(show?'':' hidden')+'>';
+  h+='<p class="small" style="margin:0 0 6px"><b>① 這一份放在前面地圖的哪一邊?</b></p>';
   h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:300px">'+dirs.map(function(d){
     if(!d[0])return '<div class="small muted" style="display:flex;align-items:center;justify-content:center;border:1px dashed var(--line);border-radius:8px;min-height:44px">'+d[1]+'</div>';
     return '<button type="button" class="btn" data-cad-dir="'+d[0]+'" aria-pressed="'+(P.dir===d[0])+'" style="min-height:44px;font-size:18px;'+(P.dir===d[0]?'background:var(--brand);color:var(--on-brand);border-color:var(--brand)':'')+'">'+d[1]+'</button>';
   }).join('')+'</div>';
   h+='<p class="small" style="margin:12px 0 4px"><b>② 看預覽,用手指(或滑鼠)直接拖橘色那一塊到正確位置</b></p>';
-  h+='<div id="cad-pv">'+cadPvHTML_()+'</div>';
+  h+='<div id="'+k+'-pv">'+cadPvHTML_(k)+'</div>';
   h+='<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:8px"><span class="small muted">微調</span>'
     +'<div style="display:grid;grid-template-columns:repeat(3,44px);gap:4px"><span></span><button type="button" class="btn" data-cad-nudge="N" aria-label="往北(上)" style="min-height:40px;padding:0">↑</button><span></span><button type="button" class="btn" data-cad-nudge="W" aria-label="往西(左)" style="min-height:40px;padding:0">←</button><button type="button" class="btn" data-cad-nudge="S" aria-label="往南(下)" style="min-height:40px;padding:0">↓</button><button type="button" class="btn" data-cad-nudge="E" aria-label="往東(右)" style="min-height:40px;padding:0">→</button></div>'
-    +'<label class="small muted" style="display:flex;align-items:center;gap:6px">每按一下移<select id="cad-step" style="width:auto">'+[10,50,100,300].map(function(n){return '<option value="'+n+'"'+(P.step===n?' selected':'')+'>'+n+' 公尺</option>'}).join('')+'</select></label>'
+    +'<label class="small muted" style="display:flex;align-items:center;gap:6px">每按一下移<select id="'+k+'-step" style="width:auto">'+[10,50,100,300].map(function(n){return '<option value="'+n+'"'+(P.step===n?' selected':'')+'>'+n+' 公尺</option>'}).join('')+'</select></label>'
     +'<button type="button" class="btn small" data-cad-reset>歸零</button></div>';
-  h+='<div class="field" style="margin-top:10px"><label for="cad-gap" style="display:flex;justify-content:space-between"><span>和現有地圖的間隔</span><span id="cad-gap-v">'+P.gap+' 公尺</span></label><input type="range" id="cad-gap" min="0" max="500" step="10" value="'+Math.min(500,P.gap)+'" style="width:100%"></div>';
-  h+='<p class="small muted" id="cad-off" style="margin:4px 0 0"></p>';
-  h+='<input type="hidden" id="cad-dir" value="'+esc(P.dir)+'"><input type="hidden" id="cad-e" value="'+P.east+'"><input type="hidden" id="cad-n" value="'+P.north+'"></div>';
+  h+='<div class="field" style="margin-top:10px"><label for="'+k+'-gap" style="display:flex;justify-content:space-between"><span>和前面地圖的間隔</span><span id="'+k+'-gap-v">'+P.gap+' 公尺</span></label><input type="range" id="'+k+'-gap" min="0" max="500" step="10" value="'+Math.min(500,P.gap)+'" style="width:100%"></div>';
+  h+='<p class="small muted" id="'+k+'-off" style="margin:4px 0 0"></p>';
+  h+='<input type="hidden" id="'+k+'-dir" value="'+esc(P.dir)+'"><input type="hidden" id="'+k+'-e" value="'+P.east+'"><input type="hidden" id="'+k+'-n" value="'+P.north+'"></div>';
   return h;
 }
-function cadPvSync_(){
-  var P=cadPl_(),pv=$('#cad-pv');
-  if(pv)pv.innerHTML=cadPvHTML_();
-  [['cad-dir',P.dir],['cad-e',Math.round(P.east)],['cad-n',Math.round(P.north)]].forEach(function(x){var el=document.getElementById(x[0]);if(el)el.value=x[1]});
-  var g=$('#cad-gap-v');if(g)g.textContent=P.gap+' 公尺';
-  var o=$('#cad-off');if(o){var e=Math.round(P.east),n=Math.round(P.north);o.textContent=(e||n)?'目前微調:'+(e?(e>0?'往東 ':'往西 ')+Math.abs(e)+' 公尺 ':'')+(n?(n>0?'往北 ':'往南 ')+Math.abs(n)+' 公尺':''):'目前沒有微調。'}
-  $$('[data-cad-dir]').forEach(function(b){var on=b.dataset.cadDir===P.dir;b.setAttribute('aria-pressed',on);b.style.background=on?'var(--brand)':'';b.style.color=on?'var(--on-brand)':'';b.style.borderColor=on?'var(--brand)':''});
+function cadPvSync_(k){
+  var X=plx_(k);if(!X)return;var P=X.pl,pv=document.getElementById(k+'-pv');
+  if(pv)pv.innerHTML=cadPvHTML_(k);
+  [[k+'-dir',P.dir],[k+'-e',Math.round(P.east)],[k+'-n',Math.round(P.north)]].forEach(function(x){var el=document.getElementById(x[0]);if(el)el.value=x[1]});
+  var g=document.getElementById(k+'-gap-v');if(g)g.textContent=P.gap+' 公尺';
+  var o=document.getElementById(k+'-off');if(o){var e=Math.round(P.east),n=Math.round(P.north);o.textContent=(e||n)?'目前微調:'+(e?(e>0?'往東 ':'往西 ')+Math.abs(e)+' 公尺 ':'')+(n?(n>0?'往北 ':'往南 ')+Math.abs(n)+' 公尺':''):'目前沒有微調。'}
+  [].slice.call(document.querySelectorAll('#'+k+'-place [data-cad-dir]')).forEach(function(b){var on=b.dataset.cadDir===P.dir;b.setAttribute('aria-pressed',on);b.style.background=on?'var(--brand)':'';b.style.color=on?'var(--on-brand)':'';b.style.borderColor=on?'var(--brand)':''});
+  if(k==='cb')cbFinalRefresh_();
 }
 (function(){
   var drag=null;
   document.addEventListener('click',function(e){
-    var t=e.target;if(!t||!t.closest||!CAD)return;var b;
-    if((b=t.closest('[data-cad-dir]'))){var P=cadPl_();P.dir=b.dataset.cadDir;P.east=0;P.north=0;cadPvSync_();return}
-    if((b=t.closest('[data-cad-nudge]'))){var P2=cadPl_(),s=P2.step||50,k=b.dataset.cadNudge;if(k==='E')P2.east+=s;else if(k==='W')P2.east-=s;else if(k==='N')P2.north+=s;else P2.north-=s;cadPvSync_();return}
-    if(t.closest('[data-cad-reset]')){var P3=cadPl_();P3.east=0;P3.north=0;cadPvSync_();return}
+    var t=e.target;if(!t||!t.closest)return;var box=t.closest('[data-plx]');if(!box)return;var k=box.dataset.plx,X=plx_(k);if(!X)return;var b,P=X.pl;
+    if((b=t.closest('[data-cad-dir]'))){P.dir=b.dataset.cadDir;P.east=0;P.north=0;cadPvSync_(k);return}
+    if((b=t.closest('[data-cad-nudge]'))){var s=P.step||50,d=b.dataset.cadNudge;if(d==='E')P.east+=s;else if(d==='W')P.east-=s;else if(d==='N')P.north+=s;else P.north-=s;cadPvSync_(k);return}
+    if(t.closest('[data-cad-reset]')){P.east=0;P.north=0;cadPvSync_(k);return}
   });
-  document.addEventListener('input',function(e){var t=e.target;if(t&&t.id==='cad-gap'&&CAD){cadPl_().gap=Number(t.value)||0;cadPl_().east=cadPl_().east;cadPvSync_()}});
-  document.addEventListener('change',function(e){var t=e.target;if(!t||!CAD)return;
-    if(t.id==='cad-step'){cadPl_().step=Number(t.value)||50;return}
-    if(t.name==='cad-mode'){var pl=$('#cad-place');if(pl)pl.hidden=(t.value==='replace')}
+  document.addEventListener('input',function(e){var t=e.target;if(!t||!t.closest)return;var box=t.closest('[data-plx]');if(!box||t.id!==box.dataset.plx+'-gap')return;var X=plx_(box.dataset.plx);if(!X)return;X.pl.gap=Number(t.value)||0;cadPvSync_(box.dataset.plx)});
+  document.addEventListener('change',function(e){var t=e.target;if(!t)return;
+    if(t.closest&&t.closest('[data-plx]')){var k=t.closest('[data-plx]').dataset.plx;if(t.id===k+'-step'){var X=plx_(k);if(X)X.pl.step=Number(t.value)||50;return}}
+    if(t.name==='cad-mode'&&CAD){var pl=$('#cad-place');if(pl)pl.hidden=(t.value==='replace')}
   });
   document.addEventListener('pointerdown',function(e){
-    var t=e.target;if(!t||!t.closest||!CAD)return;var g=t.closest('#cad-new');if(!g)return;
-    var svg=$('#cad-svg'),ctm=svg&&svg.getScreenCTM();if(!ctm)return;
+    var t=e.target;if(!t||!t.closest)return;var g=t.closest('[data-plxnew]'),box=t.closest('[data-plx]');if(!g||!box)return;
+    var svg=box.querySelector('svg'),ctm=svg&&svg.getScreenCTM();if(!ctm)return;
     var pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;var p0=pt.matrixTransform(ctm.inverse());
-    drag={g:g,svg:svg,inv:ctm.inverse(),x:p0.x,y:p0.y,bx:Number(g.dataset.bx),by:Number(g.dataset.by),ddx:0,ddy:0};
+    drag={k:box.dataset.plx,g:g,svg:svg,inv:ctm.inverse(),x:p0.x,y:p0.y,bx:Number(g.dataset.bx),by:Number(g.dataset.by),ddx:0,ddy:0};
     try{svg.setPointerCapture(e.pointerId)}catch(x){}
     g.style.cursor='grabbing';e.preventDefault();
   });
@@ -5727,12 +5888,107 @@ function cadPvSync_(){
     drag.g.setAttribute('transform','translate('+(drag.bx+drag.ddx).toFixed(1)+' '+(drag.by+drag.ddy).toFixed(1)+')');
   });
   function end(){
-    if(!drag)return;var d=drag;drag=null;
-    if(CAD){var P=cadPl_();P.east+=d.ddx;P.north-=d.ddy;cadPvSync_()}
+    if(!drag)return;var d=drag;drag=null;var X=plx_(d.k);
+    if(X){X.pl.east+=d.ddx;X.pl.north-=d.ddy;cadPvSync_(d.k)}
   }
   document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);
 })();
 
+/* ---- 新增專案:地籍圖分批上傳(一份一份加,每份可選方位、拖動調整) ---- */
+var CB={items:[],sel:null,busy:'',err:''};
+function cbReset_(){CB={items:[],sel:null,busy:'',err:''}}
+function cbBuild_(it){
+  var only=null;
+  if(IM.res&&IM.res.parcels&&IM.res.parcels.length){only=IM.res.parcels.filter(function(p){return !p.sec||!it.sec||p.sec===it.sec}).map(function(p){return String(p.no)})}
+  var r=sgBuild(it.ex,{sec:it.sec,only:only&&only.length?only:null,links:it.links||{}});
+  if(only&&only.length&&!r.ok)r=sgBuild(it.ex,{sec:it.sec,links:it.links||{}});
+  it.res=r;
+}
+function cbFold_(n){   // 把第 0..n-1 份依各自的擺放設定合成一張
+  var g=null;
+  for(var i=0;i<n&&i<CB.items.length;i++){
+    var it=CB.items[i];if(!it.res||!it.res.ok)continue;
+    g=g?geoCombineJS_(g,it.res.geo,it.res.sec||it.sec,it.pl):it.res.geo;
+  }
+  return g;
+}
+function cbFinal_(){try{var g=cbFold_(CB.items.length);return {geo:g,err:''}}catch(e){return {geo:null,err:e.message}}}
+function cbCoverage_(geo){
+  var res=IM.res&&IM.res.parcels||[],have={},miss=[];
+  Object.keys(geo.parcels).forEach(function(k){have[k]=1;have['|'+k.slice(k.indexOf('|')+1)]=1});
+  res.forEach(function(p){if(!have[(p.sec||'')+'|'+p.no]&&!(!p.sec&&Object.keys(geo.parcels).some(function(k){return k.slice(k.indexOf('|')+1)===String(p.no)})))miss.push((p.sec?p.sec+' ':'')+p.no)});
+  return {total:res.length,miss:miss};
+}
+function cbFinalHTML_(){
+  if(!CB.items.some(function(x){return x.res&&x.res.ok}))return '';
+  var f=cbFinal_();
+  if(f.err)return '<div class="notice bad" style="margin-top:8px">'+esc(f.err)+'</div>';
+  if(!f.geo)return '';
+  var cov=cbCoverage_(f.geo),n=Object.keys(f.geo.parcels).length;
+  var h='<h3>合起來的結果</h3>'+cadSVG(f.geo)+'<p class="small" style="margin:6px 0 0">圖上共 <b>'+n+'</b> 筆地號'+(cov.total?',專案的 '+cov.total+' 筆地號裡有 <b>'+(cov.total-cov.miss.length)+'</b> 筆對到圖上':'')+'。'+(cov.miss.length?'<span class="bad"> 沒對到:'+cov.miss.slice(0,15).map(esc).join('、')+(cov.miss.length>15?' 等 '+cov.miss.length+' 筆':'')+'。</span><span class="muted"> 這些地號會用示意方格排在地圖下方,可以再傳含有它們的地籍圖。</span>':'')+'</p>';
+  return h;
+}
+function cbFinalRefresh_(){var el=$('#cb-final');if(el)el.innerHTML=cbFinalHTML_()}
+async function cbAddFile_(file){
+  if(file.size>40*1024*1024){toast('檔案太大(上限 40 MB)。');return}
+  CB.err='';CB.busy='讀取「'+file.name+'」…';renderCbPanel();await cadTick();
+  try{
+    var ex={};
+    if(window.__CAD_EX){ex=window.__CAD_EX}
+    else{
+      var lib=await loadPdfJs(),buf=await fileToBuffer(file),doc=await lib.getDocument({data:new Uint8Array(buf)}).promise;
+      if(doc.numPages>80)throw new Error('頁數太多('+doc.numPages+' 頁)。請只上傳同一段的地籍圖。');
+      for(var pg=1;pg<=doc.numPages;pg++){CB.busy='讀取「'+file.name+'」第 '+pg+' / '+doc.numPages+' 頁…';renderCbPanel();await cadTick();ex[pg]=await mkExtract(await doc.getPage(pg),lib.OPS)}
+    }
+    CB.busy='整理圖形…';renderCbPanel();await cadTick();
+    var first=sgBuild(ex,{}),it={name:file.name,ex:ex,sec:first.sec||'',links:{},res:null,pl:{dir:'E',gap:40,east:0,north:0,step:50}};
+    cbBuild_(it);
+    if(!it.res.ok)throw new Error('找不到可用的地號圖形。圖上的地號要是灰底(標示本案土地)才認得出來。');
+    var dup=CB.items.filter(function(x){return x.sec===it.sec});
+    if(dup.length)it.warn='段別「'+it.sec+'」和前面的「'+dup[0].name+'」重複,請把段別改成不同的名稱,不然合不起來。';
+    CB.items.push(it);CB.sel=CB.items.length-1;
+  }catch(e){CB.err='讀取失敗:'+(e&&e.message?e.message:e)}
+  CB.busy='';renderCbPanel();
+}
+function renderCbPanel(){
+  var box=$('#geo-panel');if(!box)return;
+  var h='<div class="panel"><h2><span class="no">4</span>地籍圖(選填,可分批上傳)</h2>';
+  h+='<p class="small muted" style="margin:0">一份一份上傳不同地段的地籍圖 PDF。第一份是基準,後面每一份可以選放在前面地圖的哪一邊,再用手指拖動微調。建立專案時一起存進去;不上傳的話,地圖就用示意排列。檔案只在這台電腦上解析。</p>';
+  h+='<div class="field" style="margin-top:8px"><label for="cb-file">加入一份地籍圖 PDF</label><input type="file" id="cb-file" accept="application/pdf"></div>';
+  if(CB.busy)h+='<p class="small" style="margin:6px 0 0"><b>'+esc(CB.busy)+'</b></p>';
+  if(CB.err)h+='<p class="small bad" style="margin:6px 0 0">'+esc(CB.err)+'</p>';
+  if(CB.items.length){
+    h+='<h3>已加入的地籍圖('+CB.items.length+')</h3>';
+    CB.items.forEach(function(it,i){
+      var sel=CB.sel===i;
+      h+='<div class="ocard" style="'+(sel?'border-color:var(--brand);border-width:2px':'')+'"><div class="orow"><div><b>'+(i+1)+'. '+esc(it.name)+'</b><div class="small muted">'+(i===0?'基準(其他份相對於它擺放)':'相對前面已排好的地圖擺放')+' · 地號 '+((it.res&&it.res.list)?it.res.list.length:0)+' 筆</div></div>'
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap">'+(i>0?'<button type="button" class="btn small" data-cb-sel="'+i+'"'+(sel?' disabled':'')+'>'+(sel?'調整中':'調整位置')+'</button>':'')+'<button type="button" class="btn small" data-cb-del="'+i+'">移除</button></div></div>'
+        +'<div class="field" style="margin-top:6px"><label for="cb-sec-'+i+'">段別</label><input type="text" id="cb-sec-'+i+'" data-cb-sec="'+i+'" maxlength="20" value="'+esc(it.sec)+'" style="max-width:220px"></div>'
+        +(it.warn?'<div class="notice bad" style="margin-top:6px">'+esc(it.warn)+'</div>':'')
+        +((it.res&&it.res.warns&&it.res.warns.length)?'<div class="notice" style="margin-top:6px">'+it.res.warns.map(esc).join('<br>')+'</div>':'')+'</div>';
+    });
+    var cur=CB.items[CB.sel];
+    if(CB.sel>=1&&cur&&cur.res&&cur.res.ok)h+='<h3>調整第 '+(CB.sel+1)+' 份「'+esc(cur.name)+'」的位置</h3>'+cadPlaceHTML_('cb',true);
+    h+='<div id="cb-final">'+cbFinalHTML_()+'</div>';
+    h+='<div class="actions"><button type="button" class="btn" data-cb-clear>全部清除</button></div>';
+  }
+  h+='</div>';
+  box.innerHTML=h;
+  var f=$('#cb-file');if(f)f.onchange=function(){var fs=[].slice.call(f.files||[]);f.value='';(async function(){for(var i=0;i<fs.length;i++)await cbAddFile_(fs[i])})()};
+}
+document.addEventListener('click',function(e){
+  var t=e.target;if(!t||!t.closest)return;var b;
+  if((b=t.closest('[data-cb-sel]'))){CB.sel=+b.dataset.cbSel;renderCbPanel();return}
+  if((b=t.closest('[data-cb-del]'))){var i=+b.dataset.cbDel;CB.items.splice(i,1);CB.sel=CB.items.length>1?Math.min(Math.max(1,CB.sel),CB.items.length-1):null;if(CB.items.length>1&&CB.sel===null)CB.sel=1;renderCbPanel();return}
+  if(t.closest('[data-cb-clear]')){cbReset_();renderCbPanel();return}
+});
+document.addEventListener('change',function(e){
+  var t=e.target;if(!t||!t.dataset||t.dataset.cbSec===undefined)return;
+  var it=CB.items[+t.dataset.cbSec];if(!it)return;
+  it.sec=t.value.trim();try{cbBuild_(it);it.warn=''}catch(x){it.warn='重新整理失敗:'+x.message}
+  var dup=CB.items.filter(function(x){return x!==it&&x.sec===it.sec});if(dup.length)it.warn='段別「'+it.sec+'」和「'+dup[0].name+'」重複,合不起來。';
+  renderCbPanel();
+});
 function cadApply(){
   var r=CAD&&CAD.res;if(!r||!r.ok)return;
   var pr=PRJ[CAD.pid],cur=CAD.cur||[],mode=cur.length?(($('input[name="cad-mode"]:checked')||{}).value||'merge'):'merge',replace=mode==='replace'&&cur.length>0;
