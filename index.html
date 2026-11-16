@@ -4762,17 +4762,31 @@ async function ocrDeedAddresses(f,items){
   var strips=await readPdfAddrStrips(f);
   if(!strips.length)return;
   IM.deed.info=IM.deed.info||[];
-  if(strips.length!==ents.length){IM.deed.msgs.push('「'+f.name+'」的住址圖片有 '+strips.length+' 條,但缺住址的所有權人有 '+ents.length+' 位,對不上,所以沒有辨識住址。');return}
-  var st=$('#deed-status'),hi=0,lo=0,bad=0;
+  var st=$('#deed-status'),all=[];
   if(st)st.innerHTML='<div class="small muted" style="margin-top:6px">辨識住址中(第一次要載入辨識元件,約需半分鐘)…</div>';
   for(var i=0;i<strips.length;i++){
     if(st&&i%5===0)st.innerHTML='<div class="small muted" style="margin-top:6px">辨識住址 '+(i+1)+' / '+strips.length+'…</div>';
-    var pk=pickAddr_(await ocrStripTexts(strips[i]));
-    if(!pk){bad++;continue}
-    ents[i].addr=pk.addr;ents[i].addrOcr=pk.conf;
-    if(pk.conf==='高')hi++;else lo++;
+    all.push(await ocrStripTexts(strips[i]));
   }
-  IM.deed.info.push('「'+f.name+'」住址是圖片,已用文字辨識讀出 '+(hi+lo)+' 條('+hi+' 條信心高、'+lo+' 條信心低'+(bad?'、'+bad+' 條讀不出來':'')+')。辨識結果可能有錯字,每位地主的備註都會註明「OCR 辨識,請核對」。');
+  // 住址太長時,謄本會把最後幾個字折到下一行,變成另一張圖(沒有「住址」兩字、讀不出完整地址):併回上一條住址
+  var main=[],cont=0;
+  all.forEach(function(texts){
+    var pk=pickAddr_(texts),hasLabel=(texts||[]).some(function(t){return /住.{0,2}址/.test(String(t||'').replace(/\s+/g,''))});
+    if(!pk&&!hasLabel&&main.length){
+      var c={},best='';(texts||[]).map(cleanAddr_).filter(function(x){return x.length>=1}).forEach(function(x){c[x]=(c[x]||0)+1;if(!best||c[x]>c[best])best=x});
+      if(best){main[main.length-1].tail+=best;cont++;return}
+    }
+    main.push({pk:pk,tail:''});
+  });
+  if(main.length!==ents.length){IM.deed.msgs.push('「'+f.name+'」的住址圖片有 '+main.length+' 條,但缺住址的所有權人有 '+ents.length+' 位,對不上,所以沒有辨識住址。');return}
+  var hi=0,lo=0,bad=0;
+  for(var j=0;j<main.length;j++){
+    var pk=main[j].pk;
+    if(!pk){bad++;continue}
+    ents[j].addr=pk.addr+main[j].tail;ents[j].addrOcr=main[j].tail?'低':pk.conf;
+    if(ents[j].addrOcr==='高')hi++;else lo++;
+  }
+  IM.deed.info.push('「'+f.name+'」住址是圖片,已用文字辨識讀出 '+(hi+lo)+' 條('+hi+' 條信心高、'+lo+' 條信心低'+(bad?'、'+bad+' 條讀不出來':'')+')'+(cont?',其中 '+cont+' 條住址太長被折到下一行,已自動接回':'')+'。辨識結果可能有錯字,每位地主的備註都會註明「OCR 辨識,請核對」。');
 }
 window.__landTest={readPdfAddrStrips:readPdfAddrStrips,pickAddr_:pickAddr_,ocrDeedAddresses:ocrDeedAddresses,deedToImport:deedToImport,parseDeedPages_:parseDeedPages_,expRows_:expRows_};   // 測試用
 Object.defineProperty(window.__landTest,'IM',{get:function(){return IM}});
