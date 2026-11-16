@@ -1264,6 +1264,7 @@ function openOwner0(id){
     h+=osec('deal','價格與簽約'+(dealOf(o,pid).stage!=='未開始'?'(目前:'+esc(stageLbl(dealOf(o,pid).stage))+')':''),ownerDealHTML(o,pid),false);
     h+=osec('family','繼承與家族'+(inh?'(繼承:'+esc(inh)+')':''),ownerFamilyHTML(o,pid),false);
     h+=osec('task','任務('+openTasksOf(o,pid).length+' 項待辦)',ownerTasksHTML(o,pid),false);
+    h+=osec('survey','現場踏勘與照片('+ownerSurveyList_(o,pid).length+')',ownerSurveysHTML(o,pid),false);
     h+=osec('file','附件('+DB.files.filter(function(f){return f.pid===pid&&f.owner===o.id}).length+')',ownerFilesHTML(o,pid),false);
     h+=osec('edit','更新姓名與聯絡資料',ownerEditHTML(o),o.pending);
     h+='</div>';
@@ -1989,6 +1990,7 @@ function doExport(kind){
   if(kind==='parcels')saveFile(pre+'地號清單_'+d+'.csv',toCSV(rowsParcels()),'地號清單('+PRJ[S.proj].name+')');
   else if(kind==='owners')saveFile(pre+'地主清單_'+d+'.csv',toCSV(rowsOwners()),'地主清單('+PRJ[S.proj].name+')');
   else if(kind==='interviews')saveFile(pre+'訪談紀錄_'+d+'.csv',toCSV(rowsInterviews()),'訪談紀錄('+PRJ[S.proj].name+')');
+  else if(kind==='statsrpt')saveStatsReport();
   else if(kind==='stats')saveFile(pre+'統計摘要_'+d+'.csv',toCSV(rowsStats()),'統計摘要('+PRJ[S.proj].name+')');
   else if(kind==='backup'){
     if(S.role!=='admin'){toast('完整備份只有管理者可以匯出。');return}
@@ -2168,7 +2170,7 @@ function renderStats(){
   var el=$('#stats-page');if(!el)return;
   var st=stats(),cs=computeStats(),over=0;
   projOwners().forEach(function(o){var s=oState(o);if(s.next&&diffDays(s.next)<0)over++});
-  var h='<div class="orow"><div><h1>統計</h1><p class="muted" style="margin:0">'+esc(PRJ[S.proj].name)+'的全區資料,隨訪談紀錄即時更新。</p></div>'+(S.role==='staff'?'':'<button class="btn" type="button" data-exp="stats"'+(dlState==='none'?' disabled':'')+'>匯出統計摘要(CSV)</button>')+'</div>'+projSwitchHTML();
+  var h='<div class="orow"><div><h1>統計</h1><p class="muted" style="margin:0">'+esc(PRJ[S.proj].name)+'的全區資料,隨訪談紀錄即時更新。</p></div>'+(S.role==='staff'?'':'<div class="tools"><button class="btn primary" type="button" data-exp="statsrpt"'+(dlState==='none'?' disabled':'')+'>匯出報告(含圖表)</button><button class="btn" type="button" data-exp="stats"'+(dlState==='none'?' disabled':'')+'>匯出 CSV</button></div>')+'</div>'+projSwitchHTML();
   h+='<div class="kpis">'+kpi('地號數',st.n)+kpi('總面積',(st.total/1e4).toFixed(2)+' 公頃')+kpi('地主數',cs.ownerCount)+kpi('訪談次數(累計)',cs.ivCount)+kpi('近 30 天訪談',cs.recent30)+kpi('逾期跟進',over+' 位')+kpi('已成交地主',dealCount()+' 位')+kpi('特定工廠(*)',PP().filter(isFactory).length+' 筆')+'</div>';
   h+='<div class="grid2">';
   var allBy={};LEVELS.forEach(function(l){allBy[l.k]=st.by[l.k].a});
@@ -4629,6 +4631,30 @@ function saveFile(name,data,label){
   api('logExport',{label:label,name:name}).catch(function(){});
   toast('已匯出:'+name);
 }
+
+/* ---- 統計報告:匯出成和網頁一樣有圖表的獨立 HTML(可直接列印或存成 PDF) ---- */
+function statsReportHTML_(){
+  var src=$('#stats-page');if(!src)return '';
+  var c=src.cloneNode(true);
+  [].slice.call(c.querySelectorAll('.bar-tools,[data-exp],select,input,textarea')).forEach(function(n){if(n.parentNode)n.parentNode.removeChild(n)});
+  if(c.firstElementChild&&c.firstElementChild.classList.contains('orow'))c.removeChild(c.firstElementChild);
+  [].slice.call(c.querySelectorAll('button')).forEach(function(b){var s=document.createElement('span');s.textContent=b.textContent;b.parentNode.replaceChild(s,b)});
+  var st=document.querySelector('style'),css=st?st.textContent:'',nm=PRJ[S.proj].name;
+  return '<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>統計報告 '+esc(nm)+'</title><style>'+css
+    +'</style><style>html,body{height:auto}body{padding:0}.rp-bar{display:flex;justify-content:flex-end;margin-bottom:8px}.rp-bar button{border:1px solid var(--brand);background:var(--brand);color:var(--on-brand);border-radius:8px;padding:8px 16px;font-size:15px;cursor:pointer}'
+    +'@media print{.noprint{display:none!important}body{background:#fff}.panel,.kpi{break-inside:avoid}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{padding:0}}</style></head><body><div class="page">'
+    +'<div class="rp-bar noprint"><button type="button" onclick="window.print()">列印 / 存成 PDF</button></div>'
+    +'<h1 style="margin:0">統計報告:'+esc(nm)+'</h1><p class="muted" style="margin:4px 0 0">製表日期 '+iso(TODAY)+(ME?' · 製表人 '+esc(ME):'')+'</p>'
+    +c.innerHTML+'<p class="small muted" style="margin:18px 0 0">由土地開發紀錄系統匯出。內容含地主資料,請妥善保管,不要轉傳給無關人員。</p></div></body></html>';
+}
+function saveStatsReport(){
+  if(S.role==='staff'){toast('業務人員不能匯出資料。');return}
+  var name='土地開發_'+PRJ[S.proj].name.replace(/\s+/g,'')+'_統計報告_'+iso(TODAY)+'.html',html=statsReportHTML_();
+  if(!html){toast('找不到統計內容。');return}
+  try{downloadBlob(name,new Blob([html],{type:'text/html;charset=utf-8'}))}catch(e){toast('匯出沒有完成,請再試一次。');return}
+  api('logExport',{label:'統計報告('+PRJ[S.proj].name+')',name:name}).catch(function(){});
+  toast('已匯出:'+name+'。用瀏覽器打開,可按右上角「列印 / 存成 PDF」。');
+}
 /* ---- 整理後資料下載成 Excel:戶籍地不確定的反紅 ---- */
 var XLSX_STYLE_CDN='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
 function addrUncertain_(o){return /⚠待確認/.test(String(o&&o.note||''))}
@@ -4698,6 +4724,28 @@ async function addSurvey(pid){
     if(e.auth){showLogin('登入已過期,請重新登入')}else{toast('儲存失敗:'+(e.userMessage||e.message));if(btn){btn.disabled=false;btn.textContent='加入踏勘紀錄'}}
   }finally{SV.busy=false}
 }
+
+/* ---- 地主視窗:該地主名下所有地號的踏勘紀錄與照片 ---- */
+function ownerSurveyList_(o,pid){
+  var list=[];
+  ownerParcels(o,pid).forEach(function(x){(x.p.surveys||[]).forEach(function(s){list.push({p:x.p,s:s})})});
+  list.sort(function(a,b){return String(b.s.date).localeCompare(String(a.s.date))||String(b.s.id).localeCompare(String(a.s.id))});
+  return list;
+}
+function ownerSurveysHTML(o,pid){
+  var list=ownerSurveyList_(o,pid);
+  if(!list.length)return '<p class="small muted" style="margin:0">這位地主名下的地號還沒有踏勘紀錄。到地圖上點地號,在「現場踏勘」新增。</p>';
+  var np=0;list.forEach(function(x){np+=(+x.s.photos||0)});
+  var h='<p class="small muted" style="margin:0 0 6px">共 '+list.length+' 筆踏勘、'+np+' 張照片(新的在前)。</p>';
+  if(np)h+='<p style="margin:0 0 8px"><button class="btn small" type="button" data-sv-all>全部展開照片</button></p>';
+  h+='<ul class="tl">'+list.map(function(x){
+    var s=x.s,id='o-'+esc(s.id);
+    return '<li><div class="t">'+esc(s.date)+' · '+esc(s.by)+' · <button class="link" type="button" data-go="'+x.p.id+'">'+esc(secOf(x.p))+' '+esc(x.p.no)+'</button></div>'
+      +'<div class="small" style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(s.note)+'</div>'
+      +(s.photos?'<button class="btn small" type="button" data-sv-photos="'+esc(s.id)+'" data-sv-pre="ovp-" data-sv-n="'+(+s.photos||0)+'" style="margin-top:4px">看照片('+s.photos+')</button><div id="ovp-'+esc(s.id)+'"></div>':'')+'</li>';
+  }).join('')+'</ul>';
+  return h;
+}
 function ownerFilesHTML(o,pid){
   var list=DB.files.filter(function(f){return f.pid===pid&&f.owner===o.id});
   var h='';
@@ -4728,18 +4776,19 @@ async function addFile(id){
 document.addEventListener('click',function(e){
   var t=e.target;if(!t||!t.closest)return;var b;
   if((b=t.closest('[data-sv-rm]'))){SV.pending.splice(+b.dataset.svRm,1);svRefresh();return}
+  if((b=t.closest('[data-sv-all]'))){$$('#owner-body [data-sv-photos]').forEach(function(x){if(x.style.display!=='none')x.click()});b.style.display='none';return}
   if((b=t.closest('[data-sv-photos]'))){
-    var sid=b.dataset.svPhotos,box=$('#svp-'+sid),n=+b.dataset.svN||0;if(!box)return;
+    var sid=b.dataset.svPhotos,pre=b.dataset.svPre||'svp-',box=document.getElementById(pre+sid),n=+b.dataset.svN||0;if(!box)return;
     if(!n){box.innerHTML='<span class="small muted">沒有照片</span>';b.style.display='none';return}
     b.style.display='none';SVPC=SVPC||{};
-    var slots='';for(var k=0;k<n;k++)slots+='<div id="svp-'+sid+'-'+k+'" class="small muted" style="margin:6px 0;min-height:24px">載入照片 '+(k+1)+'/'+n+'…</div>';
+    var slots='';for(var k=0;k<n;k++)slots+='<div id="'+pre+sid+'-'+k+'" class="small muted" style="margin:6px 0;min-height:24px">載入照片 '+(k+1)+'/'+n+'…</div>';
     box.innerHTML=slots;
     for(var k2=0;k2<n;k2++)(function(i){
-      var show=function(x){var el=document.getElementById('svp-'+sid+'-'+i);if(el)el.outerHTML='<img src="data:'+x.mime+';base64,'+x.data+'" alt="現場照片" style="max-width:100%;border-radius:8px;margin:6px 0;display:block">'};
+      var show=function(x){var el=document.getElementById(pre+sid+'-'+i);if(el)el.outerHTML='<img src="data:'+x.mime+';base64,'+x.data+'" alt="現場照片" style="max-width:100%;border-radius:8px;margin:6px 0;display:block">'};
       var key=sid+':'+i;if(SVPC[key]){show(SVPC[key]);return}
       api('getSurveyPhoto',{projectId:S.proj,surveyId:sid,index:i}).then(function(x){SVPC[key]=x;show(x)}).catch(function(er){
         if(er.auth){showLogin('登入已過期,請重新登入');return}
-        var el=document.getElementById('svp-'+sid+'-'+i);if(el)el.textContent='第 '+(i+1)+' 張讀不到('+(er.userMessage||er.message)+')'});
+        var el=document.getElementById(pre+sid+'-'+i);if(el)el.textContent='第 '+(i+1)+' 張讀不到('+(er.userMessage||er.message)+')'});
     })(k2);
     return;
   }
@@ -5583,13 +5632,105 @@ function cadRender(){
         h+='<p class="small muted" style="margin:0 0 6px">專案現有的圖資段別:'+cur.map(esc).join('、')+'。</p>'
           +'<label style="display:flex;gap:6px;align-items:center;font-size:14px"><input type="radio" name="cad-mode" value="merge" style="width:auto"'+(!has&&!CAD.replace?' checked':'')+(has?' disabled':'')+'> 合併:把這一段加到現有地圖旁邊'+(has?'(這一段已在圖上,不能合併)':'')+'</label>'
           +'<label style="display:flex;gap:6px;align-items:center;font-size:14px;margin-top:4px"><input type="radio" name="cad-mode" value="replace" style="width:auto"'+(has||CAD.replace?' checked':'')+'> 取代:整張地圖換成這一份(現有的其他段會消失)</label>'
-          +'<div id="cad-place" style="margin-top:8px"><p class="small muted" style="margin:0 0 6px">地籍圖沒有座標,請照真實位置選方位;排不準可以微調。</p><div class="row2"><div class="field" style="margin-top:0"><label for="cad-dir">新的一段放在現有地圖的</label><select id="cad-dir"><option value="E">東邊(右)</option><option value="W">西邊(左)</option><option value="N">北邊(上)</option><option value="S">南邊(下)</option><option value="NE">東北</option><option value="NW">西北</option><option value="SE">東南</option><option value="SW">西南</option></select></div><div class="field" style="margin-top:0"><label for="cad-gap">間隔(公尺)</label><input type="number" id="cad-gap" min="0" max="2000" value="40"></div></div><div class="row2"><div class="field"><label for="cad-e">微調:再往東移(公尺,負數往西)</label><input type="number" id="cad-e" value="0"></div><div class="field"><label for="cad-n">微調:再往北移(公尺,負數往南)</label><input type="number" id="cad-n" value="0"></div></div></div>';
+          +cadPlaceHTML_(!(has||CAD.replace));
       }
       h+='</div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="button" data-cad-apply>套用到專案</button></div>';
     }
   }
   body.innerHTML=h;
 }
+/* ---- 合併圖資:選方位 + 預覽 + 手指拖移 ---- */
+function cadPl_(){if(!CAD.pl)CAD.pl={dir:'E',gap:40,east:0,north:0,step:50};return CAD.pl}
+function cadGeoPts_(g,fn){
+  Object.keys(g.parcels||{}).forEach(function(k){(g.parcels[k].pts||[]).forEach(fn)});
+  (g.ctx||[]).forEach(function(r){r.forEach(fn)});
+  Object.keys(g.zones||{}).forEach(function(z){(g.zones[z]||[]).forEach(function(rings){rings.forEach(function(r){r.forEach(fn)})})});
+}
+function cadBox_(g){var s=g.scale,b=[1e18,1e18,-1e18,-1e18];cadGeoPts_(g,function(p){b=[Math.min(b[0],p[0]*s),Math.min(b[1],p[1]*s),Math.max(b[2],p[0]*s),Math.max(b[3],p[1]*s)]});return b}
+function cadCalc_(old,add,P){   // 和後端 combineGeo_ 算法一致
+  var ob=cadBox_(old),nb=cadBox_(add),dir=P.dir,gap=Math.max(0,Math.min(2000,Number(P.gap)||0));
+  var ocx=(ob[0]+ob[2])/2,ocy=(ob[1]+ob[3])/2,ncx=(nb[0]+nb[2])/2,ncy=(nb[1]+nb[3])/2;
+  var wx=dir.indexOf('E')>=0?ob[2]+gap-nb[0]:dir.indexOf('W')>=0?ob[0]-gap-nb[2]:ocx-ncx;
+  var wy=dir.indexOf('S')>=0?ob[3]+gap-nb[1]:dir.indexOf('N')>=0?ob[1]-gap-nb[3]:ocy-ncy;
+  return {ob:ob,nb:nb,dx:wx+(Number(P.east)||0),dy:wy-(Number(P.north)||0)};
+}
+function cadPvHTML_(){
+  var P=cadPl_(),add=CAD.res&&CAD.res.geo,old=GEOC[CAD.pid];
+  if(!add)return '';
+  if(!old)return '<p class="small muted">讀取現有地圖中…</p>';
+  var c=cadCalc_(old,add,P),so=old.scale,sn=add.scale;
+  var x0=Math.min(c.ob[0],c.nb[0]+c.dx),y0=Math.min(c.ob[1],c.nb[1]+c.dy),x1=Math.max(c.ob[2],c.nb[2]+c.dx),y1=Math.max(c.ob[3],c.nb[3]+c.dy);
+  var pad=Math.max(x1-x0,y1-y0)*0.06,vb=[x0-pad,y0-pad,x1-x0+pad*2,y1-y0+pad*2];
+  function poly(g,s,color,fill){var h='';Object.keys(g.parcels).forEach(function(k){h+='<polygon points="'+g.parcels[k].pts.map(function(q){return (q[0]*s).toFixed(1)+','+(q[1]*s).toFixed(1)}).join(' ')+'" fill="'+fill+'" stroke="'+color+'" stroke-width="1" vector-effect="non-scaling-stroke"/>'});return h}
+  var fs=Math.max(vb[2],vb[3])/28;
+  var h='<svg id="cad-svg" viewBox="'+vb.map(function(v){return v.toFixed(1)}).join(' ')+'" style="width:100%;height:300px;touch-action:none;background:#f4f7f5;border:1px solid var(--line);border-radius:10px" role="img" aria-label="合併位置預覽">';
+  h+='<g>'+poly(old,so,'#1F5C46','#cfe6da')+'<text x="'+((c.ob[0]+c.ob[2])/2)+'" y="'+(c.ob[1]-fs*0.4)+'" text-anchor="middle" font-size="'+fs+'" fill="#1F5C46" font-weight="700">現有地圖</text></g>';
+  h+='<g id="cad-new" data-bx="'+c.dx+'" data-by="'+c.dy+'" transform="translate('+c.dx.toFixed(1)+' '+c.dy.toFixed(1)+')" style="cursor:grab">'
+    +'<rect x="'+c.nb[0]+'" y="'+c.nb[1]+'" width="'+(c.nb[2]-c.nb[0])+'" height="'+(c.nb[3]-c.nb[1])+'" fill="#e8892b" fill-opacity="0.08" stroke="#e8892b" stroke-dasharray="6 4" stroke-width="1.5" vector-effect="non-scaling-stroke"/>'
+    +poly(add,sn,'#b85c00','#f7c98f')+'<text x="'+((c.nb[0]+c.nb[2])/2)+'" y="'+(c.nb[1]-fs*0.4)+'" text-anchor="middle" font-size="'+fs+'" fill="#b85c00" font-weight="700">新的一段(可拖動)</text></g></svg>';
+  return h;
+}
+function cadPlaceHTML_(show){
+  var P=cadPl_(),dirs=[['NW','↖'],['N','↑'],['NE','↗'],['W','←'],['','現有'],['E','→'],['SW','↙'],['S','↓'],['SE','↘']];
+  var h='<div id="cad-place" style="margin-top:10px"'+(show?'':' hidden')+'>';
+  h+='<p class="small" style="margin:0 0 6px"><b>① 新的一段放在現有地圖的哪一邊?</b></p>';
+  h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:300px">'+dirs.map(function(d){
+    if(!d[0])return '<div class="small muted" style="display:flex;align-items:center;justify-content:center;border:1px dashed var(--line);border-radius:8px;min-height:44px">'+d[1]+'</div>';
+    return '<button type="button" class="btn" data-cad-dir="'+d[0]+'" aria-pressed="'+(P.dir===d[0])+'" style="min-height:44px;font-size:18px;'+(P.dir===d[0]?'background:var(--brand);color:var(--on-brand);border-color:var(--brand)':'')+'">'+d[1]+'</button>';
+  }).join('')+'</div>';
+  h+='<p class="small" style="margin:12px 0 4px"><b>② 看預覽,用手指(或滑鼠)直接拖橘色那一塊到正確位置</b></p>';
+  h+='<div id="cad-pv">'+cadPvHTML_()+'</div>';
+  h+='<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:8px"><span class="small muted">微調</span>'
+    +'<div style="display:grid;grid-template-columns:repeat(3,44px);gap:4px"><span></span><button type="button" class="btn" data-cad-nudge="N" aria-label="往北(上)" style="min-height:40px;padding:0">↑</button><span></span><button type="button" class="btn" data-cad-nudge="W" aria-label="往西(左)" style="min-height:40px;padding:0">←</button><button type="button" class="btn" data-cad-nudge="S" aria-label="往南(下)" style="min-height:40px;padding:0">↓</button><button type="button" class="btn" data-cad-nudge="E" aria-label="往東(右)" style="min-height:40px;padding:0">→</button></div>'
+    +'<label class="small muted" style="display:flex;align-items:center;gap:6px">每按一下移<select id="cad-step" style="width:auto">'+[10,50,100,300].map(function(n){return '<option value="'+n+'"'+(P.step===n?' selected':'')+'>'+n+' 公尺</option>'}).join('')+'</select></label>'
+    +'<button type="button" class="btn small" data-cad-reset>歸零</button></div>';
+  h+='<div class="field" style="margin-top:10px"><label for="cad-gap" style="display:flex;justify-content:space-between"><span>和現有地圖的間隔</span><span id="cad-gap-v">'+P.gap+' 公尺</span></label><input type="range" id="cad-gap" min="0" max="500" step="10" value="'+Math.min(500,P.gap)+'" style="width:100%"></div>';
+  h+='<p class="small muted" id="cad-off" style="margin:4px 0 0"></p>';
+  h+='<input type="hidden" id="cad-dir" value="'+esc(P.dir)+'"><input type="hidden" id="cad-e" value="'+P.east+'"><input type="hidden" id="cad-n" value="'+P.north+'"></div>';
+  return h;
+}
+function cadPvSync_(){
+  var P=cadPl_(),pv=$('#cad-pv');
+  if(pv)pv.innerHTML=cadPvHTML_();
+  [['cad-dir',P.dir],['cad-e',Math.round(P.east)],['cad-n',Math.round(P.north)]].forEach(function(x){var el=document.getElementById(x[0]);if(el)el.value=x[1]});
+  var g=$('#cad-gap-v');if(g)g.textContent=P.gap+' 公尺';
+  var o=$('#cad-off');if(o){var e=Math.round(P.east),n=Math.round(P.north);o.textContent=(e||n)?'目前微調:'+(e?(e>0?'往東 ':'往西 ')+Math.abs(e)+' 公尺 ':'')+(n?(n>0?'往北 ':'往南 ')+Math.abs(n)+' 公尺':''):'目前沒有微調。'}
+  $$('[data-cad-dir]').forEach(function(b){var on=b.dataset.cadDir===P.dir;b.setAttribute('aria-pressed',on);b.style.background=on?'var(--brand)':'';b.style.color=on?'var(--on-brand)':'';b.style.borderColor=on?'var(--brand)':''});
+}
+(function(){
+  var drag=null;
+  document.addEventListener('click',function(e){
+    var t=e.target;if(!t||!t.closest||!CAD)return;var b;
+    if((b=t.closest('[data-cad-dir]'))){var P=cadPl_();P.dir=b.dataset.cadDir;P.east=0;P.north=0;cadPvSync_();return}
+    if((b=t.closest('[data-cad-nudge]'))){var P2=cadPl_(),s=P2.step||50,k=b.dataset.cadNudge;if(k==='E')P2.east+=s;else if(k==='W')P2.east-=s;else if(k==='N')P2.north+=s;else P2.north-=s;cadPvSync_();return}
+    if(t.closest('[data-cad-reset]')){var P3=cadPl_();P3.east=0;P3.north=0;cadPvSync_();return}
+  });
+  document.addEventListener('input',function(e){var t=e.target;if(t&&t.id==='cad-gap'&&CAD){cadPl_().gap=Number(t.value)||0;cadPl_().east=cadPl_().east;cadPvSync_()}});
+  document.addEventListener('change',function(e){var t=e.target;if(!t||!CAD)return;
+    if(t.id==='cad-step'){cadPl_().step=Number(t.value)||50;return}
+    if(t.name==='cad-mode'){var pl=$('#cad-place');if(pl)pl.hidden=(t.value==='replace')}
+  });
+  document.addEventListener('pointerdown',function(e){
+    var t=e.target;if(!t||!t.closest||!CAD)return;var g=t.closest('#cad-new');if(!g)return;
+    var svg=$('#cad-svg'),ctm=svg&&svg.getScreenCTM();if(!ctm)return;
+    var pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;var p0=pt.matrixTransform(ctm.inverse());
+    drag={g:g,svg:svg,inv:ctm.inverse(),x:p0.x,y:p0.y,bx:Number(g.dataset.bx),by:Number(g.dataset.by),ddx:0,ddy:0};
+    try{svg.setPointerCapture(e.pointerId)}catch(x){}
+    g.style.cursor='grabbing';e.preventDefault();
+  });
+  document.addEventListener('pointermove',function(e){
+    if(!drag)return;
+    var pt=drag.svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;var p=pt.matrixTransform(drag.inv);
+    drag.ddx=p.x-drag.x;drag.ddy=p.y-drag.y;
+    drag.g.setAttribute('transform','translate('+(drag.bx+drag.ddx).toFixed(1)+' '+(drag.by+drag.ddy).toFixed(1)+')');
+  });
+  function end(){
+    if(!drag)return;var d=drag;drag=null;
+    if(CAD){var P=cadPl_();P.east+=d.ddx;P.north-=d.ddy;cadPvSync_()}
+  }
+  document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);
+})();
+
 function cadApply(){
   var r=CAD&&CAD.res;if(!r||!r.ok)return;
   var pr=PRJ[CAD.pid],cur=CAD.cur||[],mode=cur.length?(($('input[name="cad-mode"]:checked')||{}).value||'merge'):'merge',replace=mode==='replace'&&cur.length>0;
@@ -5651,7 +5792,7 @@ document.addEventListener('click',function(e){
 // 專案總覽只顯示承辦人,不在這裡修改;改到「後台 → 專案 → 承辦人」
 function staffPickerHTML(pr){
   var names=(pr.staff||[]).map(function(x){return '承辦人'+esc(x)}).join('、')||'尚未選擇';
-  return '<div>'+names+(S.role==='admin'?' <span class="muted small">(到「後台 → 專案 → 承辦人」修改)</span>':'')+'</div>';
+  return '<div>'+names+''+'</div>';
 }
 
 /* ---------- start ---------- */
