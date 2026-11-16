@@ -359,7 +359,7 @@ function addDays(n){var d=new Date(TODAY);d.setDate(d.getDate()+n);return d}
 function p2(n){return String(n).padStart(2,'0')}
 function fmt(d){return p2(d.getMonth()+1)+'/'+p2(d.getDate())}
 function iso(d){return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())}
-function parseISO(s){var a=s.split('-');return new Date(+a[0],+a[1]-1,+a[2])}
+function parseISO(s){var a=String(s).slice(0,10).split('-');return new Date(+a[0],+a[1]-1,+a[2])}
 function diffDays(d){return Math.round((d-TODAY)/864e5)}
 function dueText(d){
   var n=diffDays(d);
@@ -3404,7 +3404,7 @@ function deedToImport(){
     if(seen[key]){IM.deed.msgs.push('地號 '+r.number+' 在「'+item.fileName+'」重複出現,已略過');return}
     seen[key]=1;
     var liens=(r.liens||[]).join('、'),base=[r.county,r.town,r.district,r.number,r.areaM2==null?'':r.areaM2,r.zoning,r.landCategory,r.value||''];
-    if(r.ownership&&r.ownership.length)r.ownership.forEach(function(o){rows.push(base.concat([o.name,o.id,o.addr||'',o.share,o.reason,o.date,liens,o.addrOcr?('戶籍地由謄本圖片 OCR 辨識(信心'+o.addrOcr+'),請核對謄本'):'']))});
+    if(r.ownership&&r.ownership.length)r.ownership.forEach(function(o){rows.push(base.concat([o.name,o.id,o.addr||'',o.share,o.reason,o.date,liens,o.addrOcr?(o.addrOcr==='低'?'⚠待確認:戶籍地由圖片 OCR 辨識,信心低,請務必核對謄本':'戶籍地由謄本圖片 OCR 辨識(信心高),請核對謄本'):'']))});
     else rows.push(base.concat(['','','','','','',liens,'']));
   });
   IM.deedBld=bld;
@@ -4782,13 +4782,14 @@ async function ocrDeedAddresses(f,items){
     main.push({pk:pk,tail:''});
   });
   if(main.length!==ents.length){IM.deed.msgs.push('「'+f.name+'」的住址圖片有 '+main.length+' 條,但缺住址的所有權人有 '+ents.length+' 位,對不上,所以沒有辨識住址。');return}
-  var hi=0,lo=0,bad=0;
+  var hi=0,lo=0,bad=0,lowNames=[];
   for(var j=0;j<main.length;j++){
     var pk=main[j].pk;
     if(!pk){bad++;continue}
     ents[j].addr=pk.addr+main[j].tail;ents[j].addrOcr=main[j].tail?'低':pk.conf;
-    if(ents[j].addrOcr==='高')hi++;else lo++;
+    if(ents[j].addrOcr==='高')hi++;else{lo++;lowNames.push((ents[j].name||'?')+'('+ents[j].addr+')')}
   }
+  if(lowNames.length)IM.deed.msgs.push('⚠ 「'+f.name+'」有 '+lowNames.length+' 位住址辨識信心低,請務必對照謄本確認:'+lowNames.join('、'));
   IM.deed.info.push('「'+f.name+'」住址是圖片,已用文字辨識讀出 '+(hi+lo)+' 條('+hi+' 條信心高、'+lo+' 條信心低'+(bad?'、'+bad+' 條讀不出來':'')+')'+(cont?',其中 '+cont+' 條住址太長被折到下一行,已自動接回':'')+'。辨識結果可能有錯字,每位地主的備註都會註明「OCR 辨識,請核對」。');
 }
 window.__landTest={readPdfAddrStrips:readPdfAddrStrips,pickAddr_:pickAddr_,ocrDeedAddresses:ocrDeedAddresses,deedToImport:deedToImport,parseDeedPages_:parseDeedPages_,expRows_:expRows_};   // 測試用
@@ -4994,7 +4995,11 @@ document.addEventListener('click',function(e){
     var typed=window.prompt('要刪除專案「'+dp.name+'」。刪除後無法復原。\n請輸入完整的專案名稱來確認:');
     if(typed===null)return;
     b.disabled=true;
-    api('deleteProject',{projectId:dp.id,confirmName:typed}).then(function(r){toast('已刪除專案「'+dp.name+'」('+r.parcels+' 筆地號、'+r.owners+' 位地主)。');return refreshData()}).then(function(){renderAdmin()})
+    var doDel=function(force){return api('deleteProject',{projectId:dp.id,confirmName:typed,force:force||undefined})};
+    doDel(false).catch(function(er){
+      if(!er.auth&&/不能刪除/.test(er.userMessage||'')&&window.confirm((er.userMessage||'')+'\n\n如果這是測試專案,可以連同這些使用紀錄一起刪除,無法復原。要全部刪除嗎?'))return doDel(true);
+      throw er;
+    }).then(function(r){toast('已刪除專案「'+dp.name+'」('+r.parcels+' 筆地號、'+r.owners+' 位地主)。');return refreshData()}).then(function(){renderAdmin()})
       .catch(function(er){b.disabled=false;if(er.auth)showLogin('登入已過期,請重新登入');else toast('刪除失敗:'+(er.userMessage||er.message))});
     return;
   }
