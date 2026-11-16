@@ -2750,7 +2750,7 @@ function normPhone(v){
   return String(v).trim();
 }
 function inferType(n){
-  if(/^中華民國$|政府|公所|管理處|管理局|建設局/.test(n))return '政府機關';
+  if(/^中華民國$|政府|公所|管理處|管理局|建設局|水利署|國產署|財政部|國防部|行政院|^(臺|台)?[\u4e00-\u9fa5]{1,3}(市|縣)$/.test(n))return '政府機關';
   if(/祭祀公業/.test(n))return '祭祀公業';
   if(/公同共有/.test(n))return '公同共有';
   if(/有限公司|公司|事業|基金會|協會/.test(n))return '法人';
@@ -3175,7 +3175,7 @@ function renderImResult(){
   var selStaff=(IM.opts.staffSel&&IM.opts.staffSel.length?IM.opts.staffSel:staffIds(true));
   h+='<div class="field"><span class="lab">承辦業務(勾選這個專案的成員,地主會平均分配給他們)</span><details class="spicker" open><summary>已選 '+selStaff.length+' 位 <span class="muted small">(點開勾選)</span></summary><div class="spbox"><input type="search" class="pstaff-search" placeholder="搜尋業務姓名" aria-label="搜尋業務"><div class="splist">'+staffIds(true).map(function(x){return '<label class="sprow"><input type="checkbox" data-imstaff-cb="'+esc(x)+'"'+(selStaff.indexOf(x)>=0?' checked':'')+' style="width:auto"> 承辦人'+esc(x)+'</label>'}).join('')+'</div></div></details></div>';
   h+='<p class="small muted" style="margin:10px 0 0">將建立 '+groups.length+' 個區塊:'+groups.map(function(g){return esc(g.name)+'('+g.ps.length+' 筆)'}).join('、')+'。地圖形狀是依地號排成的示意圖,取得地籍圖檔後再換成真實圖形。</p>';
-  h+='<div class="actions"><button class="btn" type="button" data-im-dl-clean'+(dlState==='none'?' disabled':'')+'>下載整理後的資料(CSV)</button><button class="btn primary" type="button" data-im-create>'+(IM.opts.target?'加入既有專案並匯入 ':'建立專案並匯入 ')+res.parcels.length+' 筆地號</button></div></div>';
+  h+='<div class="actions"><button class="btn" type="button" data-im-dl-clean'+(dlState==='none'?' disabled':'')+'>下載整理後的資料(Excel)</button><button class="btn primary" type="button" data-im-create>'+(IM.opts.target?'加入既有專案並匯入 ':'建立專案並匯入 ')+res.parcels.length+' 筆地號</button></div></div>';
   box.innerHTML=h;
 }
 
@@ -3903,7 +3903,7 @@ document.addEventListener('click',function(e){
   if((b=t.closest('[data-merge-yes]'))){var pr2=b.dataset.mergeYes.split(',').map(Number);var fo=OWN[pr2[0]],tn=OWN[pr2[1]];mergeOwners(pr2[0],pr2[1]);DB.log.unshift({ts:new Date(),user:ROLE_LABEL[S.role],action:'合併地主',detail:fo.name+' → '+tn.name});renderAll();openOwner(pr2[1]);toast('已合併成「'+tn.name+'」。');return}
   if(t.closest('[data-im-create]')){IM.geo=buildImGeo();createFromImport();return}
   if(t.closest('[data-geo-preview]')){GEOIM.geo=buildImGeo();renderGeoPanel();return}
-  if(t.closest('[data-im-dl-clean]')){if(IM.res&&IM.res.parcels)saveFile('土地開發_整理後專案資料_'+iso(TODAY)+'.csv',toCSV(cleanedRows(IM.res)),'整理後專案資料');return}
+  if(t.closest('[data-im-dl-clean]')){if(IM.res&&IM.res.parcels)saveCleanXlsx(IM.res);return}
   if(t.closest('[data-im-dl-sample]')){saveFile('土地開發_專案匯入範例.csv',toCSV(sampleRows()),'專案匯入範例');return}
   if((b=t.closest('[data-atab]'))){S.atab=b.dataset.atab;S.adel=null;renderAdmin();return}
   if(t.closest('[data-staff-add]')){addStaff();return}
@@ -4369,6 +4369,48 @@ function saveFile(name,data,label){
   api('logExport',{label:label,name:name}).catch(function(){});
   toast('已匯出:'+name);
 }
+/* ---- 整理後資料下載成 Excel:戶籍地不確定的反紅 ---- */
+var XLSX_STYLE_CDN='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+function addrUncertain_(o){return /⚠待確認/.test(String(o&&o.note||''))}
+function cleanSheetRows_(res){
+  var rows=cleanedRows(res),flags=[false];
+  res.parcels.forEach(function(p){p.owners.forEach(function(o){flags.push(addrUncertain_(o))})});
+  rows[0].push('戶籍地確認');
+  for(var i=1;i<rows.length;i++)rows[i].push(flags[i]?'⚠待確認:戶籍地由圖片辨識、不確定,請對照謄本':'');
+  return {rows:rows,flags:flags,col:rows[0].indexOf('戶籍地')};
+}
+function loadExcelJS(){
+  if(window.ExcelJS)return Promise.resolve(window.ExcelJS);
+  return new Promise(function(resolve,reject){
+    var sc=document.createElement('script');sc.src=XLSX_STYLE_CDN;
+    sc.onload=function(){window.ExcelJS?resolve(window.ExcelJS):reject(new Error('x'))};sc.onerror=function(){reject(new Error('x'))};
+    document.head.appendChild(sc);
+  });
+}
+async function saveCleanXlsx(res){
+  var sh=cleanSheetRows_(res),name='土地開發_整理後專案資料_'+iso(TODAY),bad=sh.flags.filter(Boolean).length;
+  try{
+    var E=await loadExcelJS(),wb=new E.Workbook(),ws=wb.addWorksheet('整理後專案資料');
+    sh.rows.forEach(function(r){ws.addRow(r)});
+    var textCols=['段別','地號','持分'].map(function(h){return sh.rows[0].indexOf(h)});
+    ws.getRow(1).font={bold:true};
+    sh.rows.forEach(function(r,i){
+      var row=ws.getRow(i+1);
+      textCols.forEach(function(c){if(c>=0){var cell=row.getCell(c+1);cell.numFmt='@';cell.value=String(r[c]===undefined?'':r[c])}});
+      if(i>0&&sh.flags[i]){[sh.col,r.length-1].forEach(function(c){var cell=row.getCell(c+1);cell.font={bold:true,color:{argb:'FFC00000'}};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFC7CE'}}})}
+    });
+    ws.columns.forEach(function(c,i){c.width=i===sh.col||i===sh.rows[0].length-1?34:14});
+    var buf=await wb.xlsx.writeBuffer();
+    downloadBlob(name+'.xlsx',new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+    api('logExport',{label:'整理後專案資料',name:name+'.xlsx'}).catch(function(){});
+    toast('已匯出:'+name+'.xlsx'+(bad?'(戶籍地不確定的 '+bad+' 筆已反紅,請對照謄本確認)':''));
+  }catch(e){
+    // 讀不到 Excel 元件(網路不通):改下載 CSV,不確定的戶籍地前面加 ⚠
+    var ci=sh.col;sh.rows.forEach(function(r,i){if(i>0&&sh.flags[i])r[ci]='⚠'+r[ci]});
+    saveFile(name+'.csv',toCSV(sh.rows),'整理後專案資料');
+    if(bad)toast('Excel 元件載入失敗,已改下載 CSV;戶籍地不確定的 '+bad+' 筆前面標了 ⚠,請對照謄本確認。');
+  }
+}
 function svPendingHTML(pid){
   if(SV.pid!==pid||!SV.pending.length)return '';
   return '已選 '+SV.pending.length+' 張(最多 8 張)<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">'+SV.pending.map(function(f,i){return '<span style="position:relative;display:inline-block"><img src="'+f.url+'" alt="已選照片" style="width:64px;height:64px;object-fit:cover;border-radius:6px"><button type="button" data-sv-rm="'+i+'" aria-label="移除這張" style="position:absolute;top:-6px;right:-6px;border:1px solid var(--line);background:var(--surface);border-radius:50%;width:22px;height:22px;line-height:18px;padding:0;cursor:pointer">×</button></span>'}).join('')+'</div>';
@@ -4701,7 +4743,7 @@ document.addEventListener('click',function(e){
 var TESS_CDN='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
 var TESS_LANG='https://cdn.jsdelivr.net/npm/@tesseract.js-data/chi_tra/4.0.0_best_int';
 var OCR_SCALES=[0.55,0.6,0.65,0.7];   // 這種字型縮到約 0.6 倍最準;多種縮放互相印證,結果一致才算高信心
-var OCRW={w:null};
+var OCRW={pool:null};
 function loadTesseract(){
   if(window.Tesseract)return Promise.resolve(window.Tesseract);
   return new Promise(function(resolve,reject){
@@ -4711,12 +4753,13 @@ function loadTesseract(){
     document.head.appendChild(sc);
   });
 }
-async function ocrWorker(){
-  if(OCRW.w)return OCRW.w;
-  var T=await loadTesseract();
-  OCRW.w=await T.createWorker('chi_tra',1,{langPath:TESS_LANG,gzip:true});
-  await OCRW.w.setParameters({tessedit_pageseg_mode:'7'});
-  return OCRW.w;
+// 同時開幾個辨識工人:電腦核心數 - 1,最少 2、最多 4(每個約佔 100MB 記憶體)
+function ocrWorkerCount(){return Math.max(2,Math.min(4,((typeof navigator!=='undefined'&&navigator.hardwareConcurrency)||4)-1))}
+async function ocrPool(n){
+  var T=await loadTesseract(),pool=OCRW.pool=OCRW.pool||[];
+  var add=[];for(var i=pool.length;i<n;i++)add.push(T.createWorker('chi_tra',1,{langPath:TESS_LANG,gzip:true}).then(function(w){return w.setParameters({tessedit_pageseg_mode:'7'}).then(function(){return w})}));
+  (await Promise.all(add)).forEach(function(w){pool.push(w)});
+  return pool.slice(0,n);
 }
 // 找出頁面上「又寬又扁」的圖片(謄本把住址那一行做成圖片),回傳灰階像素,依頁碼、由上到下排序
 async function readPdfAddrStrips(file){
@@ -4758,9 +4801,9 @@ function pickAddr_(texts){
   (texts||[]).map(cleanAddr_).filter(function(x){return x.length>=6&&/[縣市區鄉鎮村里路街段號]/.test(x)}).forEach(function(x){c[x]=(c[x]||0)+1;if(c[x]>n){n=c[x];best=x}});
   return best?{addr:best,conf:n>=3?'高':'低'}:null;
 }
-async function ocrStripTexts(strip){
+async function ocrStripTexts(strip,wk){
   if(window.__OCR_TEST)return window.__OCR_TEST(strip);
-  var wk=await ocrWorker(),texts=[],src=document.createElement('canvas');
+  var texts=[],src=document.createElement('canvas');
   src.width=strip.w;src.height=strip.h;
   var sctx=src.getContext('2d'),im=sctx.createImageData(strip.w,strip.h);
   for(var i=0;i<strip.gray.length;i++){im.data[i*4]=im.data[i*4+1]=im.data[i*4+2]=strip.gray[i];im.data[i*4+3]=255}
@@ -4770,6 +4813,7 @@ async function ocrStripTexts(strip){
     cv.width=w+80;cv.height=h+60;
     var cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);cx.imageSmoothingQuality='high';cx.drawImage(src,40,30,w,h);
     var r=await wk.recognize(cv);texts.push(r.data.text);
+    if(s===2){var pk3=pickAddr_(texts);if(pk3&&pk3.conf==='高')break}   // 前三次已經一致(高信心),第四次不用再跑,結果跟跑滿四次一樣
   }
   return texts;
 }
@@ -4782,10 +4826,15 @@ async function ocrDeedAddresses(f,items){
   IM.deed.info=IM.deed.info||[];
   var st=$('#deed-status'),all=[];
   if(st)st.innerHTML='<div class="small muted" style="margin-top:6px">辨識住址中(第一次要載入辨識元件,約需半分鐘)…</div>';
-  for(var i=0;i<strips.length;i++){
-    if(st&&i%5===0)st.innerHTML='<div class="small muted" style="margin-top:6px">辨識住址 '+(i+1)+' / '+strips.length+'…</div>';
-    all.push(await ocrStripTexts(strips[i]));
-  }
+  var workers=window.__OCR_TEST?[null,null,null]:await ocrPool(Math.min(ocrWorkerCount(),strips.length)),nxt=0,done=0;
+  all=new Array(strips.length);
+  // 多個工人同時辨識,每個一次拿一條;結果依原本順序放回
+  await Promise.all(workers.map(async function(wk){
+    while(nxt<strips.length){
+      var i=nxt++;all[i]=await ocrStripTexts(strips[i],wk);done++;
+      if(st)st.innerHTML='<div class="small muted" style="margin-top:6px">辨識住址 '+done+' / '+strips.length+'…</div>';
+    }
+  }));
   // 住址太長時,謄本會把最後幾個字折到下一行,變成另一張圖(沒有「住址」兩字、讀不出完整地址):併回上一條住址
   var main=[],cont=0;
   all.forEach(function(texts){
@@ -4807,10 +4856,11 @@ async function ocrDeedAddresses(f,items){
   if(lowNames.length)IM.deed.msgs.push('⚠ 「'+f.name+'」有 '+lowNames.length+' 位住址辨識信心低,請務必對照謄本確認:'+lowNames.join('、'));
   IM.deed.info.push('「'+f.name+'」住址是圖片,已用文字辨識讀出 '+(hi+lo)+' 條('+hi+' 條信心高、'+lo+' 條信心低'+(bad?'、'+bad+' 條讀不出來':'')+')'+(cont?',其中 '+cont+' 條住址太長被折到下一行,已自動接回':'')+'。辨識結果可能有錯字,每位地主的備註都會註明「OCR 辨識,請核對」。');
 }
-window.__landTest={stageLbl:stageLbl,probe:function(f){return eval(f)},readPdfAddrStrips:readPdfAddrStrips,pickAddr_:pickAddr_,ocrDeedAddresses:ocrDeedAddresses,deedToImport:deedToImport,parseDeedPages_:parseDeedPages_,expRows_:expRows_};   // 測試用
+window.__landTest={cleanSheetRows_:cleanSheetRows_,saveCleanXlsx:saveCleanXlsx,stageLbl:stageLbl,probe:function(f){return eval(f)},readPdfAddrStrips:readPdfAddrStrips,pickAddr_:pickAddr_,ocrDeedAddresses:ocrDeedAddresses,deedToImport:deedToImport,parseDeedPages_:parseDeedPages_,expRows_:expRows_};   // 測試用
 Object.defineProperty(window.__landTest,'IM',{get:function(){return IM}});
 /* ---- 修改專案(後台 → 專案 → 編輯) ---- */
 var PROJ_TYPES=['產業用地開發','工業區擴編','都市計畫變更','其他'];
+var PROJ_STATUSES=['規劃中','執行中','暫停','結案'];
 function openProjEdit(pid){
   var pr=PRJ[pid];if(!pr)return;
   var dlg=$('#dlg-proj');
@@ -4818,6 +4868,7 @@ function openProjEdit(pid){
   var types=PROJ_TYPES.indexOf(pr.type)>=0||!pr.type?PROJ_TYPES:PROJ_TYPES.concat([pr.type]);
   $('#proj-body').innerHTML='<div class="dlg-h"><h2>修改專案</h2><button class="btn small" type="button" data-close>關閉</button></div>'
     +'<div class="field"><label for="pe-name">專案名稱</label><input type="text" id="pe-name" maxlength="60" value="'+esc(pr.name)+'"><p class="small muted" style="margin:4px 0 0">60 字以內,不能和其他專案同名,也不能有 \\ / : * ? " &lt; &gt; | 這些符號。</p></div>'
+    +'<div class="field"><label for="pe-status">專案狀態</label><select id="pe-status">'+PROJ_STATUSES.map(function(t){return '<option'+(t===(pr.status||'規劃中')?' selected':'')+'>'+esc(t)+'</option>'}).join('')+'</select></div>'
     +'<div class="field"><label for="pe-type">開發類型</label><select id="pe-type">'+(pr.type?'':'<option value="">請選擇</option>')+types.map(function(t){return '<option'+(t===pr.type?' selected':'')+'>'+esc(t)+'</option>'}).join('')+'</select></div>'
     +'<div class="row2"><div class="field"><label for="pe-head">同意門檻:人數 %</label><input type="number" id="pe-head" min="1" max="100" step="any" value="'+pr.rule.headPct+'"></div>'
     +'<div class="field"><label for="pe-share">同意門檻:持分 %</label><input type="number" id="pe-share" min="1" max="100" step="any" value="'+pr.rule.sharePct+'"></div></div>'
@@ -4827,14 +4878,14 @@ function openProjEdit(pid){
 }
 async function saveProjEdit(pid,btn){
   var pr=PRJ[pid];if(!pr)return;
-  var name=($('#pe-name').value||'').trim(),type=$('#pe-type').value,hp=Number($('#pe-head').value),sp=Number($('#pe-share').value);
+  var name=($('#pe-name').value||'').trim(),type=$('#pe-type').value,st=$('#pe-status').value,hp=Number($('#pe-head').value),sp=Number($('#pe-share').value);
   if(!name){toast('請填專案名稱。');return}
   if(!type){toast('請選擇開發類型。');return}
   if(!(hp>=1&&hp<=100)||!(sp>=1&&sp<=100)){toast('同意門檻要填 1 到 100 的數字。');return}
-  if(name===pr.name&&type===pr.type&&hp===pr.rule.headPct&&sp===pr.rule.sharePct){toast('沒有任何變更。');return}
+  if(name===pr.name&&type===pr.type&&st===(pr.status||'規劃中')&&hp===pr.rule.headPct&&sp===pr.rule.sharePct){toast('沒有任何變更。');return}
   btn.disabled=true;btn.textContent='儲存中…';
   try{
-    var r=await api('updateProject',{projectId:pid,name:name,type:type,headPct:hp,sharePct:sp});
+    var r=await api('updateProject',{projectId:pid,name:name,type:type,status:st,headPct:hp,sharePct:sp});
     $('#dlg-proj').close();await refreshData();renderAdmin();
     toast('已更新專案「'+r.name+'」'+(r.folder==='renamed'?'(Drive 資料夾已一併改名)':'')+(r.folder==='none'?'(找不到專案的 Drive 資料夾,沒有改名)':'')+'。');
   }catch(e){
@@ -4991,7 +5042,7 @@ function renderAdmin(){
   if(AD.tab==='proj'){
     if(AP.list===null&&!AP.busy&&location.hash==='#admin'){loadAP();}
     var ph='<h1>後台</h1>'+tabs+'<p class="muted" style="margin:12px 0 0">封存:專案從所有人的畫面隱藏,資料全部保留,可以還原。刪除:只有還沒開始使用的專案(沒有訪談、待辦、附件、踏勘、階段變動)可以直接刪除,用來復原匯入錯誤;測試專案已有紀錄時,確認後可連同紀錄一起刪。</p>';
-    ph+='<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>專案</th><th>開發類型</th><th>同意門檻(人數 / 持分)</th><th>狀態</th><th>地號</th><th>地主</th><th></th></tr></thead><tbody>'+DB.projects.map(function(p){return '<tr><td>'+esc(p.name)+'</td><td>'+esc(p.type||'')+'</td><td>'+p.rule.headPct+'% / '+p.rule.sharePct+'%</td><td>'+esc(p.status||'')+'</td><td>'+DB.parcels.filter(function(x){return x.proj===p.id}).length+'</td><td>'+projOwners(p.id).length+'</td><td><button class="btn small" type="button" data-ad-editproj="'+esc(p.id)+'">編輯</button> <button class="btn small" type="button" data-ad-resetdates="'+esc(p.id)+'">重設謄本日期</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'">合併圖資</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'" data-replace="1">取代圖資</button> <button class="btn small" type="button" data-ad-archive="'+esc(p.id)+'">封存</button> <button class="btn small" type="button" data-ad-delproj="'+esc(p.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div><input type="file" id="ad-geofile" accept=".json,application/json" style="display:none"><p class="small muted" style="margin:6px 0 0">合併圖資:選一個新的圖資檔(.json),會排在現有地圖的右邊。同一段已經在圖上的話要改用「取代圖資」,會整張換掉。</p>';
+    ph+='<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>專案</th><th>開發類型</th><th>同意門檻(人數 / 持分)</th><th>狀態</th><th>地號</th><th>地主</th><th></th></tr></thead><tbody>'+DB.projects.map(function(p){return '<tr><td>'+esc(p.name)+'</td><td>'+esc(p.type||'')+'</td><td>'+p.rule.headPct+'% / '+p.rule.sharePct+'%</td><td>'+esc(p.status||'')+'</td><td>'+DB.parcels.filter(function(x){return x.proj===p.id}).length+'</td><td>'+projOwners(p.id).length+'</td><td><button class="btn small" type="button" data-ad-editproj="'+esc(p.id)+'">編輯</button> <button class="btn small" type="button" data-ad-resetdates="'+esc(p.id)+'">重設謄本日期</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'">合併圖資</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'" data-replace="1">取代圖資</button> <button class="btn small" type="button" data-ad-archive="'+esc(p.id)+'">封存</button> <button class="btn small" type="button" data-ad-delproj="'+esc(p.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div><input type="file" id="ad-geofile" accept=".json,application/json" style="display:none"><div class="panel" style="margin-top:8px"><p class="small muted" style="margin:0 0 6px">合併圖資:選一個新的圖資檔(.json)加到現有地圖。地籍圖謄本沒有座標,系統不知道兩段實際的相對位置,請照真實位置選方位;排得不準可以用微調,或用「取代圖資」整張重來。同一段已經在圖上的話要用「取代圖資」。</p><div class="row2"><div class="field" style="margin-top:0"><label for="ad-geodir">新的一段放在現有地圖的</label><select id="ad-geodir"><option value="E">東邊(右)</option><option value="W">西邊(左)</option><option value="N">北邊(上)</option><option value="S">南邊(下)</option><option value="NE">東北</option><option value="NW">西北</option><option value="SE">東南</option><option value="SW">西南</option></select></div><div class="field" style="margin-top:0"><label for="ad-geogap">與現有地圖的間隔(公尺)</label><input type="number" id="ad-geogap" min="0" max="2000" value="40"></div></div><div class="row2"><div class="field"><label for="ad-geoe">微調:再往東移(公尺,負數往西)</label><input type="number" id="ad-geoe" value="0"></div><div class="field"><label for="ad-geon">微調:再往北移(公尺,負數往南)</label><input type="number" id="ad-geon" value="0"></div></div></div>';
     var arch=(AP.list||[]).filter(function(x){return x.archived});
     ph+='<div class="panel" style="margin-top:14px"><h2>已封存的專案</h2>'+(AP.err?'<div class="notice">'+esc(AP.err)+'</div>':'')+(arch.length?'<div class="tablewrap" style="margin-top:0"><table><thead><tr><th>專案</th><th>狀態</th><th></th></tr></thead><tbody>'+arch.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td>'+esc(x.status||'')+'</td><td><button class="btn small" type="button" data-ad-restore="'+esc(x.id)+'">還原</button> <button class="btn small" type="button" data-ad-delproj="'+esc(x.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div>':'<p class="small muted" style="margin:0">'+(AP.list===null?'載入中…':'沒有封存的專案。')+'</p>')+'</div>';
     el.innerHTML=ph;return;
@@ -5034,10 +5085,10 @@ function mergeGeoUI(inp){
     var g;try{g=JSON.parse(rd.result)}catch(x){toast('這個檔案不是正確的圖資檔(JSON 格式錯誤)。');return}
     if(!g||!g.parcels){toast('這個檔案不是圖資檔(找不到 parcels)。');return}
     var secs={};Object.keys(g.parcels).forEach(function(k){var i=k.indexOf('|');secs[g.parcels[k].sec||(i>=0?k.slice(0,i):'')||'(未標段別)']=1});
-    var msg=(T.replace?'取代':'合併')+'圖資到「'+(pr?pr.name:'')+'」?\n新檔含 '+Object.keys(g.parcels).length+' 筆地號,段別:'+Object.keys(secs).join('、')+(T.replace?'\n\n這會把現有整張地圖換成新檔,無法復原。':'\n\n新的一段會排在現有地圖右邊。');
+    var msg=(T.replace?'取代':'合併')+'圖資到「'+(pr?pr.name:'')+'」?\n新檔含 '+Object.keys(g.parcels).length+' 筆地號,段別:'+Object.keys(secs).join('、')+(T.replace?'\n\n這會把現有整張地圖換成新檔,無法復原。':'\n\n新的一段會放在現有地圖的'+(($('#ad-geodir')||{}).selectedOptions?$('#ad-geodir').selectedOptions[0].textContent:'東邊')+'。');
     if(!window.confirm(msg))return;
     toast('處理中…');
-    api('mergeGeo',{projectId:T.id,geo:g,replace:T.replace,caption:T.replace?'':Object.keys(secs).length===1?Object.keys(secs)[0]:''}).then(function(r){
+    api('mergeGeo',{projectId:T.id,geo:g,replace:T.replace,place:{dir:($('#ad-geodir')||{}).value||'E',gap:($('#ad-geogap')||{}).value,east:($('#ad-geoe')||{}).value,north:($('#ad-geon')||{}).value},caption:T.replace?'':Object.keys(secs).length===1?Object.keys(secs)[0]:''}).then(function(r){
       GEOC[T.id]=undefined;if(PRJ[T.id])PRJ[T.id]._geoLazy=true;AP.list=null;toast('完成:現在圖上有 '+r.parcels+' 筆地號('+r.sections.join('、')+')。');
       return ensureGeo(T.id)}).then(function(){renderAdmin()}).catch(function(er){if(er.auth)showLogin('登入已過期,請重新登入');else toast('失敗:'+(er.userMessage||er.message))});
   };
