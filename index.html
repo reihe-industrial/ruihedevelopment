@@ -6717,8 +6717,11 @@ function peRender_(){
   h+='<div class="actions" style="margin-top:12px;justify-content:space-between;flex-wrap:wrap"><span><button class="btn" type="button" data-pe-add>新增地號…</button></span><span><button class="btn" type="button" data-pe-close>關閉</button> '
     +'<button class="btn" type="button" data-pe-show'+((nOut&&!PE.busy)?'':' disabled')+'>納入此專案'+(nOut?'('+nOut+' 筆)':'')+'</button> '
     +'<button class="btn primary" type="button" data-pe-hide'+((nIn&&!PE.busy)?'':' disabled')+'>'+(PE.busy?'處理中…':'不納入此專案'+(nIn?'('+nIn+' 筆)':''))+'</button></span></div>';
+  var tw0=el.querySelector('.tablewrap'),sc0=tw0?tw0.scrollTop:0,dl0=el.scrollTop,oq=el.querySelector('#pe-q');
   el.innerHTML=h;
-  var qi=$('#pe-q');if(qi&&PE.focusQ){qi.focus();var v=qi.value;qi.value='';qi.value=v;PE.focusQ=false}
+  var nq=el.querySelector('#pe-q');if(oq&&nq&&PE.focusQ){nq.parentNode.replaceChild(oq,nq)}
+  var tw1=el.querySelector('.tablewrap');if(tw1)tw1.scrollTop=sc0;el.scrollTop=dl0;
+  PE.focusQ=false
 }
 function peRun_(fn,okMsg){
   PE.busy=true;PE.err='';peRender_();
