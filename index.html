@@ -4745,7 +4745,7 @@ function reportSheets_(){
   var ch=[['類型','專案','地主','原意願','新意願']];
   R.up.forEach(function(x){ch.push(['升級',x.pr.name,x.o.name,lv(x.from),lv(x.to)])});R.down.forEach(function(x){ch.push(['下降',x.pr.name,x.o.name,lv(x.from),lv(x.to)])});
   if(ch.length>1)sheets.push({name:'意願變動',rows:ch});
-  var mv=[['專案','地主','階段','日期']];R.moves.forEach(function(x){mv.push([x.pr.name,x.o.name,stageLbl(x.stage),x.date?iso(x.date):''])});
+  var mv=[['專案','地主','階段','日期']];R.moves.forEach(function(x){mv.push([x.pr.name,x.o.name,stageLbl(x.stage),x.date?(typeof x.date==='string'?x.date.slice(0,10):iso(x.date)):''])});
   if(mv.length>1)sheets.push({name:'階段推進',rows:mv});
   return sheets;
 }
