@@ -2787,6 +2787,7 @@ var RULES=[
   ['rdate','登記日期統一成西元(民國 113/05/20 → 2024-05-20)'],
   ['lien','他項權利欄位有內容的地號,標記為有他項權利'],
   ['maskid','謄本遮蔽姓名的地主:用證號(如 L2214*****)分辨同名的人,拜訪確認後再改成實際姓名'],
+  ['maskdup','同一地號有遮蔽後姓名、證號都一樣的地主:已分成不同的人(名字後加 (2)),拜訪確認後再改成實際姓名'],
   ['idkeep','保留身分證字號或統一編號(只有專案負責人以上和負責的業務看得到)'],
   ['blank','略過空白列']
 ];
@@ -2981,6 +2982,7 @@ function processImport(){
       var ml='',nt='',ct='';
       if(names.length===1){ml=toHalf(mailRaw).replace(/\s+/g,'');nt=String(noteRaw||'').trim();ct=String(contactRaw||'').trim();if(!ph&&ct){var pm=toHalf(ct).match(/(09\d{2}-?\d{6}|0\d{1,2}-?\d{6,8})/);if(pm)ph=normPhone(pm[1])}}
       var ex=cur.owners.filter(function(o){return o.name===disp})[0];
+      if(ex&&masked){var k2=2;while(cur.owners.some(function(o){return o.name===disp+'('+k2+')'}))k2++;disp=disp+'('+k2+')';ex=null;note('maskdup',nm,'遮蔽後姓名相同,分開計算')}
       if(ex){
         if(!ex.share||!sh||ex.share.txt===sh.txt)note('dup',disp+'(地號 '+noN+')','合併成一筆');
         else{var sf=ex.share.f+sh.f,ss=sf<=1.0001?approxShare(Math.min(sf,1)):undefined;if(ss){ex.share=ss;note('dupsum',disp+'(地號 '+noN+')','持分相加 '+ss.txt)}else issue(rowNo,noN,'warn',disp+' 在同一地號的持分相加超過 1','採用第一筆')}
@@ -3327,7 +3329,7 @@ function deedParseOwnership_(lines){
   }
   var TRACK={'登記日期':1,'登記原因':1,'所有權人':1,'統一編號':1,'權利範圍':1,'住址':1,'管理者':1};
   lines.forEach(function(raw){
-    var l=String(raw).trim().replace(/住\s+址(\s*:)/,'住址$1').replace(/管\s+理\s+者(\s*:)/,'管理者$1');if(!l||deedIsNoise_(l)||/^歷次取得權利範圍/.test(l))return;
+    var l=String(raw).trim().replace(/住\s+址(\s*:)/,'住址$1').replace(/管\s+理\s+者(\s*:)/,'管理者$1');if(!l||deedIsNoise_(l)||/^歷次取得權利範圍/.test(l))return;l=l.replace(/歷次取得權利範圍.*$/,'');if(!l.trim())return;
     var parts=l.split(/(?=(?:登記次序|登記日期|登記原因|原因發生日期|所有權人|統一編號|住址|管理者|權利範圍|權狀字號|相關他項權利登記次序|其他登記事項)\s*:)/);
     parts.forEach(function(part){
       part=part.trim();if(!part||/^\(\d{4}\)$/.test(part))return;
@@ -3365,7 +3367,7 @@ function parseOneDeed_(rawPages){
     if(m){titleLoc={text:m[1],main:m[2],sub:m[3]};return true}return false;
   });
   var headerIdx=[];
-  lines.forEach(function(l,i){var key=l.replace(/[*\s]/g,'');if(DEED_TITLES_.indexOf(key)!==-1)headerIdx.push({i:i,key:key})});
+  lines.forEach(function(l,i){var key=l.replace(/[*\s]/g,'');if(DEED_TITLES_.indexOf(key)===-1)key=key.replace(/\d+/g,'');if(DEED_TITLES_.indexOf(key)!==-1)headerIdx.push({i:i,key:key})});
   function bodyOf(k){var end=k+1<headerIdx.length?headerIdx[k+1].i:lines.length;return lines.slice(headerIdx[k].i+1,end)}
   var records=[];
   headerIdx.forEach(function(h,k){
@@ -4311,7 +4313,7 @@ function sgBuild(ex,opts){
       // 兩輪、全部一起配(不是一個一個搶):第一輪登記面積要對得上(±25%,小塊 ±60%);第二輪放寬到 ±60%,
       // 只收字就在塊裡或貼得很近的,標成「請核對」。每塊圖形只給一個地號,字離它最近、面積最像的優先。
       var nos=Object.keys(only).filter(function(no){return !assign[no]});
-      function bind(no,h,flag){var pl=polys[h.i];lblUsed[h.i]=1;assign[no]={pts:pl.pts,area:pl.area,n:1,key:'L'+h.i,lbl:flag};tg.push(assign[no]);
+      function bind(no,h,flag){var pl=polys[h.i];lblUsed[h.i]=no;assign[no]={pts:pl.pts,area:pl.area,n:1,key:'L'+h.i,lbl:flag};tg.push(assign[no]);
         var q2=sgBB(pl.pts);r=[Math.min(r[0],q2[0]-MARG),Math.min(r[1],q2[1]-MARG),Math.max(r[2],q2[2]+MARG),Math.max(r[3],q2[3]+MARG)]}
       function cands(no,pass){
         var A=Number(areas[no])||0,out=[];
@@ -4319,14 +4321,15 @@ function sgBuild(ex,opts){
           polys.forEach(function(pl,i){
             if(lblUsed[i]||pl.area<0.5)return;
             var inside=mkInPoly([t.x,t.y],pl.pts),d=inside?0:mkDistPoly([t.x,t.y],pl.pts);
-            if(d>14)return;
+            if(d>(pass===3?30:14))return;
             var cc=mkCentroid(pl.pts),dc=Math.hypot(cc[0]-t.x,cc[1]-t.y);
             if(A>0){
-              var rt=pl.area/A,tol=pass===1?(A>=60?0.25:0.6):0.6;
+              var rt=pl.area/A,tol=pass===3?0.08:(pass===1?(A>=60?0.25:0.6):0.6);
               if(Math.abs(rt-1)>tol)return;
-              if(pass===2&&d>8)return;
+              if(pass===2&&d>8)return;if(pass===3&&A<30&&d>14)return;
               out.push({i:i,d:d,sc:Math.abs(rt-1)*40+d+0.3*dc,inside:inside,a:pl.area});
             }else{   // 清冊沒有面積:只認字就在塊裡面(第二輪再收貼得很近的小塊)
+              if(pass===3)return;
               if(pass===1&&!inside)return;
               if(pass===2&&(inside||d>3||pl.area>3000))return;
               out.push({i:i,d:d,sc:pl.area/1000+d,inside:inside,a:pl.area});
@@ -4335,20 +4338,21 @@ function sgBuild(ex,opts){
         });
         return out;
       }
-      [1,2].forEach(function(pass){
+      [1,2,3].forEach(function(pass){
         var all=[];
         nos.forEach(function(no){if(assign[no])return;cands(no,pass).forEach(function(c){c.no=no;all.push(c)})});
         all.sort(function(x,y){return x.sc-y.sc});
-        all.forEach(function(c){if(assign[c.no]||lblUsed[c.i])return;bind(c.no,c,pass===2?3:(c.inside?1:2))});
+        all.forEach(function(c){if(assign[c.no]||lblUsed[c.i])return;bind(c.no,c,pass>=2?3:(c.inside?1:2))});
       });
       // 沒配到的:記下原因(清冊面積、圖上字旁邊最近的塊多大),方便你判斷是圖的問題還是清冊面積不對
       nos.forEach(function(no){
         if(assign[no])return;
         var A=Number(areas[no])||0,ts=labT.filter(function(t){return t.s===no}),best=null;
         ts.forEach(function(t){polys.forEach(function(pl){
-          var d=mkInPoly([t.x,t.y],pl.pts)?0:mkDistPoly([t.x,t.y],pl.pts);if(d>14||pl.area<0.5)return;
-          var sc=A>0?Math.abs(pl.area/A-1)*40+d:d;if(!best||sc<best.sc)best={sc:sc,a:Math.round(pl.area),d:Math.round(d*10)/10};
+          var d=mkInPoly([t.x,t.y],pl.pts)?0:mkDistPoly([t.x,t.y],pl.pts);if(d>30||pl.area<0.5)return;
+          var sc=A>0?Math.abs(pl.area/A-1)*40+d:d;if(!best||sc<best.sc)best={sc:sc,a:Math.round(pl.area),d:Math.round(d*10)/10,by:lblUsed[polys.indexOf(pl)]||''};
         })});
+        if(typeof SG_DEBUG!=='undefined'&&SG_DEBUG&&SG_DEBUG.on){var dd=[];ts.forEach(function(t){polys.forEach(function(pl,ii){var dist=mkInPoly([t.x,t.y],pl.pts)?0:mkDistPoly([t.x,t.y],pl.pts);if(dist<=30&&pl.area>0.5&&pl.area<3000)dd.push([no,'lbl',Math.round(t.x),Math.round(t.y),'poly',ii,Math.round(pl.area),'d',Math.round(dist*10)/10,'used',lblUsed[ii]||''])})});SG_DEBUG.rows=(SG_DEBUG.rows||[]).concat(dd)}
         diag[no]={A:A,hasLabel:ts.length>0,best:best};
       });
     }
@@ -4375,6 +4379,7 @@ function sgBuild(ex,opts){
     var why=function(n){var d=dg[n];if(!d)return n+'(整張圖都沒有這個地號的字)';
       if(!d.hasLabel)return n+'(圖上沒有這個地號的字)';
       if(!d.best)return n+'(字旁邊沒有封閉的地塊,可能線沒畫完整)';
+      if(d.A>0&&d.best.by&&Math.abs(d.best.a/d.A-1)<=0.25)return n+'(清冊 '+d.A+' ㎡,字旁的塊 '+d.best.a+' ㎡ 大小對得上,但這一塊已經給了地號 '+d.best.by+')';
       return n+(d.A>0?'(清冊 '+d.A+' ㎡,圖上字旁最近的塊 '+d.best.a+' ㎡,差太多不敢綁)':'(清冊沒有面積,字不在地塊內)')};
     warns.push('這些地號圖上沒有灰底、也找不到面積對得上的地塊,沒有放進地圖:'+miss.map(why).join('、')+'。')}
   }
@@ -5040,7 +5045,7 @@ function ownerFilesHTML(o,pid){
     h+='<div class="orow" style="margin-bottom:6px;align-items:flex-start"><div class="small" style="min-width:0;overflow-wrap:anywhere"><b>'+esc(f.kind)+'</b> · '+esc(f.name)+' · '+esc(f.date)+' · '+esc(f.by)+'<div id="fv-'+esc(f.sid)+'"></div></div><span style="display:flex;gap:6px"><button class="btn small" type="button" data-file-open="'+esc(f.sid)+'">開啟</button><button class="btn small" type="button" data-file-del="'+f.id+'">刪除</button></span></div>';
   });
   h+='<div class="row2" style="margin-top:8px"><div class="field" style="margin-top:0"><label for="of-kind">種類</label><select id="of-kind">'+FILE_KINDS.map(function(x){return '<option>'+x+'</option>'}).join('')+'</select></div><div class="field" style="margin-top:0"><label for="of-file">選擇檔案(可用手機直接拍照)</label><input type="file" id="of-file" accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"></div></div>';
-  h+='<div class="actions"><button class="btn primary" type="button" data-file-add="'+o.id+'">加入附件</button></div><p class="small muted" style="margin:4px 0 0">單檔 8 MB 以內,照片會自動縮小。</p>';
+  h+='<div class="actions"><button class="btn primary" type="button" data-file-add="'+o.id+'">加入附件</button></div><p class="small muted" style="margin:4px 0 0">單檔 20 MB 以內,照片會自動縮小。</p>';
   return h;
 }
 async function addFile(id){
@@ -5051,7 +5056,7 @@ async function addFile(id){
   var btn=$('[data-file-add]');if(btn){btn.disabled=true;btn.textContent='上傳中…'}
   try{
     var kind=$('#of-kind').value,pf=await prepFile(f);
-    if(pf.size>8*1024*1024)throw {userMessage:'檔案超過 8 MB。'};
+    if(pf.size>20*1024*1024)throw {userMessage:'檔案超過 20 MB。'};
     var r=await api('addAttachment',{projectId:S.proj,ownerId:o._srv,kind:kind,file:{name:pf.name,mime:pf.mime,data:pf.data}});
     DB.files.push({id:++DB.fid,sid:r.id,pid:S.proj,owner:id,parcel:null,kind:kind,name:r.name,mime:pf.mime,size:pf.size,by:ME,date:iso(new Date())});
     S.oopen='file';renderAll();openOwner(id);toast('已加入附件。');
@@ -5286,11 +5291,12 @@ function ownerSame_(o,n){
   }
   return false;
 }
-// 同一位所有權人在同一筆土地有好幾筆登記(例如 3分之1 與 3分之2),先相加成一筆
+// 同一位所有權人(姓名完整)在同一筆土地有好幾筆登記(例如 3分之1 與 3分之2),先相加成一筆;姓名被遮蔽的不合併
 function mergeDeedOwners_(list){
   var out=[],idx={};
   list.forEach(function(e){
     var k=e.name+'|'+(e.id||'');
+    if(/\*/.test(e.name)){out.push(Object.assign({},e));return}   // 姓名被遮蔽:登記次序不同就是不同的人,不合併
     if(idx[k]===undefined){idx[k]=out.length;out.push(Object.assign({},e));return}
     var a=out[idx[k]],sa=normShare(a.share),sb=normShare(e.share);
     if(sa&&sb&&sa.f+sb.f<=1.0001){var s=approxShare(Math.min(sa.f+sb.f,1));if(s)a.share=s.txt}
@@ -6551,11 +6557,10 @@ function renderFiles(){
     var docs=d.docs.filter(function(x){return x.area===area}),folders=[];
     docs.forEach(function(x){if(x.folder&&folders.indexOf(x.folder)<0)folders.push(x.folder)});folders.sort();
     h+='<div class="panel" style="margin-top:14px"><h2>'+esc(area)+' <span class="count">'+docs.length+' 份</span></h2><p class="small muted" style="margin:0 0 8px">'+esc(DOC_AREA_HINT[area])+'</p>';
-    h+='<div class="orow" style="gap:8px;flex-wrap:wrap;align-items:flex-end"><div class="field" style="margin:0"><label for="fl-file-'+esc(area)+'">選檔案(可多選,單檔 8 MB 內)</label><input type="file" id="fl-file-'+esc(area)+'" data-fl-area="'+esc(area)+'" multiple></div>'
+    h+='<div class="orow" style="gap:8px;flex-wrap:wrap;align-items:flex-end"><div class="field" style="margin:0"><label for="fl-file-'+esc(area)+'">選檔案(可多選,單檔 20 MB 內)</label><input type="file" id="fl-file-'+esc(area)+'" data-fl-area="'+esc(area)+'" multiple></div>'
       +'<div class="field" style="margin:0"><label for="fl-fold-'+esc(area)+'">放在哪個資料夾(可空白)</label><input type="text" id="fl-fold-'+esc(area)+'" list="fl-dl-'+esc(area)+'" maxlength="30" placeholder="例如 合約範本"><datalist id="fl-dl-'+esc(area)+'">'+folders.map(function(f){return '<option value="'+esc(f)+'">'}).join('')+'</datalist></div>'
       +'<div class="field" style="margin:0"><label for="fl-desc-'+esc(area)+'">說明(可空白)</label><input type="text" id="fl-desc-'+esc(area)+'" maxlength="300"></div>'
       +'<button class="btn primary" type="button" data-fl-up="'+esc(area)+'"'+(FL.busy?' disabled':'')+'>'+(FL.busy===area?'上傳中…':'上傳')+'</button></div>';
-    h+='<details style="margin-top:8px"><summary class="small">改放雲端連結(檔案太大或格式不支援時用,例如 Google 雲端硬碟的資料夾網址)</summary><div class="orow" style="gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:6px"><div class="field" style="margin:0"><label for="fl-lname-'+esc(area)+'">連結名稱</label><input type="text" id="fl-lname-'+esc(area)+'" maxlength="80"></div><div class="field" style="margin:0;min-width:260px"><label for="fl-lurl-'+esc(area)+'">網址(https:// 開頭)</label><input type="url" id="fl-lurl-'+esc(area)+'"></div><button class="btn" type="button" data-fl-link="'+esc(area)+'">加入連結</button></div></details>';
     if(!docs.length)h+='<div class="empty" style="margin-top:10px">還沒有文件。</div>';
     var groups=[''].concat(folders);
     groups.forEach(function(f){
@@ -6580,8 +6585,8 @@ async function flUpload_(area){
   var inp=document.getElementById('fl-file-'+area),files=inp?[].slice.call(inp.files||[]):[];
   if(!files.length){toast('請先選檔案。');return}
   var folder=(document.getElementById('fl-fold-'+area)||{}).value||'',desc=(document.getElementById('fl-desc-'+area)||{}).value||'';
-  var big=files.filter(function(f){return f.size>8*1024*1024});
-  if(big.length){toast('檔案超過 8 MB:'+big[0].name+'。太大的檔案請放到雲端,再用「加入連結」。');return}
+  var big=files.filter(function(f){return f.size>20*1024*1024});
+  if(big.length){toast('檔案超過 20 MB:'+big[0].name+'。請先壓縮或拆成幾份再上傳。');return}
   FL.busy=area;FL.msg='';renderFiles();var ok=0,bad=[],pid=FL.pid;
   for(var i=0;i<files.length;i++){
     var f=files[i];
