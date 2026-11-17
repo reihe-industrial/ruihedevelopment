@@ -4560,7 +4560,15 @@ function applyGeo(pr,plist,geo){
       if(gq){p.pts=gq.pts;p.cx=gq.c[0];p.cy=gq.c[1];p.lf=gq.lf;p.mix=gq.mix;p.polyArea=gq.poly_m2;p.planZone=domZone(gq)}
       else miss.push(p);
     });
-    miss.forEach(function(p,mi){var mx=40+(mi%40)*20,my=600+Math.floor(mi/40)*20;p.pts=[[mx,my],[mx+16,my],[mx+16,my+16],[mx,my+16]];p.cx=mx+8;p.cy=my+8;p.lf=5});
+    // 地號字體大小統一:取全部有圖形地號的中間值,大塊地不再出現超大的字
+    var lfs=[];plist.forEach(function(p){if(miss.indexOf(p)<0&&p.lf>0)lfs.push(p.lf)});
+    if(lfs.length){lfs.sort(function(x,y){return x-y});var lfU=lfs[Math.floor(lfs.length/2)];plist.forEach(function(p){if(miss.indexOf(p)<0)p.lf=lfU})}
+    // 沒對到圖形的地號:排在有圖形的範圍「外面」(正下方),不要壓在地籍圖上
+    var bx0=1e9,bx1=-1e9,by1=-1e9;
+    plist.forEach(function(p){if(miss.indexOf(p)>=0||!p.pts)return;p.pts.forEach(function(q){if(q[0]<bx0)bx0=q[0];if(q[0]>bx1)bx1=q[0];if(q[1]>by1)by1=q[1]})});
+    if(bx0>bx1){bx0=40;bx1=960;by1=560}
+    var tw=Math.max(14,(bx1-bx0)/60),ncol=Math.max(1,Math.floor((bx1-bx0)/(tw*1.25))),oy=by1+tw*3;
+    miss.forEach(function(p,mi){var mx=bx0+(mi%ncol)*tw*1.25,my=oy+Math.floor(mi/ncol)*tw*1.25;p.pts=[[mx,my],[mx+tw,my],[mx+tw,my+tw],[mx,my+tw]];p.cx=mx+tw/2;p.cy=my+tw/2;p.lf=Math.max(4,tw*0.3)});
   }else gridLayout(plist);
 }
 // 切到還沒讀圖資的專案:先照示意排列切過去,圖資讀回來再重畫地圖
@@ -6352,8 +6360,8 @@ function mapOverlay_(){
     n.innerHTML='<svg viewBox="-20 -26 40 46" width="30" height="34" aria-hidden="true"><g id="mapnorth-g"><path d="M0 -22L9 8L0 3L-9 8Z" fill="currentColor"/></g></svg><div style="font-weight:700;line-height:1">北</div>';
     wrap.appendChild(n);
     sc=document.createElement('div');sc.id='mapscale';sc.setAttribute('role','img');sc.setAttribute('aria-label','比例尺');
-    sc.style.cssText='position:absolute;right:12px;bottom:44px;padding:5px 10px 4px;background:var(--surface);border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--ink);pointer-events:none';
-    sc.innerHTML='<div id="mapscale-t" style="margin-bottom:2px;white-space:nowrap"></div><div id="mapscale-b" style="height:6px;border:2px solid currentColor;border-top:0;box-sizing:border-box"></div>';
+    sc.style.cssText='position:absolute;right:12px;bottom:44px;padding:8px 14px 7px;background:var(--surface);border:1px solid var(--line);border-radius:10px;font-size:16px;font-weight:700;color:var(--ink);pointer-events:none';
+    sc.innerHTML='<div id="mapscale-t" style="margin-bottom:4px;white-space:nowrap"></div><div id="mapscale-b" style="height:10px;border:2px solid currentColor;border-top:0;box-sizing:border-box"></div>';
     wrap.appendChild(sc);
     ex=document.createElement('button');ex.id='mapexp';ex.type='button';ex.className='btn small';ex.textContent='匯出圖片';ex.setAttribute('aria-label','把目前看到的地圖匯出成圖片');
     ex.style.cssText='position:absolute;right:12px;top:78px';wrap.appendChild(ex);
@@ -6364,7 +6372,7 @@ function mapOverlay_(){
   var g=document.getElementById('mapnorth-g');if(g)g.setAttribute('transform','rotate('+(Number(geo.north)||0)+')');
   n.setAttribute('aria-label','指北針:北方在畫面'+(Number(geo.north)?'順時針 '+geo.north+' 度':'正上方'));
   var r=svg.getBoundingClientRect(),cw=r.width||1000,ch=r.height||660,ppu=Math.min(cw/vb.w,ch/vb.h),mpp=geo.scale/ppu;
-  var m=niceM_(mpp*130),px=m/mpp;
+  var m=niceM_(mpp*280),px=m/mpp;
   $('#mapscale-t').textContent=mLabel_(m);$('#mapscale-b').style.width=Math.max(10,Math.round(px))+'px';
 }
 window.addEventListener('resize',function(){if(location.hash==='#map')mapOverlay_()});
@@ -6695,15 +6703,49 @@ function peMatch_(x){
 function peOpen_(pid){
   var d=$('#dlg-pe');
   if(!d){d=document.createElement('dialog');d.id='dlg-pe';d.setAttribute('aria-label','調整地號');d.style.width='min(780px,96vw)';d.innerHTML='<div class="dlg" id="pe-body"></div>';document.body.appendChild(d)}
-  PE={pid:pid,q:'',f:'all',sel:{},busy:false,err:'',staff:'',role:'main'};
+  PE={pid:pid,mode:'par',osel:{},q:'',f:'all',sel:{},busy:false,err:'',staff:'',role:'main'};
   peRender_();if(!d.open)d.showModal();
+}
+function peTabs_(){return '<div class="orow" style="gap:6px;margin:0 0 10px"><button class="btn small'+(PE.mode==='own'?'':' primary')+'" type="button" data-pe-mode="par">依地號</button><button class="btn small'+(PE.mode==='own'?' primary':'')+'" type="button" data-pe-mode="own">依地主分配業務</button></div>'}
+function peOwners_(){
+  var m={};
+  Object.keys(SRV.par).forEach(function(sid){var p=DB.parcels[SRV.par[sid]];if(p&&p.proj===PE.pid)p.owners.forEach(function(x){var r=m[x.owner]||(m[x.owner]={id:x.owner,n:0});r.n++})});
+  var out=Object.keys(m).map(function(k){var o=OWN[k]||{};return {id:k,n:m[k].n,name:o.name||k,a1:(o.asg&&o.asg[PE.pid])||'',a2:(o.asg2&&o.asg2[PE.pid])||''}});
+  out.sort(function(a,b){return String(a.name).localeCompare(String(b.name),'zh-Hant')});
+  return out;
+}
+function peOwnMatch_(o){
+  var q=PE.q.trim();if(!q)return true;
+  var toks=q.split(/[\s,,、;;]+/).filter(Boolean);
+  return toks.some(function(t){return String(o.name).indexOf(t)>=0});
+}
+function peRenderOwn_(el){
+  var pr=PRJ[PE.pid]||{name:''},all=peOwners_(),list=all.filter(peOwnMatch_),sel=PE.osel||(PE.osel={});
+  var ids=Object.keys(sel).filter(function(k){return all.some(function(o){return o.id===k})}),n=ids.length;
+  var h='<h2>調整地號:'+esc(pr.name)+'</h2>'+peTabs_()+'<p class="small muted" style="margin:0 0 10px">共 '+all.length+' 位地主。勾選地主後分配給業務,這些地主在這個專案的所有地號都會跟著。</p>';
+  if(PE.err)h+='<div class="notice">'+esc(PE.err)+'</div>';
+  h+='<div class="orow" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><input type="search" id="pe-q" placeholder="搜尋地主姓名,可一次貼多個(空格或逗號分開)" aria-label="搜尋地主" value="'+esc(PE.q)+'" style="max-width:320px;width:100%"><button class="btn small" type="button" data-pe-oall>勾選目前列出的</button><button class="btn small" type="button" data-pe-onone>全部取消</button></div>';
+  var members=(PRJ[PE.pid]&&PRJ[PE.pid].staff)||[];
+  h+='<div class="orow" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2,#f6f8f6)"><b style="font-size:14px">分配給業務</b>'
+    +'<select id="pe-staff" aria-label="選擇業務" style="width:auto;min-width:130px"><option value="">選擇業務</option>'+members.map(function(m){return '<option value="'+esc(m)+'"'+(PE.staff===m?' selected':'')+'>'+esc(m)+'</option>'}).join('')+'</select>'
+    +'<select id="pe-role" aria-label="承辦種類" style="width:auto"><option value="main"'+(PE.role==='main'?' selected':'')+'>主要承辦</option><option value="sub"'+(PE.role==='sub'?' selected':'')+'>次要承辦</option></select>'
+    +'<button class="btn primary" type="button" data-pe-oassign'+((n&&PE.staff&&!PE.busy)?'':' disabled')+'>'+(PE.busy?'處理中…':(n?'分配勾選的 '+n+' 位':'分配勾選的地主'))+'</button></div>';
+  h+='<div class="tablewrap" style="max-height:44vh;overflow:auto;border:1px solid var(--line);border-radius:10px"><table style="width:100%"><thead><tr><th style="width:40px"></th><th>地主</th><th>地號數</th><th>主要承辦</th><th>次要承辦</th></tr></thead><tbody>'
+    +(list.length?list.map(function(o){return '<tr><td><input type="checkbox" data-pe-opick="'+esc(o.id)+'" aria-label="選取 '+esc(o.name)+'" style="width:auto"'+(sel[o.id]?' checked':'')+'></td><td>'+esc(o.name)+'</td><td>'+o.n+'</td><td>'+esc(o.a1||'—')+'</td><td>'+esc(o.a2||'—')+'</td></tr>'}).join(''):'<tr><td colspan="5" class="muted" style="padding:14px">沒有符合的地主。</td></tr>')
+    +'</tbody></table></div>';
+  h+='<div class="actions" style="margin-top:12px;justify-content:flex-end"><button class="btn" type="button" data-pe-close>關閉</button></div>';
+  var tw0=el.querySelector('.tablewrap'),sc0=tw0?tw0.scrollTop:0,oq=el.querySelector('#pe-q');
+  el.innerHTML=h;
+  var nq=el.querySelector('#pe-q');if(oq&&nq&&PE.focusQ)nq.parentNode.replaceChild(oq,nq);
+  var tw1=el.querySelector('.tablewrap');if(tw1)tw1.scrollTop=sc0;PE.focusQ=false;
 }
 function peRender_(){
   var el=$('#pe-body');if(!el||!PE)return;
+  if(PE.mode==='own')return peRenderOwn_(el);
   var pr=PRJ[PE.pid]||{name:''},all=peIds_(PE.pid),list=all.filter(peMatch_),hid=all.filter(function(x){return x.hidden}).length;
   var byId={};all.forEach(function(x){byId[x.sid]=x});
   var selIds=Object.keys(PE.sel).filter(function(k){return byId[k]}),nOut=selIds.filter(function(k){return byId[k].hidden}).length,nIn=selIds.length-nOut,n=selIds.length;
-  var h='<h2>調整地號:'+esc(pr.name)+'</h2><p class="small muted" style="margin:0 0 10px">共 '+all.length+' 筆地號,納入 '+(all.length-hid)+' 筆、不納入 '+hid+' 筆。勾選地號後,可以設為不納入此專案(資料保留,隨時能納入回來),或分配給業務。</p>';
+  var h='<h2>調整地號:'+esc(pr.name)+'</h2>'+peTabs_()+'<p class="small muted" style="margin:0 0 10px">共 '+all.length+' 筆地號,納入 '+(all.length-hid)+' 筆、不納入 '+hid+' 筆。勾選地號後,可以設為不納入此專案(資料保留,隨時能納入回來),或分配給業務。</p>';
   if(PE.err)h+='<div class="notice">'+esc(PE.err)+'</div>';
   h+='<div class="orow" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><input type="search" id="pe-q" placeholder="搜尋,或一次貼多個地號(空格或逗號分開)" aria-label="搜尋地號或段別" value="'+esc(PE.q)+'" style="max-width:320px;width:100%"><select id="pe-f" aria-label="篩選範圍" style="width:auto"><option value="all"'+(PE.f==='all'?' selected':'')+'>全部</option><option value="in"'+(PE.f==='in'?' selected':'')+'>只看納入</option><option value="out"'+(PE.f==='out'?' selected':'')+'>只看不納入</option></select><button class="btn small" type="button" data-pe-all>勾選目前列出的</button><button class="btn small" type="button" data-pe-none>全部取消</button></div>';
   var members=(PRJ[PE.pid]&&PRJ[PE.pid].staff)||[];
@@ -6738,6 +6780,15 @@ document.addEventListener('click',function(e){
   if((b=t.closest('[data-pe-pick]'))){if(b.checked)PE.sel[b.dataset.pePick]=1;else delete PE.sel[b.dataset.pePick];peRender_();return}
   if(t.closest('[data-pe-all]')){peIds_(PE.pid).filter(peMatch_).forEach(function(x){PE.sel[x.sid]=1});peRender_();return}
   if(t.closest('[data-pe-none]')){PE.sel={};peRender_();return}
+  if((b=t.closest('[data-pe-mode]'))){PE.mode=b.dataset.peMode;PE.q='';PE.err='';peRender_();return}
+  if((b=t.closest('[data-pe-opick]'))){if(b.checked)PE.osel[b.dataset.peOpick]=1;else delete PE.osel[b.dataset.peOpick];peRender_();return}
+  if(t.closest('[data-pe-oall]')){peOwners_().filter(peOwnMatch_).forEach(function(o){PE.osel[o.id]=1});peRender_();return}
+  if(t.closest('[data-pe-onone]')){PE.osel={};peRender_();return}
+  if(t.closest('[data-pe-oassign]')){
+    var oids=Object.keys(PE.osel);if(!oids.length||!PE.staff||PE.busy)return;
+    var orl=PE.role==='sub'?'次要承辦':'主要承辦',owho=PE.staff,orole=PE.role;
+    if(!window.confirm('要把這 '+oids.length+' 位地主分配給「'+owho+'」('+orl+')嗎?'))return;
+    peRun_(function(){return api('assignOwners',{projectId:PE.pid,ownerIds:oids,staff:owho,role:orole})},function(r){PE.osel={};return '已分配 '+r.owners+' 位地主給「'+owho+'」'+(r.skipped?(','+r.skipped+' 位因為已是主要承辦而略過'):'')+'。'});return}
   var all=peIds_(PE.pid),byId={};all.forEach(function(x){byId[x.sid]=x});
   var pick=function(hiddenFlag){return Object.keys(PE.sel).filter(function(k){return byId[k]&&byId[k].hidden===hiddenFlag})};
   if(t.closest('[data-pe-hide]')){
