@@ -3858,9 +3858,9 @@ function renderDeeds(){
   if(UP.pid!==S.proj){UP={pid:S.proj,recs:[],files:[],msgs:[],items:[],seq:0,unmatched:[],same:0,matchedIds:{}}}
   var pr=PRJ[S.proj],ps=PP(),exp=[],ok=0,chg=0;
   var regN=0;ps.forEach(function(p){if(p.changed)chg++;if(p.registryOnly){regN++;return}var a=deedAge(p);if(a===null||a>DEED_EXPIRE_DAYS)exp.push(p);else ok++});
-  var h='<div class="orow"><div><h1>謄本更新</h1><p class="muted" style="margin:0">跟進的土地有新的謄本時,上傳後先和現有資料比對,確認差異再套用。</p></div></div>'+projSwitchHTML();
+  var h='<div class="orow"><div><h1>謄本更新</h1><p class="muted" style="margin:0">跟進的土地有新的謄本時,上傳後先和現有資料比對,確認差異再套用。</p></div></div>'+deedProjPick_();
   h+='<div class="kpis">'+kpi('謄本在 '+DEED_EXPIRE_DAYS+' 天內',ok+' 筆')+kpi('謄本已過期',exp.length+' 筆')+kpi('謄本有異動待處理',chg+' 筆')+kpi('已成交地主',dealCount()+' 位')+kpi('以清冊為準',regN+' 筆')+'</div>';
-  h+='<div class="panel" style="margin-top:14px"><h2>1. 上傳新的土地謄本</h2><p class="small muted" style="margin:0">'+esc(pr.name)+'。可以一次選好幾份 PDF(地政電子謄本或電傳資料)。所有人都可以上傳並看比對結果,只有專案負責人以上可以按「套用」。</p>';
+  h+='<div class="panel" style="margin-top:14px"><h2>1. 上傳新的土地謄本</h2><p class="small muted" style="margin:0"><b class="pp-inline">上傳到「'+esc(pr.name)+'」</b>。可以一次選好幾份 PDF(地政電子謄本或電傳資料)。所有人都可以上傳並看比對結果,只有專案負責人以上可以按「套用」。</p>';
   h+='<div class="dropzone"><input type="file" id="up-file" accept="application/pdf" multiple aria-label="選擇謄本 PDF">';
   h+='<details style="margin-top:8px"><summary class="small">PDF 讀不出來?改貼上謄本文字</summary><textarea class="mono" id="up-text" rows="5" placeholder="從 PDF 複製整份土地謄本的文字" style="margin-top:6px"></textarea><div class="actions" style="margin-top:8px"><button class="btn primary" type="button" data-up-text>讀取貼上的文字</button></div></details>';
   h+='<div class="actions" style="margin-top:8px"><button class="btn" type="button" data-up-clear>清除</button></div></div>';
@@ -4417,7 +4417,7 @@ var API_URL='https://script.google.com/macros/s/AKfycbwhelUD2Yi2ZI-TomN72vjnTMO8
 var TOKEN='';
 try{TOKEN=sessionStorage.getItem('ldt')||''}catch(e){}
 var SRV={own:{},par:{}},GEOC={},USERS=[];
-function emptyDB(){return {projects:[],parcels:[],owners:[],interviews:[],log:[],seq:0,staff:[],users:[],deals:{},tasks:[],files:[],fid:0,tid:0}}
+function emptyDB(){return {hidden:[],projects:[],parcels:[],owners:[],interviews:[],log:[],seq:0,staff:[],users:[],deals:{},tasks:[],files:[],fid:0,tid:0}}
 async function api(action,payload){
   var body=Object.assign({action:action,token:TOKEN},payload||{}),j;
   try{
@@ -4639,6 +4639,7 @@ async function adapt(data){
   // geometry:只先讀「目前要顯示的專案」的圖資,其他專案切過去才讀(專案多時才不會拖慢登入)
   if(data.geoFirst&&data.geoFirst.projectId&&GEOC[data.geoFirst.projectId]===undefined)GEOC[data.geoFirst.projectId]=data.geoFirst.geo||null;
   if(data.geoFirst&&data.geoFirst.geo)geoLsSet_(data.geoFirst.projectId,data.geoFirst.geo);
+  db.hidden=(data.hiddenParcels||[]).map(function(h){return {sid:h['地號ID'],proj:h['專案ID'],sec:cleanTxt_(h['段別']||''),no:cleanTxt_(h['地號']),area:num_(h['面積㎡'])}});
   var curP=db.projects.some(function(p){return p.id===S.proj})?S.proj:(db.projects[0]?db.projects[0].id:'');
   for(var pi=0;pi<db.projects.length;pi++){
     var pr=db.projects[pi],plist=db.parcels.filter(function(p){return p.proj===pr.id}),geo=null;
@@ -5652,24 +5653,24 @@ function setArchive(id,on,msg){
 }
 function setHTML(){
   var tagArr=(CFG.tags.length?CFG.tags:CONCERNS),nm=CFG.stageNames||STAGES;
-  var css='<style>.setwrap{max-width:760px}.setwrap .panel{margin-top:14px}.setwrap h2{margin:0 0 4px}.setwrap .sethint{margin:0 0 14px;font-size:13px;color:var(--muted)}'
+  var css='<style>.setwrap{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px;align-items:stretch}.setwrap .panel{margin-top:0}.setwrap .span2{grid-column:1/-1}.setwrap h2{margin:0 0 4px}.setwrap .sethint{margin:0 0 14px;font-size:13px;color:var(--muted)}'
     +'.setgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.setgrid .field{margin:0}.setgrid input{width:100%}'
     +'.setunit{display:flex;align-items:center;gap:8px}.setunit input{flex:1;min-width:0}.setunit span{font-size:14px;color:var(--muted);white-space:nowrap}'
     +'.setchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.setchips span{background:var(--soft,#eef3ef);border:1px solid var(--line);border-radius:999px;padding:3px 12px;font-size:13px}'
-    +'.setstages{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.setstages .field{margin:0}.setstages .stno{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--brand,#1f5c46);color:#fff;font-size:12px;margin-right:6px}.setstages input{width:100%;text-align:center}'
-    +'@media(max-width:640px){.setgrid{grid-template-columns:1fr}.setstages{grid-template-columns:repeat(2,minmax(0,1fr))}}</style>';
+    +'.setstages{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:10px}.setstages .field{margin:0}.setstages .stno{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--brand,#1f5c46);color:#fff;font-size:12px;margin-right:6px}.setstages input{width:100%;text-align:center}'
+    +'@media(max-width:1180px){.setstages{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:900px){.setwrap{grid-template-columns:1fr}}@media(max-width:640px){.setgrid{grid-template-columns:1fr}.setstages{grid-template-columns:repeat(2,minmax(0,1fr))}}</style>';
   return css+'<div class="setwrap">'
-    +'<div class="panel"><h2>謄本與同意門檻</h2><p class="sethint">三個數字都是新專案的預設值,建立後每個專案可以單獨改門檻。</p><div class="setgrid">'
+    +'<div class="panel"><h2>謄本與同意門檻</h2><p class="sethint">天數填 30 以上;兩個門檻都填 1 到 100 的數字。</p><div class="setgrid">'
     +'<div class="field"><label for="set-days">謄本有效天數</label><div class="setunit"><input type="number" id="set-days" min="30" max="3650" step="1" value="'+esc(String(CFG.expireDays))+'"><span>天</span></div></div>'
     +'<div class="field"><label for="set-head">同意門檻:人數</label><div class="setunit"><input type="number" id="set-head" min="1" max="100" step="any" value="'+esc(String(CFG.headPct))+'"><span>%</span></div></div>'
     +'<div class="field"><label for="set-share">同意門檻:持分</label><div class="setunit"><input type="number" id="set-share" min="1" max="100" step="any" value="'+esc(String(CFG.sharePct))+'"><span>%</span></div></div></div></div>'
-    +'<div class="panel"><h2>訪談的關注原因標籤</h2><p class="sethint">一行填一個,最多 20 個,每個 12 字內。下方是業務填訪談時會看到的樣子。</p>'
-    +'<textarea id="set-tags" rows="6" style="width:100%;max-width:360px">'+esc(tagArr.join('\n'))+'</textarea>'
+    +'<div class="panel"><h2>訪談的關注原因標籤</h2><p class="sethint">一行填一個,最多 20 個,每個 12 字內。</p>'
+    +'<textarea id="set-tags" rows="7" style="width:100%">'+esc(tagArr.join('\n'))+'</textarea>'
     +'<div class="setchips" id="set-tagchips">'+tagArr.map(function(t){return '<span>'+esc(t)+'</span>'}).join('')+'</div></div>'
-    +'<div class="panel"><h2>簽約階段名稱</h2><p class="sethint">共 8 個,依序是第 1 到第 8 階段,每個 10 字內、不能重複。</p><div class="setstages">'
+    +'<div class="panel span2"><h2>簽約階段名稱</h2><p class="sethint">共 8 個,依序是第 1 到第 8 階段,每個 10 字內、不能重複。</p><div class="setstages">'
     +STAGES.map(function(x,i){return '<div class="field"><label for="set-st'+i+'"><span class="stno">'+(i+1)+'</span>階段</label><input type="text" id="set-st'+i+'" data-set-stage="'+i+'" maxlength="10" value="'+esc(nm[i]||x)+'"></div>'}).join('')+'</div>'
     +'<div class="actions"><button class="btn small" type="button" data-set-resetstage>還原預設名稱</button></div></div>'
-    +'<div class="actions" style="margin-top:14px"><button class="btn primary" type="button" data-set-save>儲存設定</button></div></div>';
+    +'<div class="actions span2" style="margin-top:0"><button class="btn primary" type="button" data-set-save>儲存設定</button></div></div>';
 }
 document.addEventListener('input',function(e){
   if(!e.target||e.target.id!=='set-tags')return;
@@ -6672,39 +6673,59 @@ document.addEventListener('click',function(e){
   if(t.closest('[data-fl-close]')){var d2=$('#dlg-files');if(d2&&d2.open)d2.close()}
 });
 
-/* ---- 調整專案地號:勾選不需要的地號移出專案;新增地號走「加入現有專案」 ---- */
+/* ---- 調整專案地號:勾選地號「不納入/納入」此專案(資料保留,隨時可勾回來)、分配給業務;新增地號走「加入現有專案」 ---- */
 var PE=null;
+function parcelNoCmp_(a,b){var x=String(a).split('-').map(Number),y=String(b).split('-').map(Number);return (x[0]-y[0])||((x[1]||0)-(y[1]||0))}
 function peIds_(pid){
-  var out=[];Object.keys(SRV.par).forEach(function(sid){var p=DB.parcels[SRV.par[sid]];if(p&&p.proj===pid)out.push({sid:sid,p:p})});
+  var out=[];
+  Object.keys(SRV.par).forEach(function(sid){var p=DB.parcels[SRV.par[sid]];if(p&&p.proj===pid)out.push({sid:sid,p:p,hidden:false})});
+  (DB.hidden||[]).forEach(function(h){if(h.proj===pid)out.push({sid:h.sid,p:{sec:h.sec,no:h.no,area:h.area,owners:[]},hidden:true})});
   out.sort(function(a,b){return String(a.p.sec).localeCompare(String(b.p.sec),'zh-Hant')||parcelNoCmp_(a.p.no,b.p.no)});
   return out;
 }
-function parcelNoCmp_(a,b){var x=String(a).split('-').map(Number),y=String(b).split('-').map(Number);return (x[0]-y[0])||((x[1]||0)-(y[1]||0))}
+function peMain_(p){var seen={},out=[];p.owners.forEach(function(x){var o=OWN[x.owner],a=o&&o.asg&&o.asg[PE.pid];if(a&&!seen[a]){seen[a]=1;out.push(a)}});return out.join('、')||'—'}
+function peMatch_(x){
+  var q=PE.q.trim();
+  if(PE.f==='in'&&x.hidden)return false;if(PE.f==='out'&&!x.hidden)return false;
+  if(!q)return true;
+  var toks=q.split(/[\s,,、;;]+/).filter(Boolean);
+  if(toks.length>1)return toks.some(function(t){return String(x.p.no)===t||String(x.p.sec)===t});
+  return String(x.p.no).indexOf(q)>=0||String(x.p.sec).indexOf(q)>=0;
+}
 function peOpen_(pid){
   var d=$('#dlg-pe');
-  if(!d){d=document.createElement('dialog');d.id='dlg-pe';d.setAttribute('aria-label','調整地號');d.style.width='min(760px,96vw)';d.innerHTML='<div class="dlg" id="pe-body"></div>';document.body.appendChild(d)}
-  PE={pid:pid,q:'',sel:{},busy:false,err:'',staff:'',role:'main'};
+  if(!d){d=document.createElement('dialog');d.id='dlg-pe';d.setAttribute('aria-label','調整地號');d.style.width='min(780px,96vw)';d.innerHTML='<div class="dlg" id="pe-body"></div>';document.body.appendChild(d)}
+  PE={pid:pid,q:'',f:'all',sel:{},busy:false,err:'',staff:'',role:'main'};
   peRender_();if(!d.open)d.showModal();
 }
-function peMain_(p){var seen={},out=[];p.owners.forEach(function(x){var o=OWN[x.owner],a=o&&o.asg&&o.asg[PE.pid];if(a&&!seen[a]){seen[a]=1;out.push(a)}});return out.join('、')||'—'}
 function peRender_(){
   var el=$('#pe-body');if(!el||!PE)return;
-  var pr=PRJ[PE.pid]||{name:''},all=peIds_(PE.pid),q=PE.q.trim(),list=all.filter(function(x){return !q||(String(x.p.no).indexOf(q)>=0||String(x.p.sec).indexOf(q)>=0)});
-  var n=Object.keys(PE.sel).length;
-  var h='<h2>調整地號:'+esc(pr.name)+'</h2><p class="small muted" style="margin:0 0 10px">專案現有 '+all.length+' 筆地號。勾選地號後,可以移出專案,或分配給業務(地號上的地主會一併分配)。</p>';
+  var pr=PRJ[PE.pid]||{name:''},all=peIds_(PE.pid),list=all.filter(peMatch_),hid=all.filter(function(x){return x.hidden}).length;
+  var byId={};all.forEach(function(x){byId[x.sid]=x});
+  var selIds=Object.keys(PE.sel).filter(function(k){return byId[k]}),nOut=selIds.filter(function(k){return byId[k].hidden}).length,nIn=selIds.length-nOut,n=selIds.length;
+  var h='<h2>調整地號:'+esc(pr.name)+'</h2><p class="small muted" style="margin:0 0 10px">共 '+all.length+' 筆地號,納入 '+(all.length-hid)+' 筆、不納入 '+hid+' 筆。勾選地號後,可以設為不納入此專案(資料保留,隨時能納入回來),或分配給業務。</p>';
   if(PE.err)h+='<div class="notice">'+esc(PE.err)+'</div>';
-  h+='<div class="orow" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><input type="search" id="pe-q" placeholder="搜尋地號或段別" aria-label="搜尋地號或段別" value="'+esc(PE.q)+'" style="max-width:220px"><button class="btn small" type="button" data-pe-all>勾選目前列出的</button><button class="btn small" type="button" data-pe-none>全部取消</button></div>';
+  h+='<div class="orow" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><input type="search" id="pe-q" placeholder="搜尋,或一次貼多個地號(空格或逗號分開)" aria-label="搜尋地號或段別" value="'+esc(PE.q)+'" style="max-width:320px;width:100%"><select id="pe-f" aria-label="篩選範圍" style="width:auto"><option value="all"'+(PE.f==='all'?' selected':'')+'>全部</option><option value="in"'+(PE.f==='in'?' selected':'')+'>只看納入</option><option value="out"'+(PE.f==='out'?' selected':'')+'>只看不納入</option></select><button class="btn small" type="button" data-pe-all>勾選目前列出的</button><button class="btn small" type="button" data-pe-none>全部取消</button></div>';
   var members=(PRJ[PE.pid]&&PRJ[PE.pid].staff)||[];
   h+='<div class="orow" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2,#f6f8f6)"><b style="font-size:14px">分配給業務</b>'
     +'<select id="pe-staff" aria-label="選擇業務" style="width:auto;min-width:130px"><option value="">選擇業務</option>'+members.map(function(m){return '<option value="'+esc(m)+'"'+(PE.staff===m?' selected':'')+'>'+esc(m)+'</option>'}).join('')+'</select>'
     +'<select id="pe-role" aria-label="承辦種類" style="width:auto"><option value="main"'+(PE.role==='main'?' selected':'')+'>主要承辦</option><option value="sub"'+(PE.role==='sub'?' selected':'')+'>次要承辦</option></select>'
-    +'<button class="btn primary" type="button" data-pe-assign'+((n&&PE.staff&&!PE.busy)?'':' disabled')+'>'+(n?'分配勾選的 '+n+' 筆':'分配勾選的地號')+'</button></div>';
-  h+='<div style="max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:10px"><table style="width:100%"><thead><tr><th style="width:40px"></th><th>段別</th><th>地號</th><th>面積(㎡)</th><th>地主</th><th>主要承辦</th></tr></thead><tbody>'
-    +(list.length?list.map(function(x){var p=x.p;return '<tr><td><input type="checkbox" data-pe-pick="'+esc(x.sid)+'" aria-label="選取 '+esc(p.no)+'" style="width:auto"'+(PE.sel[x.sid]?' checked':'')+'></td><td>'+esc(p.sec||'')+'</td><td>'+esc(p.no)+'</td><td>'+comma(p.area||0)+'</td><td>'+p.owners.length+'</td><td>'+esc(peMain_(p))+'</td></tr>'}).join(''):'<tr><td colspan="6" class="muted" style="padding:14px">沒有符合的地號。</td></tr>')
+    +'<button class="btn primary" type="button" data-pe-assign'+((nIn&&PE.staff&&!PE.busy)?'':' disabled')+'>'+(nIn?'分配勾選的 '+nIn+' 筆':'分配勾選的地號')+'</button></div>';
+  h+='<div style="max-height:44vh;overflow:auto;border:1px solid var(--line);border-radius:10px"><table style="width:100%"><thead><tr><th style="width:40px"></th><th>段別</th><th>地號</th><th>面積(㎡)</th><th>地主</th><th>主要承辦</th><th>狀態</th></tr></thead><tbody>'
+    +(list.length?list.map(function(x){var p=x.p;return '<tr'+(x.hidden?' style="opacity:.55"':'')+'><td><input type="checkbox" data-pe-pick="'+esc(x.sid)+'" aria-label="選取 '+esc(p.no)+'" style="width:auto"'+(PE.sel[x.sid]?' checked':'')+'></td><td>'+esc(p.sec||'')+'</td><td>'+esc(p.no)+'</td><td>'+comma(p.area||0)+'</td><td>'+(x.hidden?'—':p.owners.length)+'</td><td>'+(x.hidden?'—':esc(peMain_(p)))+'</td><td>'+(x.hidden?'不納入':'納入')+'</td></tr>'}).join(''):'<tr><td colspan="7" class="muted" style="padding:14px">沒有符合的地號。</td></tr>')
     +'</tbody></table></div>';
-  h+='<div class="actions" style="margin-top:12px;justify-content:space-between;flex-wrap:wrap"><span><button class="btn" type="button" data-pe-add>新增地號…</button></span><span><button class="btn" type="button" data-pe-close>關閉</button> <button class="btn primary" type="button" data-pe-del'+((n&&!PE.busy)?'':' disabled')+'>'+(PE.busy?'處理中…':'移出專案'+(n?'(已選 '+n+' 筆)':''))+'</button></span></div>';
+  h+='<div class="actions" style="margin-top:12px;justify-content:space-between;flex-wrap:wrap"><span><button class="btn" type="button" data-pe-add>新增地號…</button></span><span><button class="btn" type="button" data-pe-close>關閉</button> '
+    +'<button class="btn" type="button" data-pe-show'+((nOut&&!PE.busy)?'':' disabled')+'>納入此專案'+(nOut?'('+nOut+' 筆)':'')+'</button> '
+    +'<button class="btn primary" type="button" data-pe-hide'+((nIn&&!PE.busy)?'':' disabled')+'>'+(PE.busy?'處理中…':'不納入此專案'+(nIn?'('+nIn+' 筆)':''))+'</button></span></div>';
   el.innerHTML=h;
   var qi=$('#pe-q');if(qi&&PE.focusQ){qi.focus();var v=qi.value;qi.value='';qi.value=v;PE.focusQ=false}
+}
+function peRun_(fn,okMsg){
+  PE.busy=true;PE.err='';peRender_();
+  fn().then(function(r){toast(okMsg(r));if(PE){PE.sel={};PE.busy=false}return refreshData()}).then(function(){if(PE)peRender_();renderAdmin()}).catch(function(er){
+    if(er.auth){showLogin('登入已過期,請重新登入');return}
+    if(PE){PE.busy=false;PE.err=(er.userMessage||er.message);peRender_()}
+  });
 }
 document.addEventListener('click',function(e){
   var t=e.target;if(!t||!t.closest)return;var b;
@@ -6712,45 +6733,39 @@ document.addEventListener('click',function(e){
   if(!PE||!t.closest('#dlg-pe'))return;
   if(t.closest('[data-pe-close]')){var d=$('#dlg-pe');if(d&&d.open)d.close();PE=null;return}
   if((b=t.closest('[data-pe-pick]'))){if(b.checked)PE.sel[b.dataset.pePick]=1;else delete PE.sel[b.dataset.pePick];peRender_();return}
-  if(t.closest('[data-pe-all]')){var q=PE.q.trim();peIds_(PE.pid).forEach(function(x){if(!q||String(x.p.no).indexOf(q)>=0||String(x.p.sec).indexOf(q)>=0)PE.sel[x.sid]=1});peRender_();return}
+  if(t.closest('[data-pe-all]')){peIds_(PE.pid).filter(peMatch_).forEach(function(x){PE.sel[x.sid]=1});peRender_();return}
   if(t.closest('[data-pe-none]')){PE.sel={};peRender_();return}
+  var all=peIds_(PE.pid),byId={};all.forEach(function(x){byId[x.sid]=x});
+  var pick=function(hiddenFlag){return Object.keys(PE.sel).filter(function(k){return byId[k]&&byId[k].hidden===hiddenFlag})};
+  if(t.closest('[data-pe-hide]')){
+    var ids=pick(false);if(!ids.length||PE.busy)return;
+    peRun_(function(){return api('setParcelsHidden',{projectId:PE.pid,parcelIds:ids,hidden:true})},function(r){return '已設為不納入 '+r.changed+' 筆(資料保留,隨時可以納入回來)。'});return}
+  if(t.closest('[data-pe-show]')){
+    var ids3=pick(true);if(!ids3.length||PE.busy)return;
+    peRun_(function(){return api('setParcelsHidden',{projectId:PE.pid,parcelIds:ids3,hidden:false})},function(r){return '已納入 '+r.changed+' 筆。'});return}
   if(t.closest('[data-pe-assign]')){
-    var ids2=Object.keys(PE.sel);if(!ids2.length||!PE.staff||PE.busy)return;
+    var ids2=pick(false);if(!ids2.length||!PE.staff||PE.busy)return;
     var rl=PE.role==='sub'?'次要承辦':'主要承辦';
     if(!window.confirm('要把這 '+ids2.length+' 筆地號上的地主,全部分配給「'+PE.staff+'」('+rl+')嗎?\n地主如果同時在其他地號,也會整位改派。'))return;
-    PE.busy=true;PE.err='';peRender_();
-    api('assignParcels',{projectId:PE.pid,parcelIds:ids2,staff:PE.staff,role:PE.role}).then(function(r){
-      toast('已分配 '+r.owners+' 位地主給「'+PE.staff+'」'+(r.alsoOnOthers?(',其中 '+r.alsoOnOthers+' 位在其他地號也有持分,一併改派'):'')+(r.skipped?(';'+r.skipped+' 位已是他的主要承辦,次要略過'):'')+'。');
-      if(PE){PE.sel={};PE.busy=false}return refreshData();
-    }).then(function(){if(PE)peRender_()}).catch(function(er){
-      if(er.auth){showLogin('登入已過期,請重新登入');return}
-      if(PE){PE.busy=false;PE.err='分配失敗:'+(er.userMessage||er.message);peRender_()}
-    });
-    return}
+    var who=PE.staff,role=PE.role;
+    peRun_(function(){return api('assignParcels',{projectId:PE.pid,parcelIds:ids2,staff:who,role:role})},function(r){return '已分配 '+r.owners+' 位地主給「'+who+'」'+(r.alsoOnOthers?(',其中 '+r.alsoOnOthers+' 位在其他地號也有持分,一併改派'):'')+(r.skipped?(';'+r.skipped+' 位已是他的主要承辦,次要略過'):'')+'。'});return}
   if(t.closest('[data-pe-add]')){
     var pid=PE.pid,d2=$('#dlg-pe');if(d2&&d2.open)d2.close();PE=null;
     IM.opts.target=pid;location.hash='#import';setTimeout(function(){try{renderImResult()}catch(x){}},50);
     toast('請在這頁上傳新的清冊或謄本,「匯入到」已選好這個專案。');return}
-  if(t.closest('[data-pe-del]')){
-    var ids=Object.keys(PE.sel),pn=(PRJ[PE.pid]||{}).name||'';if(!ids.length||PE.busy)return;
-    if(!window.confirm('要把 '+ids.length+' 筆地號移出「'+pn+'」嗎?\n這些地號的持分資料會一併刪除,無法復原。'))return;
-    PE.busy=true;PE.err='';peRender_();
-    var run=function(force){return api('removeParcels',{projectId:PE.pid,remove:ids,force:force||undefined})};
-    run(false).catch(function(er){
-      if(!er.auth&&/需確認/.test(er.userMessage||'')&&window.confirm((er.userMessage||'')+'\n\n要繼續嗎?'))return run(true);
-      throw er;
-    }).then(function(r){
-      toast('已移出 '+r.removed+' 筆地號'+(r.ownersDeleted?'、刪除 '+r.ownersDeleted+' 位沒有其他紀錄的地主':'')+'。');
-      if(PE){PE.sel={};PE.busy=false}
-      return refreshData();
-    }).then(function(){if(PE)peRender_();renderAdmin()}).catch(function(er){
-      if(er.auth){showLogin('登入已過期,請重新登入');return}
-      if(PE){PE.busy=false;PE.err='移出失敗:'+(er.userMessage||er.message);peRender_()}
-    });
-    return}
 });
-document.addEventListener('change',function(e){if(!PE||!e.target)return;if(e.target.id==='pe-staff'){PE.staff=e.target.value;peRender_()}else if(e.target.id==='pe-role'){PE.role=e.target.value;peRender_()}});
+document.addEventListener('change',function(e){if(!PE||!e.target)return;if(e.target.id==='pe-staff'){PE.staff=e.target.value;peRender_()}else if(e.target.id==='pe-role'){PE.role=e.target.value;peRender_()}else if(e.target.id==='pe-f'){PE.f=e.target.value;peRender_()}});
 document.addEventListener('input',function(e){if(PE&&e.target&&e.target.id==='pe-q'){PE.q=e.target.value;PE.focusQ=true;peRender_()}});
+
+// 謄本更新頁最上面的「更新哪個專案」:大字顯示專案名稱,避免上傳到錯的專案
+function deedProjPick_(){
+  var vis=visibleProjects(),pr=PRJ[S.proj]||{name:''};
+  var groups={},order=['執行中','規劃中','暫停','結案'];
+  vis.forEach(function(p){(groups[p.status]=groups[p.status]||[]).push(p)});
+  var opts=order.filter(function(k){return groups[k]}).map(function(k){return '<optgroup label="'+k+'">'+groups[k].map(function(p){return '<option value="'+p.id+'"'+(p.id===S.proj?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</optgroup>'}).join('');
+  return '<div class="projpick"><div><div class="pp-k">要更新的專案</div><div class="pp-n">'+esc(pr.name)+'</div></div>'
+    +(vis.length>1?'<label>換專案<select class="pswitch" aria-label="切換專案">'+opts+'</select></label>':'')+'</div>';
+}
 
 /* ---------- start ---------- */
 function pickStart(){
