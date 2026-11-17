@@ -4231,6 +4231,30 @@ function sgLayout(prep,links){
   });
   return {off:off,comps:comps,edges:edges};
 }
+// 謄本第 1 頁的「接續圖」:每頁畫成一個固定大小的方框(實際圖框 × 比例),由方框位置排出各頁的格子位置
+function sgIndexLayout(prep){
+  var W=prep.W,H=prep.H,idx=null;
+  prep.pages.forEach(function(p){if(idx||!p.skip)return;var n=p.texts.filter(function(t){return /^第\d+頁$/.test(t.s)}).length;if(n>=3)idx=p});
+  if(!idx)return null;
+  var hs=[],vs=[];
+  idx.segs.forEach(function(s){var L=Math.hypot(s[2]-s[0],s[3]-s[1]);if(L<30)return;if(Math.abs(s[1]-s[3])<0.3)hs.push({y:s[1],L:L});else if(Math.abs(s[0]-s[2])<0.3)vs.push({x:s[0],L:L})});
+  var cnt={};hs.forEach(function(h){var r=h.L/W;if(r>0.15&&r<0.7){var k=Math.round(h.L);cnt[k]=(cnt[k]||0)+1}});
+  var bw=null;Object.keys(cnt).forEach(function(k){if(!bw||cnt[k]>cnt[bw])bw=k});if(!bw)return null;
+  var w=+bw,k=w/W,h=H*k,xs=[],ys=[];
+  vs.forEach(function(v){if(Math.abs(v.L-h)<4)xs.push(v.x)});hs.forEach(function(q){if(Math.abs(q.L-w)<4)ys.push(q.y)});
+  if(!xs.length||!ys.length)return null;
+  var cell={},minx=1e18,miny=1e18,ok=true;
+  idx.texts.forEach(function(t){var m=/^第(\d+)頁$/.exec(t.s);if(!m)return;
+    var x0=null,y0=null;xs.forEach(function(x){if(x<=t.x+0.5&&t.x-x<=w+0.5&&(x0===null||x>x0))x0=x});ys.forEach(function(y){if(y<=t.y+0.5&&t.y-y<=h+0.5&&(y0===null||y>y0))y0=y});
+    if(x0===null||y0===null){ok=false;return}
+    cell[idx.no+Number(m[1])]=[x0,y0];minx=Math.min(minx,x0);miny=Math.min(miny,y0)});
+  if(!ok)return null;
+  var off={},pages=[],keys={};
+  for(var i=0;i<prep.pages.length;i++){var p=prep.pages[i];if(p.skip)continue;var c=cell[p.no];if(!c)return null;
+    var gx=Math.round((c[0]-minx)/w),gy=Math.round((c[1]-miny)/h);off[p.no]=[gx*W,gy*H];pages.push(p.no);keys[gx+','+gy]=1}
+  if(Object.keys(keys).length<2)return null;
+  return {off:off,comps:[{pages:pages}],edges:[],byIndex:true,idxPage:idx.no};
+}
 function sgDetectDen(texts){   // 「比例尺:1/1000」(列印比例);「原比例尺」是原圖比例,不是這張的
   var c={};texts.forEach(function(t){var m=/^比例尺[:：]?\s*1\s*[\/:：]\s*(\d{3,4})/.exec(t.s);if(m)c[m[1]]=(c[m[1]]||0)+1});
   var b=null;Object.keys(c).forEach(function(k){if(!b||c[k]>c[b])b=k});return b?+b:null;
@@ -4255,7 +4279,9 @@ function sgUnionRings(rings){
 function sgBB(pts){var a=1e18,b=1e18,c=-1e18,d=-1e18;pts.forEach(function(p){if(p[0]<a)a=p[0];if(p[0]>c)c=p[0];if(p[1]<b)b=p[1];if(p[1]>d)d=p[1]});return [a,b,c,d]}
 function sgBuild(ex,opts){
   opts=opts||{};
-  var prep=sgPrep(ex),warns=[],lay=sgLayout(prep,opts.links),pageBy={};prep.pages.forEach(function(p){pageBy[p.no]=p});
+  var prep=sgPrep(ex),warns=[],lay=sgLayout(prep,opts.links),pageBy={},hasManual=false;Object.keys(opts.links||{}).forEach(function(k){if(opts.links[k]&&opts.links[k].to)hasManual=true});
+  if(!hasManual&&!opts.noIndex&&lay.comps.length>1){var ig=sgIndexLayout(prep);if(ig){lay=ig;warns.push('已依謄本第 '+ig.idxPage+' 頁的接續圖,把各頁排在實際的相對位置。')}}
+  prep.pages.forEach(function(p){pageBy[p.no]=p});prep.pages.forEach(function(p){pageBy[p.no]=p});
   var allTexts=[];prep.pages.forEach(function(p){if(!p.skip)allTexts=allTexts.concat(p.texts)});
   var den=opts.den||sgDetectDen(allTexts)||1000,detDen=!opts.den&&!!sgDetectDen(allTexts),M=0.352778*den/1000,sec=opts.sec!==undefined?opts.sec:(sgDetectSec(allTexts)||sgDetectSec(prep.pages.reduce(function(a,p){return a.concat(p.texts)},[]))||'');
   if(!detDen&&!opts.den)warns.push('圖上讀不到比例尺,先當作 1/1000 計算面積;請確認。');
@@ -4288,10 +4314,17 @@ function sgBuild(ex,opts){
     var lblUsed={};
     if(only){Object.keys(only).forEach(function(no){
       if(assign[no])return;var hits=[];
-      polys.forEach(function(pl,i){if(lblUsed[i])return;var c=0;labT.forEach(function(t){if(t.s===no&&mkInPoly([t.x,t.y],pl.pts))c++});if(c)hits.push({i:i,c:c,a:pl.area})});
-      if(!hits.length)return;hits.sort(function(a,b){return b.c-a.c||a.a-b.a});
-      var h=hits[0],pl=polys[h.i];lblUsed[h.i]=1;
-      assign[no]={pts:pl.pts,area:pl.area,n:1,key:'L'+h.i,lbl:1};tg.push(assign[no]);
+      polys.forEach(function(pl,i){var c=0;labT.forEach(function(t){if(t.s===no&&mkInPoly([t.x,t.y],pl.pts))c++});if(c)hits.push({i:i,c:c,a:pl.area,u:lblUsed[i]?1:0})});
+      if(!hits.length){   // 備援:細長地塊裝不下地號字,字會跑到地塊外面,改找字旁邊最近、而且明顯比其他塊近的那一塊
+        var pts2=labT.filter(function(t){return t.s===no}),cand=[];
+        pts2.forEach(function(t){polys.forEach(function(pl,i){if(pl.area<0.5)return;var d=mkDistPoly([t.x,t.y],pl.pts);cand.push({i:i,d:d,a:pl.area})})});
+        cand.sort(function(a,b){return a.d-b.d});
+        if(cand.length&&cand[0].d<=14){var nx=cand.filter(function(c){return c.i!==cand[0].i})[0];if(!nx||nx.d>=cand[0].d*1.6+1||cand[0].d<=6)hits.push({i:cand[0].i,c:0,a:cand[0].a,near:1})}
+        if(!hits.length)return;
+      }
+      hits.sort(function(a,b){return a.u-b.u||b.c-a.c||a.a-b.a});
+      var h=hits[0],pl=polys[h.i];lblUsed[h.i]=1;   // 已被別的地號佔用就共用同一塊(細長地的地號字常疊在一起)
+      assign[no]={pts:pl.pts,area:pl.area,n:1,key:'L'+h.i,lbl:h.near?2:1};tg.push(assign[no]);
       var q2=sgBB(pl.pts);r=[Math.min(r[0],q2[0]-MARG),Math.min(r[1],q2[1]-MARG),Math.max(r[2],q2[2]+MARG),Math.max(r[3],q2[3]+MARG)];
     })}
     polys.forEach(function(p){
@@ -4318,7 +4351,7 @@ function sgBuild(ex,opts){
   var parcels={},ctx=[],ctxlab=[],vb=[1e18,1e18,-1e18,-1e18],cy=0,mv;
   use.forEach(function(x,i){
     var dx=-x.rect[0],dy=cy-x.rect[1];mv=function(p){return [p[0]+dx,p[1]+dy]};
-    Object.keys(x.parcels).forEach(function(no){var p=x.parcels[no];parcels[sec+'|'+no]={sec:sec,pts:p.pts.map(mv),poly_m2:p.area,mix:{},flag:p.shared?'shared':(p.lbl?'label':'ok'),cpos:p.cpos?mv(p.cpos):null,_isl:i}});
+    Object.keys(x.parcels).forEach(function(no){var p=x.parcels[no];parcels[sec+'|'+no]={sec:sec,pts:p.pts.map(mv),poly_m2:p.area,mix:{},flag:p.shared?'shared':(p.lbl===2?'label-near':(p.lbl?'label':'ok')),cpos:p.cpos?mv(p.cpos):null,_isl:i}});
     x.ctx.forEach(function(rg){ctx.push(rg.map(mv))});x.ctxlab.forEach(function(l){ctxlab.push({t:l.t,c:mv(l.c),f:0})});
     if(use.length>1)ctxlab.push({t:(sec||'')+'('+(i+1)+')',c:[(x.rect[2]-x.rect[0])/2,cy+8],f:-1,big:true});
     vb=[Math.min(vb[0],0),Math.min(vb[1],cy),Math.max(vb[2],x.rect[2]-x.rect[0]),Math.max(vb[3],cy+x.rect[3]-x.rect[1])];
