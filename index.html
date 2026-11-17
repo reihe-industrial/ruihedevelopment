@@ -4309,25 +4309,50 @@ function sgBuild(ex,opts){
     var polys=mkPolygonize(segs,0.15).filter(function(p){return p.area>0.2&&p.area<60000}),ctx=[],ctxlab=[];
     // 專案裡有、但圖上沒有灰底的地號:用「地號字附近的地塊」+「登記面積對得上」來綁。
     // 細長地的字常落在旁邊的大地塊裡,所以只看字在哪塊不可靠;面積對不上就寧可不綁(留在小方格),不要綁錯。
-    var lblUsed={},areas=opts.areas||{};
+    var lblUsed={},areas=opts.areas||{},diag={};
     if(only){
-      var nos=Object.keys(only).filter(function(no){return !assign[no]}).sort(function(a,b){return (Number(areas[b])||0)-(Number(areas[a])||0)});   // 大的先配
-      nos.forEach(function(no){
-        var A=Number(areas[no])||0,tol=A>=60?0.25:0.6,cand=[];
+      // 兩輪、全部一起配(不是一個一個搶):第一輪登記面積要對得上(±25%,小塊 ±60%);第二輪放寬到 ±60%,
+      // 只收字就在塊裡或貼得很近的,標成「請核對」。每塊圖形只給一個地號,字離它最近、面積最像的優先。
+      var nos=Object.keys(only).filter(function(no){return !assign[no]});
+      function bind(no,h,flag){var pl=polys[h.i];lblUsed[h.i]=1;assign[no]={pts:pl.pts,area:pl.area,n:1,key:'L'+h.i,lbl:flag};tg.push(assign[no]);
+        var q2=sgBB(pl.pts);r=[Math.min(r[0],q2[0]-MARG),Math.min(r[1],q2[1]-MARG),Math.max(r[2],q2[2]+MARG),Math.max(r[3],q2[3]+MARG)]}
+      function cands(no,pass){
+        var A=Number(areas[no])||0,out=[];
         labT.filter(function(t){return t.s===no}).forEach(function(t){
           polys.forEach(function(pl,i){
             if(lblUsed[i]||pl.area<0.5)return;
             var inside=mkInPoly([t.x,t.y],pl.pts),d=inside?0:mkDistPoly([t.x,t.y],pl.pts);
             if(d>14)return;
-            if(A>0){var r=pl.area/A;if(Math.abs(r-1)>tol)return;var cc=mkCentroid(pl.pts),dc=Math.hypot(cc[0]-t.x,cc[1]-t.y);cand.push({i:i,d:d,sc:Math.abs(r-1)*40+d+0.3*dc,inside:inside,a:pl.area})}
-            else if(inside)cand.push({i:i,d:0,sc:pl.area/1000,inside:true,a:pl.area});   // 沒有登記面積:只認字就在塊裡面的
+            var cc=mkCentroid(pl.pts),dc=Math.hypot(cc[0]-t.x,cc[1]-t.y);
+            if(A>0){
+              var rt=pl.area/A,tol=pass===1?(A>=60?0.25:0.6):0.6;
+              if(Math.abs(rt-1)>tol)return;
+              if(pass===2&&d>8)return;
+              out.push({i:i,d:d,sc:Math.abs(rt-1)*40+d+0.3*dc,inside:inside,a:pl.area});
+            }else{   // 清冊沒有面積:只認字就在塊裡面(第二輪再收貼得很近的小塊)
+              if(pass===1&&!inside)return;
+              if(pass===2&&(inside||d>3||pl.area>3000))return;
+              out.push({i:i,d:d,sc:pl.area/1000+d,inside:inside,a:pl.area});
+            }
           });
         });
-        if(!cand.length)return;
-        cand.sort(function(x,y){return x.sc-y.sc});
-        var h=cand[0],pl=polys[h.i];lblUsed[h.i]=1;
-        assign[no]={pts:pl.pts,area:pl.area,n:1,key:'L'+h.i,lbl:h.inside?1:2};tg.push(assign[no]);
-        var q2=sgBB(pl.pts);r=[Math.min(r[0],q2[0]-MARG),Math.min(r[1],q2[1]-MARG),Math.max(r[2],q2[2]+MARG),Math.max(r[3],q2[3]+MARG)];
+        return out;
+      }
+      [1,2].forEach(function(pass){
+        var all=[];
+        nos.forEach(function(no){if(assign[no])return;cands(no,pass).forEach(function(c){c.no=no;all.push(c)})});
+        all.sort(function(x,y){return x.sc-y.sc});
+        all.forEach(function(c){if(assign[c.no]||lblUsed[c.i])return;bind(c.no,c,pass===2?3:(c.inside?1:2))});
+      });
+      // 沒配到的:記下原因(清冊面積、圖上字旁邊最近的塊多大),方便你判斷是圖的問題還是清冊面積不對
+      nos.forEach(function(no){
+        if(assign[no])return;
+        var A=Number(areas[no])||0,ts=labT.filter(function(t){return t.s===no}),best=null;
+        ts.forEach(function(t){polys.forEach(function(pl){
+          var d=mkInPoly([t.x,t.y],pl.pts)?0:mkDistPoly([t.x,t.y],pl.pts);if(d>14||pl.area<0.5)return;
+          var sc=A>0?Math.abs(pl.area/A-1)*40+d:d;if(!best||sc<best.sc)best={sc:sc,a:Math.round(pl.area),d:Math.round(d*10)/10};
+        })});
+        diag[no]={A:A,hasLabel:ts.length>0,best:best};
       });
     }
     polys.forEach(function(p){
@@ -4342,19 +4367,26 @@ function sgBuild(ex,opts){
       var p=assign[no],shared=share[p.key].length>1,lab=texts.filter(function(t){return t.s===no&&mkInPoly([t.x,t.y],p.pts)})[0];
       parcels[no]={pts:p.pts,area:Math.round(p.area*10)/10,shared:shared?share[p.key].filter(function(x){return x!==no}):null,pieces:p.n,lbl:!!p.lbl,cpos:shared&&lab?[lab.x,lab.y]:null};
     });
-    isl.push({pages:c.pages,parcels:parcels,ctx:ctx,ctxlab:ctxlab,rect:r});
+    isl.push({pages:c.pages,parcels:parcels,ctx:ctx,ctxlab:ctxlab,rect:r,diag:diag});
   });
   var use=isl.filter(function(x){return !x.empty});
   isl.filter(function(x){return x.empty}).forEach(function(x){warns.push('第 '+x.pages.join('、')+' 頁沒有找到灰底的地號(可能不是這一段的圖,或灰底顏色不同)。')});
   prep.pages.forEach(function(p){if(p.skip)warns.push('第 '+p.no+' 頁:'+p.skip+'。')});
   if(use.length>1)warns.push('圖分成 '+use.length+' 塊彼此接不上(第 '+use.map(function(x){return x.pages.join('、')}).join(' 頁 / 第 ')+' 頁),先由上往下排。地籍圖分幅沒有重疊時就會這樣;若你知道某幾頁其實相連,可以在「各頁接法」指定。');
-  if(opts.only){var got={};use.forEach(function(x){Object.keys(x.parcels).forEach(function(n){got[n]=1})});var miss=opts.only.filter(function(n){return !got[n]});if(miss.length)warns.push('這些地號在圖上找不到灰底,沒有放進地圖:'+miss.join('、')+'。')}
+  if(opts.only){var got={};use.forEach(function(x){Object.keys(x.parcels).forEach(function(n){got[n]=1})});var miss=opts.only.filter(function(n){return !got[n]});if(miss.length){
+    var dg={};isl.forEach(function(x){if(x.diag)Object.keys(x.diag).forEach(function(n){dg[n]=x.diag[n]})});
+    var why=function(n){var d=dg[n];if(!d)return n+'(整張圖都沒有這個地號的字)';
+      if(!d.hasLabel)return n+'(圖上沒有這個地號的字)';
+      if(!d.best)return n+'(字旁邊沒有封閉的地塊,可能線沒畫完整)';
+      return n+(d.A>0?'(清冊 '+d.A+' ㎡,圖上字旁最近的塊 '+d.best.a+' ㎡,差太多不敢綁)':'(清冊沒有面積,字不在地塊內)')};
+    warns.push('這些地號圖上沒有灰底、也找不到面積對得上的地塊,沒有放進地圖:'+miss.map(why).join('、')+'。')}
+  }
   if(!use.length)return {ok:false,warns:warns,sec:sec,den:den,pages:prep.pages.map(function(p){return {no:p.no,skip:p.skip||null,gray:p.grays.length}}),comps:lay.comps};
   // 多塊島由上往下排(各留 40 m 間隔),再整張縮進 920 x 580 畫布
   var parcels={},ctx=[],ctxlab=[],vb=[1e18,1e18,-1e18,-1e18],cy=0,mv;
   use.forEach(function(x,i){
     var dx=-x.rect[0],dy=cy-x.rect[1];mv=function(p){return [p[0]+dx,p[1]+dy]};
-    Object.keys(x.parcels).forEach(function(no){var p=x.parcels[no];parcels[sec+'|'+no]={sec:sec,pts:p.pts.map(mv),poly_m2:p.area,mix:{},flag:p.shared?'shared':(p.lbl===2?'label-near':(p.lbl?'label':'ok')),cpos:p.cpos?mv(p.cpos):null,_isl:i}});
+    Object.keys(x.parcels).forEach(function(no){var p=x.parcels[no];parcels[sec+'|'+no]={sec:sec,pts:p.pts.map(mv),poly_m2:p.area,mix:{},flag:p.shared?'shared':(p.lbl===3?'label-check':(p.lbl===2?'label-near':(p.lbl?'label':'ok'))),cpos:p.cpos?mv(p.cpos):null,_isl:i}});
     x.ctx.forEach(function(rg){ctx.push(rg.map(mv))});x.ctxlab.forEach(function(l){ctxlab.push({t:l.t,c:mv(l.c),f:0})});
     if(use.length>1)ctxlab.push({t:(sec||'')+'('+(i+1)+')',c:[(x.rect[2]-x.rect[0])/2,cy+8],f:-1,big:true});
     vb=[Math.min(vb[0],0),Math.min(vb[1],cy),Math.max(vb[2],x.rect[2]-x.rect[0]),Math.max(vb[3],cy+x.rect[3]-x.rect[1])];
