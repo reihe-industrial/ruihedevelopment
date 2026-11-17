@@ -6104,8 +6104,6 @@ function cadCalc_(old,add,P){   // 和後端 combineGeo_ 算法一致
 /* 把新的一段併進舊圖(和後端 combineGeo_ 一樣的算法),新增專案分批上傳時在瀏覽器端先合好 */
 function geoSecsJS_(g){var o={};Object.keys(g.parcels||{}).forEach(function(k){var i=k.indexOf('|');o[g.parcels[k].sec||(i>=0?k.slice(0,i):'')]=1});return Object.keys(o)}
 function geoCombineJS_(old,add,caption,place){
-  var oldSecs=geoSecsJS_(old),dup=geoSecsJS_(add).filter(function(x){return oldSecs.indexOf(x)>=0});
-  if(dup.length)throw new Error('「'+dup.join('、')+'」已經在圖上了,請改段別或刪掉重複的那一份。');
   var so=old.scale,sn=add.scale,c=cadCalc_(old,add,place||{dir:'E',gap:40,east:0,north:0}),ob=c.ob,nb=c.nb,dx=c.dx,dy=c.dy;
   var ub=[ob[0],ob[1],Math.max(ob[2],nb[2]+dx),Math.max(ob[3],nb[3]+dy)];
   var W=ub[2]-ub[0],H=ub[3]-ub[1],sc=Math.min(920/W,580/H),ox=40+(920-W*sc)/2,oy=40+(580-H*sc)/2;
@@ -6122,7 +6120,9 @@ function geoCombineJS_(old,add,caption,place){
     Object.keys(g.parcels).forEach(function(key){
       var q=g.parcels[key],i=key.indexOf('|'),sec=q.sec||(i>=0?key.slice(0,i):''),no=i>=0?key.slice(i+1):key,o={};
       Object.keys(q).forEach(function(f){o[f]=q[f]});
-      o.sec=sec;o.pts=q.pts.map(T);o.c=T(q.c);o.lf=Math.max(2.2,r1(q.lf*k));o.pc=pf(q.pc);out.parcels[sec+'|'+no]=o;
+      o.sec=sec;o.pts=q.pts.map(T);o.c=T(q.c);o.lf=Math.max(2.2,r1(q.lf*k));o.pc=pf(q.pc);
+      if(a[2]&&out.parcels[sec+'|'+no]){out.ctx.push(o.pts);out.ctxpc.push(o.pc);return}
+      out.parcels[sec+'|'+no]=o;
     });
     (g.ctx||[]).forEach(function(r,ri){out.ctx.push(r.map(T));out.ctxpc.push(pf((g.ctxpc||[])[ri]))});
     (g.ctxlab||[]).forEach(function(l){var o={};Object.keys(l).forEach(function(f){o[f]=l[f]});o.c=T(l.c);if(!l.big)o.f=Math.max(2.2,r1((l.f||3)*k));o.pc=pf(l.pc);out.ctxlab.push(o)});
@@ -6146,7 +6146,7 @@ function cadPvHTML_(k){
   var pad=Math.max(x1-x0,y1-y0)*0.06,vb=[x0-pad,y0-pad,x1-x0+pad*2,y1-y0+pad*2];
   function poly(g,s,color,fill){var h='';Object.keys(g.parcels).forEach(function(key){h+='<polygon points="'+g.parcels[key].pts.map(function(q){return (q[0]*s).toFixed(1)+','+(q[1]*s).toFixed(1)}).join(' ')+'" fill="'+fill+'" stroke="'+color+'" stroke-width="1" vector-effect="non-scaling-stroke"/>'});return h}
   var fs=Math.max(vb[2],vb[3])/28;
-  var h='<svg id="'+k+'-svg" viewBox="'+vb.map(function(v){return v.toFixed(1)}).join(' ')+'" style="width:100%;height:300px;touch-action:none;background:#f4f7f5;border:1px solid var(--line);border-radius:10px" role="img" aria-label="擺放位置預覽">';
+  var h='<svg id="'+k+'-svg" viewBox="'+vb.map(function(v){return v.toFixed(1)}).join(' ')+'" style="width:100%;height:min(72vh,620px);min-height:380px;touch-action:none;background:#f4f7f5;border:1px solid var(--line);border-radius:10px" role="img" aria-label="擺放位置預覽">';
   h+='<g>'+poly(old,so,'#1F5C46','#cfe6da')+'<text x="'+((c.ob[0]+c.ob[2])/2)+'" y="'+(c.ob[1]-fs*0.4)+'" text-anchor="middle" font-size="'+fs+'" fill="#1F5C46" font-weight="700">'+(k==='cb'?'前面已排好的':'現有地圖')+'</text></g>';
   h+='<g id="'+k+'-new" data-plxnew="1" data-bx="'+c.dx+'" data-by="'+c.dy+'" transform="translate('+c.dx.toFixed(1)+' '+c.dy.toFixed(1)+')" style="cursor:grab">'
     +'<rect x="'+c.nb[0]+'" y="'+c.nb[1]+'" width="'+(c.nb[2]-c.nb[0])+'" height="'+(c.nb[3]-c.nb[1])+'" fill="#e8892b" fill-opacity="0.08" stroke="#e8892b" stroke-dasharray="6 4" stroke-width="1.5" vector-effect="non-scaling-stroke"/>'
@@ -6314,7 +6314,6 @@ document.addEventListener('change',function(e){
 function cadApply(){
   var r=CAD&&CAD.res;if(!r||!r.ok)return;
   var pr=PRJ[CAD.pid],cur=CAD.cur||[],mode=cur.length?(($('input[name="cad-mode"]:checked')||{}).value||'merge'):'merge',replace=mode==='replace'&&cur.length>0;
-  if(cur.length&&!replace&&cur.indexOf(r.sec)>=0){toast('這一段已經在圖上了,請選「取代」。');return}
   var msg=(replace?'取代':'套用')+'「'+(pr?pr.name:'')+'」的圖資?\n新圖含 '+r.list.length+' 筆地號,段別:'+(r.sec||'未標')+(replace&&cur.length?'\n\n這會把現有整張地圖換成這一份,無法復原。':'');
   if(!window.confirm(msg))return;
   var btn=$('[data-cad-apply]');if(btn)btn.disabled=true;toast('處理中…');
