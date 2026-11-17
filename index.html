@@ -4380,9 +4380,15 @@ function sgBuild(ex,opts){
       });
     }
     polys.forEach(function(p){
-      if(tg.some(function(t){return mkInPoly(mkCentroid(p.pts),t.pts)||mkInPoly(sgInnerPt(p.pts),t.pts)}))return;
+      var nested=false;
+      if(tg.some(function(t){return mkInPoly(mkCentroid(p.pts),t.pts)||mkInPoly(sgInnerPt(p.pts),t.pts)})){
+        // 被某一筆地號圍住、比它小很多的另一塊(像 293 旁邊的 293-9、293-10 小方塊),要留在圖上
+        nested=p.area<=600&&tg.some(function(t){return p.area<t.area*0.3});
+        if(!nested)return;
+      }
       var q=sgBB(p.pts);if(q[2]<r[0]||q[0]>r[2]||q[3]<r[1]||q[1]>r[3])return;
       ctx.push(mkSimplify(p.pts,0.4));
+      if(nested){var cc=mkCentroid(p.pts),used={};ctxlab.forEach(function(l){used[l.t]=1});var nl=texts.filter(function(t){return /^\d+(-\d+)?$/.test(t.s)&&!assign[t.s]&&!used[t.s]&&Math.hypot(t.x-cc[0],t.y-cc[1])<30}).sort(function(x,y){return Math.hypot(x.x-cc[0],x.y-cc[1])-Math.hypot(y.x-cc[0],y.y-cc[1])})[0];if(nl)ctxlab.push({t:nl.s,c:cc,f:0})}
       if(p.area>150){var lab=texts.filter(function(t){return /^\d+(-\d+)?$/.test(t.s)&&mkInPoly([t.x,t.y],p.pts)})[0];if(lab)ctxlab.push({t:lab.s,c:mkCentroid(p.pts),f:0})}
     });
     var parcels={};
