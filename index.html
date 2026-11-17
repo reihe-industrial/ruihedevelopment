@@ -2012,7 +2012,7 @@ function doExport(kind){
   else if(kind==='owners')saveFile(pre+'地主清單_'+d+'.csv',toCSV(rowsOwners()),'地主清單('+PRJ[S.proj].name+')');
   else if(kind==='interviews')saveFile(pre+'訪談紀錄_'+d+'.csv',toCSV(rowsInterviews()),'訪談紀錄('+PRJ[S.proj].name+')');
   else if(kind==='statsrpt')saveStatsReport();
-  else if(kind==='stats')saveFile(pre+'統計摘要_'+d+'.csv',toCSV(rowsStats()),'統計摘要('+PRJ[S.proj].name+')');
+  else if(kind==='stats')saveSheetsXlsx(pre+'統計摘要_'+d+'.xlsx',statsSheets_(),'統計摘要('+PRJ[S.proj].name+')');
   else if(kind==='backup'){
     if(S.role!=='admin'){toast('完整備份只有管理者可以匯出。');return}
     saveFile('土地開發_完整備份_全部專案_'+d+'.json',backupJSON(),'完整備份(全部專案)');
@@ -3987,7 +3987,7 @@ document.addEventListener('click',function(e){
     if(dt.sid)apiSync('deleteTask',{id:dt.sid});
     toast('已刪除待辦。');return}
   if((b=t.closest('[data-rp-period]'))){RP.period=b.dataset.rpPeriod;renderReports();return}
-  if(t.closest('[data-rp-export]')){if(S.role==='staff')return;saveFile('土地開發_週月報_'+iso(TODAY)+'.csv',toCSV(reportRows()),'週月報');return}
+  if(t.closest('[data-rp-export]')){if(S.role==='staff')return;saveSheetsXlsx('土地開發_週月報_'+iso(TODAY)+'.xlsx',reportSheets_(),'週月報');return}
   if((b=t.closest('[data-cal-nav]'))){
     var nv=+b.dataset.calNav,cm=calMonth().split('-'),dt=new Date(+cm[0],+cm[1]-1+nv,1);
     if(nv===0){var nt=new Date(TODAY);dt=new Date(nt.getFullYear(),nt.getMonth(),1);TK.day=iso(TODAY)}
@@ -4378,7 +4378,8 @@ function emptyDB(){return {projects:[],parcels:[],owners:[],interviews:[],log:[]
 async function api(action,payload){
   var body=Object.assign({action:action,token:TOKEN},payload||{}),j;
   try{
-    var res=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)});
+    var ac=window.AbortController?new AbortController():null,tm=ac?setTimeout(function(){ac.abort()},action==='getData'||action==='googleLogin'?90000:240000):0;
+    var res;try{res=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body),signal:ac?ac.signal:undefined})}finally{if(tm)clearTimeout(tm)}
     j=await res.json();
   }catch(e){var ne=new Error('連不上伺服器,請檢查網路');ne.userMessage=ne.message;throw ne}
   if(!j.ok){var e2=new Error(j.error||'失敗');e2.userMessage=(j.error||'失敗')+(j.code?'('+String(j.code).slice(0,160)+')':'');e2.auth=/請先登入|過期|停用/.test(j.error||'');throw e2}
@@ -4474,8 +4475,11 @@ function applyCfg(c){
 }
 /* ---- load + adapt ---- */
 async function bootstrap(data0){
+  bootLoad_(true);try{return await bootstrap_(data0)}finally{bootLoad_(false)}
+}
+async function bootstrap_(data0){
   var data=data0;
-  if(!data){try{data=await api('getData')}catch(e){if(e.auth){showLogin('登入已過期,請重新登入');return}throw e}}
+  if(!data){for(var tr=0;tr<2&&!data;tr++){try{data=await api('getData')}catch(e){if(e.auth){showLogin('登入已過期,請重新登入');return}if(tr===1)throw e;bootLoad_(true,'連線不穩,正在重試…');await new Promise(function(r){setTimeout(r,1500)})}}}
   S.role={'管理員':'admin','專案負責人':'lead','業務人員':'staff','業主':'staff'}[data.me.role]||'staff';S.viewer=data.me.role==='業主';document.body.classList.toggle('viewer',S.viewer);applyCfg(data.cfg);
   ME=data.me.name;MT.data=null;MT.err='';MT.loading=false;MT.form=null;MT.saving=false;
   await adapt(data);
@@ -4701,27 +4705,59 @@ function xlsxCellVal_(v,hdr){
   return s;
 }
 function xlsxWidth_(s){var n=0;String(s==null?'':s).split('\n')[0].split('').forEach(function(ch){n+=ch.charCodeAt(0)>255?2:1});return n}
-async function saveRowsXlsx(name,rows,label,sheetName){
+function xlsxAddSheet_(wb,sheetName,rows){
+  var sn=String(sheetName||'資料').replace(/[\[\]:*?\/\\]/g,'').replace(/\(.*$/,'').slice(0,31)||'資料',ws=wb.addWorksheet(sn),head=rows[0]||[];
+  var textCol=head.map(function(h){return /地號|段別|持分|電話|身分證|統編|統一編號|門牌|建號|地段/.test(h||'')});
+  rows.forEach(function(r,i){ws.addRow(i?r.map(function(v,c){return xlsxCellVal_(v,head[c])}):r)});
+  textCol.forEach(function(isT,c){if(!isT)return;for(var i=2;i<=rows.length;i++){var cell=ws.getRow(i).getCell(c+1);cell.numFmt='@';cell.value=String(cell.value==null?'':cell.value)}});
+  var hr=ws.getRow(1);hr.font={bold:true,color:{argb:'FFFFFFFF'}};hr.alignment={vertical:'middle',wrapText:true};
+  hr.eachCell(function(cell){cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF1F5C46'}}});
+  ws.views=[{state:'frozen',ySplit:1}];
+  if(head.length)ws.autoFilter={from:{row:1,column:1},to:{row:1,column:head.length}};
+  head.forEach(function(h,c){var m=xlsxWidth_(h);for(var i=1;i<Math.min(rows.length,200);i++)m=Math.max(m,xlsxWidth_(rows[i][c]));ws.getColumn(c+1).width=Math.max(8,Math.min(40,m+2))});
+  return ws;
+}
+/* 多個分頁的 Excel:sheets=[{name,rows}],每頁第一列是標題列 */
+async function saveSheetsXlsx(name,sheets,label){
   var fname=name.replace(/\.csv$/i,'.xlsx');
   try{
-    var E=await loadExcelJS(),wb=new E.Workbook(),sn=String(sheetName||label||'資料').replace(/[\[\]:*?\/\\]/g,'').replace(/\(.*$/,'').slice(0,31)||'資料',ws=wb.addWorksheet(sn),head=rows[0]||[];
-    var textCol=head.map(function(h){return /地號|段別|持分|電話|身分證|統編|統一編號|門牌|建號|地段/.test(h||'')});
-    rows.forEach(function(r,i){ws.addRow(i?r.map(function(v,c){return xlsxCellVal_(v,head[c])}):r)});
-    textCol.forEach(function(isT,c){if(!isT)return;for(var i=2;i<=rows.length;i++){var cell=ws.getRow(i).getCell(c+1);cell.numFmt='@';cell.value=String(cell.value==null?'':cell.value)}});
-    var hr=ws.getRow(1);hr.font={bold:true,color:{argb:'FFFFFFFF'}};hr.alignment={vertical:'middle',wrapText:true};
-    hr.eachCell(function(cell){cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF1F5C46'}}});
-    ws.views=[{state:'frozen',ySplit:1}];
-    if(head.length)ws.autoFilter={from:{row:1,column:1},to:{row:1,column:head.length}};
-    head.forEach(function(h,c){var m=xlsxWidth_(h);for(var i=1;i<Math.min(rows.length,200);i++)m=Math.max(m,xlsxWidth_(rows[i][c]));ws.getColumn(c+1).width=Math.max(8,Math.min(40,m+2))});
+    var E=await loadExcelJS(),wb=new E.Workbook(),used={};
+    sheets.forEach(function(s){var n=s.name,k=1;while(used[n]){n=s.name+(++k)}used[n]=1;xlsxAddSheet_(wb,n,s.rows)});
     var buf=await wb.xlsx.writeBuffer();
     downloadBlob(fname,new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
     api('logExport',{label:label,name:fname}).catch(function(){});
     toast('已匯出:'+fname);
   }catch(e){
-    try{downloadBlob(name.replace(/\.xlsx$/i,'.csv'),new Blob([toCSV(rows)],{type:'text/csv;charset=utf-8'}))}catch(x){toast('匯出沒有完成,請再試一次。');return}
-    api('logExport',{label:label,name:name.replace(/\.xlsx$/i,'.csv')}).catch(function(){});
+    var rows=[];sheets.forEach(function(s,i){if(i)rows.push([]);rows.push([s.name]);s.rows.forEach(function(r){rows.push(r)})});
+    try{downloadBlob(fname.replace(/\.xlsx$/i,'.csv'),new Blob([toCSV(rows)],{type:'text/csv;charset=utf-8'}))}catch(x){toast('匯出沒有完成,請再試一次。');return}
+    api('logExport',{label:label,name:fname.replace(/\.xlsx$/i,'.csv')}).catch(function(){});
     toast('Excel 元件載入失敗(請確認網路),這次先下載成 CSV。');
   }
+}
+function saveRowsXlsx(name,rows,label,sheetName){return saveSheetsXlsx(name,[{name:String(sheetName||label||'資料'),rows:rows}],label)}
+/* 週月報:摘要 / 承辦人表現 / 意願變動 / 階段推進 各一頁 */
+function reportSheets_(){
+  var R=reportData(),sum=[['項目','數值'],['期間',iso(R.r.s)+' 到 '+iso(R.r.e)],['新增訪談',R.iv],['新接觸地主',R.newC],['意願升級',R.up.length],['意願下降',R.down.length],['簽約階段推進',R.moves.length],['簽買賣契約面積(坪)',Math.round(R.signedPg)],['完成交易面積(坪)',Math.round(R.donePg)],['目前逾期跟進',R.over]];
+  var by=[['承辦人','訪談','新接觸','意願升級','階段推進','逾期跟進']];
+  Object.keys(R.by).sort().forEach(function(k){var a=R.by[k];by.push([k||'(未指定)',a.iv,a.newC,a.up,a.moves,a.over])});
+  var sheets=[{name:'摘要',rows:sum},{name:'承辦人表現',rows:by}];
+  function lv(k){return LV[k]?lvl(LV[k]):k}
+  var ch=[['類型','專案','地主','原意願','新意願']];
+  R.up.forEach(function(x){ch.push(['升級',x.pr.name,x.o.name,lv(x.from),lv(x.to)])});R.down.forEach(function(x){ch.push(['下降',x.pr.name,x.o.name,lv(x.from),lv(x.to)])});
+  if(ch.length>1)sheets.push({name:'意願變動',rows:ch});
+  var mv=[['專案','地主','階段','日期']];R.moves.forEach(function(x){mv.push([x.pr.name,x.o.name,stageLbl(x.stage),x.date?iso(x.date):''])});
+  if(mv.length>1)sheets.push({name:'階段推進',rows:mv});
+  return sheets;
+}
+/* 統計:摘要 / 意願分布 / 區塊進度 / 承辦人 各一頁 */
+function statsSheets_(){
+  var st=stats(),cs=computeStats(),pct=function(a,b){return b?Math.round(a/b*100):0};
+  var sum=[['項目','數值'],['專案',PRJ[S.proj].name],['地號數',st.n],['總面積(公頃)',Number((st.total/1e4).toFixed(2))],['地主數',cs.ownerCount],['訪談次數(累計)',cs.ivCount],['近 30 天訪談',cs.recent30],['已接觸面積占比(%)',pct(st.contact,st.total)],['A+B 面積占比(%)',pct(st.ab,st.total)]];
+  var lvr=[['意願','地號數','面積占比(%)']];LEVELS.forEach(function(l){lvr.push([lvl(l),st.by[l.k].n,pct(st.by[l.k].a,st.total)])});
+  var sheets=[{name:'摘要',rows:sum},{name:'意願分布',rows:lvr}];
+  if(cs.blocks&&cs.blocks.length){var bl=[['區塊','A+B 面積占比(%)']];cs.blocks.forEach(function(b){bl.push([b.name,pct(b.by.A+b.by.B,b.total)])});sheets.push({name:'區塊進度',rows:bl})}
+  if(cs.asg&&cs.asg.length){var as=[['承辦人','負責地主數','已接觸地主數','逾期跟進']];cs.asg.forEach(function(a){as.push([a.a||'(未指定)',a.owners,a.contacted,a.over])});sheets.push({name:'承辦人',rows:as})}
+  return sheets;
 }
 function saveFile(name,data,label){
   if(/\.csv$/i.test(name)){saveRowsXlsx(name,parseCSV(String(data)),label);return}
@@ -6095,6 +6131,22 @@ document.addEventListener('click',function(e){
 function staffPickerHTML(pr){
   var names=(pr.staff||[]).map(function(x){return '承辦人'+esc(x)}).join('、')||'尚未選擇';
   return '<div>'+names+''+'</div>';
+}
+
+/* ---- 登入後載入中的提示(資料大時伺服器要幾秒,不能讓畫面空白) ---- */
+var BL={t1:0,t2:0};
+function bootLoad_(on,msg){
+  var el=document.getElementById('bootload');
+  if(!el){el=document.createElement('div');el.id='bootload';el.setAttribute('role','status');el.setAttribute('aria-live','polite');
+    el.style.cssText='position:fixed;inset:62px 0 0 0;z-index:40;background:var(--bg,#eef2ee);display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px';
+    el.innerHTML='<div style="width:36px;height:36px;border:4px solid #cfe0d6;border-top-color:#1F5C46;border-radius:50%;animation:blspin 0.9s linear infinite"></div><div id="bootload-m" style="font-weight:700;font-size:16px">資料載入中…</div><div id="bootload-s" class="small muted" style="max-width:340px">第一次登入或久沒使用時,伺服器要先啟動,通常 5～15 秒。</div>';
+    var st=document.createElement('style');st.textContent='@keyframes blspin{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){#bootload div:first-child{animation:none!important}}';document.head.appendChild(st);document.body.appendChild(el)}
+  clearTimeout(BL.t1);clearTimeout(BL.t2);
+  var m=document.getElementById('bootload-m'),s=document.getElementById('bootload-s');
+  if(!on){el.style.display='none';return}
+  el.style.display='flex';m.textContent=msg||'資料載入中…';
+  BL.t1=setTimeout(function(){s.textContent='伺服器還在回應,資料多的時候會比較久,請再等一下,不用重新整理。'},10000);
+  BL.t2=setTimeout(function(){s.textContent='等比較久了。若超過 1 分鐘仍沒有畫面,請重新整理頁面再登入一次。'},30000);
 }
 
 /* ---------- start ---------- */
