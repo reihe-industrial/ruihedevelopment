@@ -222,7 +222,6 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
       <a href="#deeds" data-v="deeds">謄本更新</a>
       <a href="#tasks" data-v="tasks">行事曆與待辦</a>
       <a href="#meetings" data-v="meetings">會議紀錄</a>
-      <a href="#files" data-v="files">專案檔案</a>
       <a href="#reports" data-v="reports" id="tab-reports">報表</a>
       <a href="#stats" data-v="stats">統計</a>
       <a href="#data" data-v="data">匯入匯出</a>
@@ -264,7 +263,6 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
     <section id="view-deeds" class="view"><div class="page" id="deeds-page"></div></section>
     <section id="view-tasks" class="view"><div class="page" id="tasks-page"></div></section>
     <section id="view-meetings" class="view"><div class="page" id="meetings-page"></div></section>
-    <section id="view-files" class="view"><div class="page" id="files-page"></div></section>
     <section id="view-reports" class="view"><div class="page" id="reports-page"></div></section>
     <section id="view-stats" class="view"><div class="page" id="stats-page"></div></section>
     <section id="view-data" class="view"><div class="page" id="data-page"></div></section>
@@ -711,7 +709,7 @@ function fuClass(n){
 /* ---------- state ---------- */
 var ME='';
 var S={role:'admin',proj:'A',vw:'proj',vproj:'all',vasg:'all',vlv:'all',vquick:'all',vq:'',vsel:{},atab:'staff',adel:null,popen:null,oopen:null,dopen:null,focusOwner:null,mode:'int',levels:{A:1,B:1,C:1,D:1,E:1,N:1},block:'all',q:'',sel:null,thr:60,fuWho:'all',ownerQ:''};
-var VIEWS=['projects','import','map','visits','deeds','tasks','meetings','files','reports','data','stats','admin'];
+var VIEWS=['projects','import','map','visits','deeds','tasks','meetings','reports','data','stats','admin'];
 var vb={x:0,y:0,w:1000,h:660};
 var els=[];
 
@@ -995,7 +993,7 @@ function renderSide(){
   var pr=PRJ[S.proj],st=stats(),pct=function(a){return Math.round(a/st.total*100)};
   var abp=pct(st.ab),gap=S.thr-abp;
   var h='<p class="small" style="margin:0 0 10px"><button class="link" type="button" data-go-projects>專案總覽</button> › '+esc(pr.name)+'</p><p class="role-note">'+esc(ROLE_NOTE[S.role])+'</p>'+focusBanner();
-  h+='<h2>'+esc(pr.name)+'</h2><p class="muted small" style="margin:0 0 10px">'+esc(pr.type)+(pr.region?' · '+esc(pr.region):'')+' · '+esc(pr.status)+' · '+st.n+' 筆地號</p>'+projSwitchHTML();
+  h+='<h2>'+esc(pr.name)+'</h2><p class="muted small" style="margin:0 0 10px">'+esc(pr.type)+(pr.region?' · '+esc(pr.region):'')+' · '+esc(pr.status)+' · '+st.n+' 筆地號</p>'+projSwitchHTML()+'<p style="margin:0 0 10px"><button class="btn small" type="button" data-fl-opendlg>📁 專案檔案</button></p>';
   h+='<div class="metrics">'
     +'<div class="metric"><div class="k">地號數</div><div class="v">'+st.n+'</div></div>'
     +'<div class="metric"><div class="k">總面積</div><div class="v">'+(st.total/10000).toFixed(2)+' 公頃</div></div>'
@@ -3925,7 +3923,6 @@ function route(){
   $('#tab-import').style.display=S.role==='admin'?'':'none';
   $('#tab-reports').style.display=S.role==='staff'?'none':'';
   if(r==='map')setTimeout(function(){paintMap();mapOverlay_()},0);
-  if(r==='files')renderFiles();
 }
 function renderAll(){
   indexDB();renderProjSelect();renderProjects();renderSide();paintMap();renderDetail();renderVisits();renderDeeds();renderTasks();renderMeetings();renderReports();renderData();renderImport();renderStats();renderAdmin();
@@ -5375,11 +5372,26 @@ async function ocrPool(n){
   return pool.slice(0,n);
 }
 // 找出頁面上「又寬又扁」的圖片(謄本把住址那一行做成圖片),回傳灰階像素,依頁碼、由上到下排序
+// 住址圖片上方那一行是「所有權人：姓名」或「權利人：姓名」(抵押權人等他項權利人,不是所有權人)。
+// 用這行判斷圖片屬於誰:他項權利人的住址不算所有權人;也順便取出姓名與遮蔽後的統一編號,之後對人用。
+function normTxt_(s){return String(s||'').normalize('NFKC').replace(/\s+/g,'')}
+function strip_meta_(tx,y){
+  var r={kind:'',name:'',id:''};if(!tx)return r;
+  var lab=null;
+  tx.forEach(function(t){var d=t.y-y;if(d>0&&d<=45&&/所有權人|權\s*利\s*人|管理者/.test(t.s)&&(!lab||d<lab.d))lab={d:d,s:t.s}});
+  if(lab){
+    var s=normTxt_(lab.s);
+    r.kind=/所有權人/.test(s)?'owner':'other';
+    var m=s.match(/[:：]([^統]+)/);if(m)r.name=m[1].replace(/＊/g,'*');
+  }
+  tx.forEach(function(t){var d=t.y-y;if(d>0&&d<=45&&!r.id){var m=normTxt_(t.s).match(/統一編號[:：]?([A-Za-z0-9*]+)/);if(m)r.id=m[1]}});
+  return r;
+}
 async function readPdfAddrStrips(file){
   var lib=await loadPdfJs(),buf=await fileToBuffer(file),doc=await lib.getDocument({data:new Uint8Array(buf),disableFontFace:true,useSystemFonts:true,isOffscreenCanvasSupported:false}).promise,OPS=lib.OPS,out=[];   // 瀏覽器預設把圖片給成 bitmap(沒有像素資料),要關掉才讀得到
   var compose=function(m,n){return [n[0]*m[0]+n[2]*m[1],n[1]*m[0]+n[3]*m[1],n[0]*m[2]+n[2]*m[3],n[1]*m[2]+n[3]*m[3],n[0]*m[4]+n[2]*m[5]+n[4],n[1]*m[4]+n[3]*m[5]+n[5]]};
   for(var p=1;p<=doc.numPages;p++){
-    var page=await doc.getPage(p),ops=await page.getOperatorList(),stack=[],ctm=[1,0,0,1,0,0],found=[];
+    var page=await doc.getPage(p),ops=await page.getOperatorList(),stack=[],ctm=[1,0,0,1,0,0],found=[],tx=null;
     for(var i=0;i<ops.fnArray.length;i++){
       var fn=ops.fnArray[i],a=ops.argsArray[i];
       if(fn===OPS.save)stack.push(ctm.slice());
@@ -5390,8 +5402,9 @@ async function readPdfAddrStrips(file){
         if(w>1000&&h<=80)found.push({fn:fn,arg:a,y:ctm[5]});
       }
     }
+    if(found.length){try{var tc=await page.getTextContent();tx=tc.items.map(function(it){return {s:String(it.str||''),x:it.transform[4],y:it.transform[5]}}).filter(function(it){return it.s.trim()})}catch(e3){tx=null}}
     for(var k=0;k<found.length;k++){
-      var f=found[k],img=f.fn===OPS.paintImageXObject?await new Promise(function(res){(String(f.arg[0]).indexOf('g_')===0?page.commonObjs:page.objs).get(f.arg[0],res)}):f.arg[0];
+      var f=found[k],meta=strip_meta_(tx,f.y),img=f.fn===OPS.paintImageXObject?await new Promise(function(res){(String(f.arg[0]).indexOf('g_')===0?page.commonObjs:page.objs).get(f.arg[0],res)}):f.arg[0];
       if(img&&!img.data&&img.bitmap){   // 備援:真的拿到 bitmap 時,畫到畫布上取像素
         try{var bc=document.createElement('canvas');bc.width=img.bitmap.width;bc.height=img.bitmap.height;var bx=bc.getContext('2d');bx.drawImage(img.bitmap,0,0);var bd=bx.getImageData(0,0,bc.width,bc.height);img={width:bc.width,height:bc.height,kind:3,data:bd.data}}catch(e2){img=null}
       }
@@ -5401,7 +5414,7 @@ async function readPdfAddrStrips(file){
       else if(img.kind===3){for(var q2=0;q2<n;q2++)gray[q2]=(d[q2*4]+d[q2*4+1]+d[q2*4+2])/3}
       else if(img.kind===1){var rb=Math.ceil(img.width/8);for(var y2=0;y2<img.height;y2++)for(var x2=0;x2<img.width;x2++)gray[y2*img.width+x2]=(d[y2*rb+(x2>>3)]>>(7-(x2&7)))&1?255:0}
       else continue;
-      out.push({page:p,y:f.y,w:img.width,h:img.height,gray:gray});
+      out.push({page:p,y:f.y,w:img.width,h:img.height,gray:gray,kind:meta.kind,name:meta.name,id:meta.id});
     }
   }
   out.sort(function(a,b){return a.page-b.page||b.y-a.y});
@@ -5434,7 +5447,7 @@ async function ocrDeedAddresses(f,items){
   var ents=[];
   items.forEach(function(it){if(it.rec.kind==='land'&&it.rec.ownership)it.rec.ownership.forEach(function(e){if(!e.addr)ents.push(e)})});
   if(!ents.length)return;
-  var strips=await readPdfAddrStrips(f);
+  var strips=(await readPdfAddrStrips(f)).filter(function(s){return s.kind!=='other'});   // 他項權利人(抵押權人等)的住址圖片不是所有權人,不辨識
   if(!strips.length)return;
   IM.deed.info=IM.deed.info||[];
   var st=$('#deed-status'),all=[];
@@ -5450,14 +5463,28 @@ async function ocrDeedAddresses(f,items){
   }));
   // 住址太長時,謄本會把最後幾個字折到下一行,變成另一張圖(沒有「住址」兩字、讀不出完整地址):併回上一條住址
   var main=[],cont=0;
-  all.forEach(function(texts){
+  all.forEach(function(texts,ix){
     var pk=pickAddr_(texts),hasLabel=(texts||[]).some(function(t){return /住.{0,2}址/.test(String(t||'').replace(/\s+/g,''))});
     if(!pk&&!hasLabel&&main.length){
       var c={},best='';(texts||[]).map(cleanAddr_).filter(function(x){return x.length>=1}).forEach(function(x){c[x]=(c[x]||0)+1;if(!best||c[x]>c[best])best=x});
       if(best){main[main.length-1].tail+=best;cont++;return}
     }
-    main.push({pk:pk,tail:''});
+    main.push({pk:pk,tail:'',name:(strips[ix]||{}).name||'',id:(strips[ix]||{}).id||''});
   });
+  if(main.length!==ents.length){
+    // 數量不同(例如同一份謄本裡有重複的地號被略過):改用「姓名 + 統一編號」一個一個對回去
+    var pos=0,sel=[];
+    for(var ei=0;ei<ents.length;ei++){
+      var en=normTxt_(ents[ei].name||'').replace(/＊/g,'*'),ed=normTxt_(ents[ei].id||'').replace(/＊/g,'*'),hit=-1;
+      for(var k2=pos;k2<main.length;k2++){
+        var mm=main[k2],nmOk=!mm.name||!en||mm.name===en,idOk=!mm.id||!ed||mm.id===ed;
+        if(nmOk&&idOk&&(mm.name||mm.id)){hit=k2;break}
+      }
+      if(hit<0){sel=null;break}
+      sel.push(main[hit]);pos=hit+1;
+    }
+    if(sel&&sel.length===ents.length)main=sel;
+  }
   if(main.length!==ents.length){IM.deed.msgs.push('「'+f.name+'」的住址圖片有 '+main.length+' 條,但缺住址的所有權人有 '+ents.length+' 位,對不上,所以沒有辨識住址。');return}
   var hi=0,lo=0,bad=0,lowNames=[];
   for(var j=0;j<main.length;j++){
@@ -6513,11 +6540,9 @@ function flLoad_(force){
 }
 function renderFiles(){
   var el=$('#files-page');if(!el)return;
-  var vis=DB.projects.filter(function(p){return PRJ[p.id]});
-  if(!FL.pid||!PRJ[FL.pid])FL.pid=PRJ[S.proj]?S.proj:(vis[0]?vis[0].id:'');
-  var h='<h1>專案檔案</h1>';
+  if(!FL.pid||!PRJ[FL.pid])FL.pid=S.proj;
+  var h='<div class="orow"><h2 style="margin:0">專案檔案:'+esc((PRJ[FL.pid]||{}).name||'')+'</h2><button class="btn small" type="button" data-fl-close>關閉</button></div>';
   if(!FL.pid){el.innerHTML=h+'<div class="empty">目前沒有可看的專案。</div>';return}
-  h+='<div class="field" style="max-width:360px"><label for="fl-proj">專案</label><select id="fl-proj">'+vis.map(function(p){return '<option value="'+esc(p.id)+'"'+(p.id===FL.pid?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select></div>';
   if(FL.err){el.innerHTML=h+'<div class="notice">讀不到檔案區:'+esc(FL.err)+' <button class="btn small" type="button" data-fl-retry>重試</button></div>';return}
   var d=FL.data;
   if(!d||d._pid!==FL.pid){el.innerHTML=h+'<p class="muted">載入中…</p>';flLoad_(false);return}
@@ -6593,7 +6618,14 @@ document.addEventListener('click',function(e){
 document.addEventListener('change',function(e){
   var t=e.target;if(t&&t.id==='fl-proj'){FL.pid=t.value;FL.data=null;FL.edit='';FL.msg='';FL.err='';renderFiles()}
 });
-window.addEventListener('hashchange',function(){if(location.hash==='#files')renderFiles()});
+document.addEventListener('click',function(e){
+  var t=e.target;if(!t||!t.closest)return;
+  if(t.closest('[data-fl-opendlg]')){
+    var d=$('#dlg-files');
+    if(!d){d=document.createElement('dialog');d.id='dlg-files';d.setAttribute('aria-label','專案檔案');d.style.width='min(920px,96vw)';d.innerHTML='<div class="dlg" id="files-page"></div>';document.body.appendChild(d)}
+    FL.pid=S.proj;FL.data=null;FL.err='';FL.edit='';FL.msg='';renderFiles();if(!d.open)d.showModal();return}
+  if(t.closest('[data-fl-close]')){var d2=$('#dlg-files');if(d2&&d2.open)d2.close()}
+});
 
 /* ---------- start ---------- */
 function pickStart(){
