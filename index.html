@@ -6428,6 +6428,7 @@ function mapOverlay_(){
     rb.style.cssText='position:absolute;right:12px;top:112px';wrap.appendChild(rb);
     var ab=document.createElement('button');ab.id='mapassign';ab.type='button';ab.className='btn small';ab.textContent='指定圖塊';ab.setAttribute('aria-label','指定選取的地號要用圖上哪一塊');
     ab.style.cssText='position:absolute;right:12px;top:146px';wrap.appendChild(ab);
+    var cb=document.createElement('button');cb.id='mapcheck';cb.type='button';cb.className='btn small';cb.textContent='核對清單';cb.style.cssText='position:absolute;right:12px;top:180px';wrap.appendChild(cb);
     ab.addEventListener('click',function(){
       if(S.role!=='admin'){toast('只有管理員可以指定圖塊。');return}
       var p0=S.sel!==null?DB.parcels[S.sel]:null;
@@ -6441,7 +6442,7 @@ function mapOverlay_(){
     });
   }
   var show=!!geo&&geo.scale>0;
-  n.style.display=sc.style.display=show?'':'none';ex.style.display=pr?'':'none';var rb2=$('#mapratio');if(rb2)rb2.style.display=show?'':'none';var ab2=$('#mapassign');if(ab2)ab2.style.display=(show&&S.role==='admin')?'':'none';
+  n.style.display=sc.style.display=show?'':'none';ex.style.display=pr?'':'none';var rb2=$('#mapratio');if(rb2)rb2.style.display=show?'':'none';var ab2=$('#mapassign');if(ab2)ab2.style.display=(show&&S.role==='admin')?'':'none';var cb2=$('#mapcheck');if(cb2)cb2.style.display=(show&&S.role==='admin')?'':'none';
   if(!show)return;
   var g=document.getElementById('mapnorth-g');if(g)g.setAttribute('transform','rotate('+(Number(geo.north)||0)+')');
   n.setAttribute('aria-label','指北針:北方在畫面'+(Number(geo.north)?'順時針 '+geo.north+' 度':'正上方'));
@@ -6898,17 +6899,21 @@ function deedProjPick_(){
 }
 
 /* ---- 手動指定地號用圖上哪一塊(管理員) ---- */
-var MAPASG=null;
+var MAPASG=null,MAPDRAW=null;
 function mapAsgBar_(){
   var wrap=document.querySelector('.mapwrap'),b=document.getElementById('mapasg-bar');if(!wrap)return;
-  if(!MAPASG){if(b)b.style.display='none';var sv=document.getElementById('map');if(sv)sv.style.cursor='';return}
-  if(!b){b=document.createElement('div');b.id='mapasg-bar';b.style.cssText='position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:7;display:flex;gap:10px;align-items:center;padding:10px 16px;background:#1F5C46;color:#fff;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.35);font-size:15px;font-weight:700;white-space:nowrap';wrap.appendChild(b)}
-  b.innerHTML='請在地圖上點一下「'+esc(MAPASG.no)+'」要用的那一塊 <button type="button" class="btn small" data-mapasg-cancel style="margin-left:6px">取消</button>';b.style.display='flex';
+  if(!MAPASG){if(b)b.style.display='none';var dg=document.getElementById('mapdraw-g');if(dg)dg.remove();var sv=document.getElementById('map');if(sv)sv.style.cursor='';return}
+  if(!b){b=document.createElement('div');b.id='mapasg-bar';b.style.cssText='position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:7;display:flex;gap:10px;align-items:center;padding:10px 16px;background:#1F5C46;color:#fff;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.35);font-size:15px;font-weight:700;flex-wrap:wrap;max-width:94%;justify-content:center';if(!document.getElementById('mapasg-css')){var st=document.createElement('style');st.id='mapasg-css';st.textContent='#mapasg-bar .btn{background:#fff;color:#1F5C46;font-weight:700;border:0}#mapasg-bar .btn:disabled{opacity:.5}';document.head.appendChild(st)}wrap.appendChild(b)}
+  b.innerHTML=''+(MAPDRAW?'「'+esc(MAPASG.no)+'」:沿著邊界一個角一個角點(已點 '+MAPDRAW.pts.length+' 點,會自動吸到附近的角) <button type="button" class="btn small" data-mapdraw-undo>退一步</button><button type="button" class="btn small" data-mapdraw-done'+(MAPDRAW.pts.length<3?' disabled':'')+'>完成</button>':'請點一下「'+esc(MAPASG.no)+'」要用的那一塊 <button type="button" class="btn small" data-mapdraw-start>找不到?改成自己描</button>')+' <button type="button" class="btn small" data-mapasg-cancel style="margin-left:6px">取消</button>';b.style.display='flex';mapDrawPaint_();
 }
 document.addEventListener('click',function(e){
-  if(e.target&&e.target.closest&&e.target.closest('[data-mapasg-cancel]')){MAPASG=null;mapAsgBar_();return}
+  var tg=e.target&&e.target.closest?e.target:null;if(!tg)return;
+  if(tg.closest('[data-mapasg-cancel]')){MAPASG=null;MAPDRAW=null;mapAsgBar_();return}
+  if(tg.closest('[data-mapdraw-start]')){MAPDRAW={pts:[]};mapAsgBar_();return}
+  if(tg.closest('[data-mapdraw-undo]')){if(MAPDRAW)MAPDRAW.pts.pop();mapAsgBar_();return}
+  if(tg.closest('[data-mapdraw-done]')){mapDrawDone_();return}
 },true);
-document.addEventListener('keydown',function(e){if(e.key==='Escape'&&MAPASG){MAPASG=null;mapAsgBar_()}});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&MAPASG){MAPASG=null;MAPDRAW=null;mapAsgBar_()}});
 (function(){
   var t=setInterval(function(){
     var sv=document.getElementById('map');if(!sv)return;clearInterval(t);
@@ -6917,6 +6922,8 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'&&MAPASG){MAP
       e.stopPropagation();e.preventDefault();
       if(typeof moved!=='undefined'&&moved)return;
       var pt=svgPt(e.clientX,e.clientY),p0=MAPASG;
+      if(MAPDRAW){var sp=mapSnap_(pt);MAPDRAW.pts.push([sp.x,sp.y]);mapAsgBar_();return}
+      if(!mapHit_(pt)){var sp0=mapSnap_(pt);MAPDRAW={pts:[[sp0.x,sp0.y]]};mapAsgBar_();toast('這裡沒有現成的塊,改成自己描:沿著邊界一個角一個角點。');return}
       if(!window.confirm('要把「'+p0.no+'」改成用你點的這一塊嗎?\n如果那一塊本來是別的地號,兩個會互換。'))return;
       MAPASG=null;mapAsgBar_();
       api('setParcelShape',{projectId:p0.proj,parcelId:p0._srv,point:[pt.x,pt.y]}).then(function(r){
@@ -6926,6 +6933,76 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'&&MAPASG){MAP
     },true);
   },300);
 })();
+
+/* ---- 自己描形狀:沿邊界點角,會吸到附近既有的角;完成後存成這個地號的形狀 ---- */
+function mapSnap_(pt){
+  var best=null,bd=1e9,svg=document.getElementById('map'),m=svg&&svg.getScreenCTM(),r=m?(8/m.a):3,g=(typeof GEOC!=='undefined'&&MAPASG)?GEOC[MAPASG.proj]:null;
+  function chk(ring){(ring||[]).forEach(function(q){var d=Math.hypot(q[0]-pt.x,q[1]-pt.y);if(d<r&&d<bd){bd=d;best={x:q[0],y:q[1]}}})}
+  if(g){Object.keys(g.parcels||{}).forEach(function(k){chk(g.parcels[k].pts)});(g.ctx||[]).forEach(chk)}
+  (MAPDRAW?MAPDRAW.pts:[]).forEach(function(q){var d=Math.hypot(q[0]-pt.x,q[1]-pt.y);if(d<r&&d<bd){bd=d;best={x:q[0],y:q[1]}}});
+  return best||{x:Math.round(pt.x*10)/10,y:Math.round(pt.y*10)/10};
+}
+function mapDrawPaint_(){
+  var svg=document.getElementById('map');if(!svg)return;
+  var old=document.getElementById('mapdraw-g');if(old)old.remove();
+  if(!MAPDRAW||!MAPDRAW.pts.length)return;
+  var g=document.createElementNS('http://www.w3.org/2000/svg','g');g.id='mapdraw-g';g.setAttribute('pointer-events','none');
+  var pts=MAPDRAW.pts,pl=document.createElementNS('http://www.w3.org/2000/svg',pts.length>2?'polygon':'polyline');
+  pl.setAttribute('points',pts.map(function(q){return q[0]+','+q[1]}).join(' '));pl.setAttribute('fill','rgba(255,120,0,.25)');pl.setAttribute('stroke','#ff7a00');pl.setAttribute('stroke-width','2');pl.setAttribute('vector-effect','non-scaling-stroke');g.appendChild(pl);
+  pts.forEach(function(q){var c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',q[0]);c.setAttribute('cy',q[1]);c.setAttribute('r','0.8');c.setAttribute('fill','#ff7a00');g.appendChild(c)});
+  svg.appendChild(g);
+}
+function mapDrawDone_(){
+  if(!MAPDRAW||MAPDRAW.pts.length<3||!MAPASG)return;
+  var p0=MAPASG,ring=MAPDRAW.pts.slice();
+  if(!window.confirm('要把「'+p0.no+'」的形狀改成你描的這一塊嗎?'))return;
+  MAPASG=null;MAPDRAW=null;mapAsgBar_();var o=document.getElementById('mapdraw-g');if(o)o.remove();
+  api('setParcelShape',{projectId:p0.proj,parcelId:p0._srv,ring:ring}).then(function(r){
+    GEOC[p0.proj]=undefined;geoLsDel_(p0.proj);if(PRJ[p0.proj])PRJ[p0.proj]._geoLazy=true;ensureGeo(p0.proj);
+    toast('已改好「'+p0.no+'」的形狀。');
+  }).catch(function(er){if(er.auth){showLogin('登入已過期,請重新登入');return}toast('失敗:'+(er.userMessage||er.message))});
+}
+
+function mapHit_(pt){
+  var g=(typeof GEOC!=='undefined'&&MAPASG)?GEOC[MAPASG.proj]:null;if(!g)return true;
+  function inside(r){var c=false,i,j;for(i=0,j=r.length-1;i<r.length;j=i++){var xi=r[i][0],yi=r[i][1],xj=r[j][0],yj=r[j][1];if(((yi>pt.y)!==(yj>pt.y))&&(pt.x<(xj-xi)*(pt.y-yi)/(yj-yi)+xi))c=!c}return c}
+  var ks=Object.keys(g.parcels||{});for(var i=0;i<ks.length;i++){if(inside(g.parcels[ks[i]].pts))return true}
+  var cx=g.ctx||[];for(var j=0;j<cx.length;j++){if(inside(cx[j]))return true}
+  return false;
+}
+/* ---- 圖資核對清單:列出共用同一塊形狀、或面積很小的地號,一筆一筆去修 ---- */
+function mapCheckList_(){
+  var g=GEOC[S.proj];if(!g||!g.parcels){toast('這個專案還沒有地圖。');return}
+  var by={},rows=[];
+  Object.keys(g.parcels).forEach(function(k){var q=g.parcels[k],sig=JSON.stringify(q.pts);(by[sig]=by[sig]||[]).push(k)});
+  var ps=DB.parcels.filter(function(p){return p.proj===S.proj});
+  function find(p){return g.parcels[(p.sec||'')+'|'+p.no]||null}
+  ps.forEach(function(p){
+    var q=find(p),why=[];
+    if(!q){why.push('圖上沒有這個地號')}
+    else{
+      var sh=by[JSON.stringify(q.pts)]||[];
+      if(sh.length>1)why.push('和 '+sh.filter(function(k){return k!==(p.sec||'')+'|'+p.no}).map(function(k){return k.split('|').pop()}).join('、')+' 共用同一塊');
+      if(q.poly_m2<60)why.push('面積只有 '+Math.round(q.poly_m2)+' ㎡,可能是縫');
+    }
+    if(why.length)rows.push({p:p,why:why.join(';')});
+  });
+  var d=document.getElementById('dlg-chk');if(!d){d=document.createElement('dialog');d.id='dlg-chk';d.style.cssText='max-width:560px;width:94%;border:0;border-radius:14px;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.35)';document.body.appendChild(d);d.addEventListener('click',function(e){if(e.target===d)d.close()})}
+  d.innerHTML='<h3 style="margin:0 0 8px">圖資核對清單</h3>'+(rows.length?'<p class="small muted" style="margin:0 0 8px">共 '+rows.length+' 筆要核對。按「去修」會跳到那個地號,再點現成的塊或自己描。</p>':'<p>沒有需要核對的地號。</p>')
+    +'<div style="max-height:60vh;overflow:auto">'+rows.map(function(r,i){return '<div class="orow" style="gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)"><b style="min-width:70px">'+esc(r.p.no)+'</b><span class="small" style="flex:1">'+esc(r.why)+'</span><button type="button" class="btn small" data-chk-go="'+i+'">去修</button></div>'}).join('')+'</div>'
+    +'<div style="text-align:right;margin-top:10px"><button type="button" class="btn" data-chk-close>關閉</button></div>';
+  d._rows=rows;
+  if(!d.open)d.showModal();
+}
+document.addEventListener('click',function(e){
+  var t=e.target&&e.target.closest?e.target:null;if(!t)return;
+  if(t.closest('#mapcheck')){mapCheckList_();return}
+  var d=document.getElementById('dlg-chk');if(!d)return;
+  if(t.closest('[data-chk-close]')){d.close();return}
+  var go=t.closest('[data-chk-go]');
+  if(go){var r=d._rows[+go.getAttribute('data-chk-go')];d.close();if(!r)return;
+    selectParcel(r.p.id,true);MAPASG=r.p;MAPDRAW=null;document.getElementById('map').style.cursor='crosshair';mapAsgBar_()}
+});
 
 /* ---------- start ---------- */
 function pickStart(){
