@@ -222,6 +222,7 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
       <a href="#deeds" data-v="deeds">謄本更新</a>
       <a href="#tasks" data-v="tasks">行事曆與待辦</a>
       <a href="#meetings" data-v="meetings">會議紀錄</a>
+      <a href="#files" data-v="files">專案檔案</a>
       <a href="#reports" data-v="reports" id="tab-reports">報表</a>
       <a href="#stats" data-v="stats">統計</a>
       <a href="#data" data-v="data">匯入匯出</a>
@@ -263,6 +264,7 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
     <section id="view-deeds" class="view"><div class="page" id="deeds-page"></div></section>
     <section id="view-tasks" class="view"><div class="page" id="tasks-page"></div></section>
     <section id="view-meetings" class="view"><div class="page" id="meetings-page"></div></section>
+    <section id="view-files" class="view"><div class="page" id="files-page"></div></section>
     <section id="view-reports" class="view"><div class="page" id="reports-page"></div></section>
     <section id="view-stats" class="view"><div class="page" id="stats-page"></div></section>
     <section id="view-data" class="view"><div class="page" id="data-page"></div></section>
@@ -709,7 +711,7 @@ function fuClass(n){
 /* ---------- state ---------- */
 var ME='';
 var S={role:'admin',proj:'A',vw:'proj',vproj:'all',vasg:'all',vlv:'all',vquick:'all',vq:'',vsel:{},atab:'staff',adel:null,popen:null,oopen:null,dopen:null,focusOwner:null,mode:'int',levels:{A:1,B:1,C:1,D:1,E:1,N:1},block:'all',q:'',sel:null,thr:60,fuWho:'all',ownerQ:''};
-var VIEWS=['projects','import','map','visits','deeds','tasks','meetings','reports','data','stats','admin'];
+var VIEWS=['projects','import','map','visits','deeds','tasks','meetings','files','reports','data','stats','admin'];
 var vb={x:0,y:0,w:1000,h:660};
 var els=[];
 
@@ -777,9 +779,6 @@ function buildMap(){
     mk('rect',{x:b.x0-6,y:(b.y0||70)-8,width:b.w+12,height:(b.h||520)+16,rx:6,fill:'none',stroke:'var(--block-line)','stroke-width':1.5,'stroke-dasharray':'6 5'});
     var t=mk('text',{x:b.x0,y:(b.y0||70)-16,'font-size':14,'font-weight':700,fill:'var(--ink)'});t.textContent=b.name+' · '+b.use;
   });
-  var na=mk('g',{transform:'translate(960 80)'});
-  mk('path',{d:'M0 -18L8 6L0 0L-8 6Z',fill:'var(--ink)'},na);
-  var nt=mk('text',{x:0,y:26,'text-anchor':'middle','font-size':12,fill:'var(--ink-2)'},na);nt.textContent='北';
   if(pr.geo){
     var gb=mk('g',{id:'gbg'});
     pr.geo.ctx.forEach(function(r){mk('polygon',{points:r.map(function(q){return q.join(',')}).join(' '),fill:'none',stroke:'var(--ink-2)','stroke-width':0.6,opacity:.45,'vector-effect':'non-scaling-stroke'},gb)});
@@ -809,9 +808,6 @@ function buildMap(){
     });
     var dv=pr.geo.dev.map(function(rings){return rings.map(function(rg){return 'M'+rg.map(function(q){return q.join(',')}).join('L')+'Z'}).join('')}).join('');
     mk('path',{d:dv,fill:'none',stroke:'var(--ink)','stroke-width':1.6,'stroke-dasharray':'7 4','vector-effect':'non-scaling-stroke'},gz);
-    var sbl=100/pr.geo.scale,sb=mk('g',{transform:'translate(40 640)'});
-    mk('rect',{x:0,y:0,width:sbl,height:4,fill:'var(--ink)'},sb);
-    var sbt=mk('text',{x:0,y:-4,'font-size':11,fill:'var(--ink)'},sb);sbt.textContent='100 公尺';
   }
   mk('g',{id:'gs','pointer-events':'none'});
   svg.appendChild(gl);
@@ -917,7 +913,7 @@ function updateLabels(){
   });
 }
 /* ---------- viewBox ---------- */
-function applyVB(){$('#map').setAttribute('viewBox',vb.x+' '+vb.y+' '+vb.w+' '+vb.h);scheduleLabels()}
+function applyVB(){$('#map').setAttribute('viewBox',vb.x+' '+vb.y+' '+vb.w+' '+vb.h);scheduleLabels();mapOverlay_()}
 function clampVB(){
   vb.x=clamp(vb.x,-vb.w*.4,1000-vb.w*.6);
   vb.y=clamp(vb.y,-vb.h*.4,660-vb.h*.6);
@@ -3928,7 +3924,8 @@ function route(){
   $('#tab-admin').style.display=S.role==='admin'?'':'none';
   $('#tab-import').style.display=S.role==='admin'?'':'none';
   $('#tab-reports').style.display=S.role==='staff'?'none':'';
-  if(r==='map')setTimeout(function(){paintMap()},0);
+  if(r==='map')setTimeout(function(){paintMap();mapOverlay_()},0);
+  if(r==='files')renderFiles();
 }
 function renderAll(){
   indexDB();renderProjSelect();renderProjects();renderSide();paintMap();renderDetail();renderVisits();renderDeeds();renderTasks();renderMeetings();renderReports();renderData();renderImport();renderStats();renderAdmin();
@@ -4487,7 +4484,7 @@ async function bootstrap_(data0){
   var data=data0;
   if(!data){for(var tr=0;tr<2&&!data;tr++){try{data=await api('getData')}catch(e){if(e.auth){showLogin('登入已過期,請重新登入');return}if(tr===1)throw e;bootLoad_(true,'連線不穩,正在重試…');await new Promise(function(r){setTimeout(r,1500)})}}}
   S.role={'管理員':'admin','專案負責人':'lead','業務人員':'staff','業主':'staff'}[data.me.role]||'staff';S.viewer=data.me.role==='業主';document.body.classList.toggle('viewer',S.viewer);applyCfg(data.cfg);
-  ME=data.me.name;MT.data=null;MT.err='';MT.loading=false;MT.form=null;MT.saving=false;
+  ME=data.me.name;MT.data=null;MT.err='';MT.loading=false;MT.form=null;MT.saving=false;FL.data=null;FL.err='';FL.pid='';FL.edit='';FL.msg='';
   await adapt(data);
   $('#whoami').textContent=data.me.name+'('+data.me.role+')';$('#who2').textContent=data.me.name+' · '+data.me.role;
   visitDefaults();
@@ -4512,7 +4509,7 @@ function gridLayout(list){
 }
 function applyGeo(pr,plist,geo){
   if(geo&&geo.parcels){
-    pr.geo={ctx:geo.ctx||[],ctxlab:geo.ctxlab||[],zones:geo.zones||{},dev:geo.dev||[],scale:geo.scale||1,zc:geo.zc};pr.schematic=false;
+    pr.geo={ctx:geo.ctx||[],ctxlab:geo.ctxlab||[],zones:geo.zones||{},dev:geo.dev||[],scale:geo.scale||1,zc:geo.zc,north:Number(geo.north)||0};pr.schematic=false;
     var miss=[],byNo={};
     Object.keys(geo.parcels).forEach(function(k){var i=k.indexOf('|');if(i>=0){var n=k.slice(i+1);byNo[n]=byNo[n]===undefined?geo.parcels[k]:null}});
     // 圖資編號是「段別|地號」;舊圖資只有地號,也照樣對得上。沒填段別的地號,只在全圖只有一個同號時才對應
@@ -5626,7 +5623,7 @@ function renderAdmin(){
   if(AD.tab==='proj'){
     if(AP.list===null&&!AP.busy&&location.hash==='#admin'){loadAP();}
     var ph='<h1>後台</h1>'+tabs+'<p class="muted" style="margin:12px 0 0">封存:專案從所有人的畫面隱藏,資料全部保留,可以還原。刪除:只有還沒開始使用的專案(沒有訪談、待辦、附件、踏勘、階段變動)可以直接刪除,用來復原匯入錯誤;測試專案已有紀錄時,確認後可連同紀錄一起刪。</p>';
-    ph+='<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>專案</th><th>開發類型</th><th>同意門檻(人數 / 持分)</th><th>狀態</th><th>地號</th><th>地主</th><th></th></tr></thead><tbody>'+DB.projects.map(function(p){return '<tr><td>'+esc(p.name)+'</td><td>'+esc(p.type||'')+'</td><td>'+p.rule.headPct+'% / '+p.rule.sharePct+'%</td><td>'+esc(p.status||'')+'</td><td>'+DB.parcels.filter(function(x){return x.proj===p.id}).length+'</td><td>'+projOwners(p.id).length+'</td><td><button class="btn small" type="button" data-ad-editproj="'+esc(p.id)+'">編輯</button> <button class="btn small" type="button" data-ad-members="'+esc(p.id)+'">承辦人</button> <button class="btn small" type="button" data-ad-resetdates="'+esc(p.id)+'">重設謄本日期</button> <button class="btn small" type="button" data-ad-cad="'+esc(p.id)+'">上傳地籍圖</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'">合併圖資</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'" data-replace="1">取代圖資</button> <button class="btn small" type="button" data-ad-archive="'+esc(p.id)+'">封存</button> <button class="btn small" type="button" data-ad-delproj="'+esc(p.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div><input type="file" id="ad-geofile" accept=".json,application/json" style="display:none"><input type="file" id="ad-cadfile" accept="application/pdf,.pdf" style="display:none"><div class="panel" style="margin-top:8px"><p class="small muted" style="margin:0 0 6px">合併圖資:選一個新的圖資檔(.json)加到現有地圖。地籍圖謄本沒有座標,系統不知道兩段實際的相對位置,請照真實位置選方位;排得不準可以用微調,或用「取代圖資」整張重來。同一段已經在圖上的話要用「取代圖資」。</p><div class="row2"><div class="field" style="margin-top:0"><label for="ad-geodir">新的一段放在現有地圖的</label><select id="ad-geodir"><option value="E">東邊(右)</option><option value="W">西邊(左)</option><option value="N">北邊(上)</option><option value="S">南邊(下)</option><option value="NE">東北</option><option value="NW">西北</option><option value="SE">東南</option><option value="SW">西南</option></select></div><div class="field" style="margin-top:0"><label for="ad-geogap">與現有地圖的間隔(公尺)</label><input type="number" id="ad-geogap" min="0" max="2000" value="40"></div></div><div class="row2"><div class="field"><label for="ad-geoe">微調:再往東移(公尺,負數往西)</label><input type="number" id="ad-geoe" value="0"></div><div class="field"><label for="ad-geon">微調:再往北移(公尺,負數往南)</label><input type="number" id="ad-geon" value="0"></div></div></div>';
+    ph+='<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>專案</th><th>開發類型</th><th>同意門檻(人數 / 持分)</th><th>狀態</th><th>地號</th><th>地主</th><th></th></tr></thead><tbody>'+DB.projects.map(function(p){return '<tr><td>'+esc(p.name)+'</td><td>'+esc(p.type||'')+'</td><td>'+p.rule.headPct+'% / '+p.rule.sharePct+'%</td><td>'+esc(p.status||'')+'</td><td>'+DB.parcels.filter(function(x){return x.proj===p.id}).length+'</td><td>'+projOwners(p.id).length+'</td><td><button class="btn small" type="button" data-ad-editproj="'+esc(p.id)+'">編輯</button> <button class="btn small" type="button" data-ad-members="'+esc(p.id)+'">承辦人</button> <button class="btn small" type="button" data-ad-resetdates="'+esc(p.id)+'">重設謄本日期</button> <button class="btn small" type="button" data-ad-cad="'+esc(p.id)+'">上傳地籍圖</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'">合併圖資</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'" data-replace="1">取代圖資</button> <button class="btn small" type="button" data-ad-geoedit="'+esc(p.id)+'">調整圖資位置</button> <button class="btn small" type="button" data-ad-archive="'+esc(p.id)+'">封存</button> <button class="btn small" type="button" data-ad-delproj="'+esc(p.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div><input type="file" id="ad-geofile" accept=".json,application/json" style="display:none"><input type="file" id="ad-cadfile" accept="application/pdf,.pdf" style="display:none"><div class="panel" style="margin-top:8px"><p class="small muted" style="margin:0 0 6px">合併圖資:選一個新的圖資檔(.json)加到現有地圖。地籍圖謄本沒有座標,系統不知道兩段實際的相對位置,請照真實位置選方位;排得不準可以用微調,或用「取代圖資」整張重來。同一段已經在圖上的話要用「取代圖資」。</p><div class="row2"><div class="field" style="margin-top:0"><label for="ad-geodir">新的一段放在現有地圖的</label><select id="ad-geodir"><option value="E">東邊(右)</option><option value="W">西邊(左)</option><option value="N">北邊(上)</option><option value="S">南邊(下)</option><option value="NE">東北</option><option value="NW">西北</option><option value="SE">東南</option><option value="SW">西南</option></select></div><div class="field" style="margin-top:0"><label for="ad-geogap">與現有地圖的間隔(公尺)</label><input type="number" id="ad-geogap" min="0" max="2000" value="40"></div></div><div class="row2"><div class="field"><label for="ad-geoe">微調:再往東移(公尺,負數往西)</label><input type="number" id="ad-geoe" value="0"></div><div class="field"><label for="ad-geon">微調:再往北移(公尺,負數往南)</label><input type="number" id="ad-geon" value="0"></div></div></div>';
     var arch=(AP.list||[]).filter(function(x){return x.archived});
     ph+='<div class="panel" style="margin-top:14px"><h2>已封存的專案</h2>'+(AP.err?'<div class="notice">'+esc(AP.err)+'</div>':'')+(arch.length?'<div class="tablewrap" style="margin-top:0"><table><thead><tr><th>專案</th><th>狀態</th><th></th></tr></thead><tbody>'+arch.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td>'+esc(x.status||'')+'</td><td><button class="btn small" type="button" data-ad-restore="'+esc(x.id)+'">還原</button> <button class="btn small" type="button" data-ad-delproj="'+esc(x.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div>':'<p class="small muted" style="margin:0">'+(AP.list===null?'載入中…':'沒有封存的專案。')+'</p>')+'</div>';
     el.innerHTML=ph;return;
@@ -5940,22 +5937,33 @@ function geoCombineJS_(old,add,caption,place){
   var W=ub[2]-ub[0],H=ub[3]-ub[1],sc=Math.min(920/W,580/H),ox=40+(920-W*sc)/2,oy=40+(580-H*sc)/2;
   var r1=function(x){return Math.round(x*10)/10};
   function mk(scale,shift){return function(p){return [r1(ox+((p[0]*scale+(shift?dx:0))-ub[0])*sc),r1(oy+((p[1]*scale+(shift?dy:0))-ub[1])*sc)]}}
-  var out={parcels:{},ctx:[],ctxlab:[],zones:{},dev:[],scale:Math.round(10000/sc)/10000};
-  [[old,so,false],[add,sn,true]].forEach(function(a){
-    var g=a[0],T=mk(a[1],a[2]),k=a[1]*sc;
+  var out={parcels:{},ctx:[],ctxpc:[],ctxlab:[],zones:{},zonepc:{},dev:[],scale:Math.round(10000/sc)/10000};
+  var oldP=geoPiecesJS_(old),addP=geoPiecesJS_(add),pieces=[],used={};
+  oldP.forEach(function(q){pieces.push({id:q.id,name:q.name});used[q.id]=1});
+  var seq=pieces.length,addMap={};
+  addP.forEach(function(q){var nid;do{nid='p'+(seq++)}while(used[nid]);used[nid]=1;addMap[q.id]=nid;pieces.push({id:nid,name:(addP.length===1&&caption)?String(caption).slice(0,20):q.name})});
+  var oldMap=function(id){return id||oldP[0].id},addMapFn=function(id){return addMap[id||addP[0].id]};
+  [[old,so,false,oldMap],[add,sn,true,addMapFn]].forEach(function(a){
+    var g=a[0],T=mk(a[1],a[2]),k=a[1]*sc,pf=a[3];
     Object.keys(g.parcels).forEach(function(key){
       var q=g.parcels[key],i=key.indexOf('|'),sec=q.sec||(i>=0?key.slice(0,i):''),no=i>=0?key.slice(i+1):key,o={};
       Object.keys(q).forEach(function(f){o[f]=q[f]});
-      o.sec=sec;o.pts=q.pts.map(T);o.c=T(q.c);o.lf=Math.max(2.2,r1(q.lf*k));out.parcels[sec+'|'+no]=o;
+      o.sec=sec;o.pts=q.pts.map(T);o.c=T(q.c);o.lf=Math.max(2.2,r1(q.lf*k));o.pc=pf(q.pc);out.parcels[sec+'|'+no]=o;
     });
-    (g.ctx||[]).forEach(function(r){out.ctx.push(r.map(T))});
-    (g.ctxlab||[]).forEach(function(l){var o={};Object.keys(l).forEach(function(f){o[f]=l[f]});o.c=T(l.c);if(!l.big)o.f=Math.max(2.2,r1((l.f||3)*k));out.ctxlab.push(o)});
-    Object.keys(g.zones||{}).forEach(function(z){out.zones[z]=(out.zones[z]||[]).concat(g.zones[z].map(function(rings){return rings.map(function(r){return r.map(T)})}))});
+    (g.ctx||[]).forEach(function(r,ri){out.ctx.push(r.map(T));out.ctxpc.push(pf((g.ctxpc||[])[ri]))});
+    (g.ctxlab||[]).forEach(function(l){var o={};Object.keys(l).forEach(function(f){o[f]=l[f]});o.c=T(l.c);if(!l.big)o.f=Math.max(2.2,r1((l.f||3)*k));o.pc=pf(l.pc);out.ctxlab.push(o)});
+    Object.keys(g.zones||{}).forEach(function(z){
+      var pcs=(g.zonepc&&g.zonepc[z])||[];
+      out.zones[z]=(out.zones[z]||[]).concat(g.zones[z].map(function(rings){return rings.map(function(r){return r.map(T)})}));
+      out.zonepc[z]=(out.zonepc[z]||[]).concat(g.zones[z].map(function(rings,zi){return pf(pcs[zi])}));
+    });
   });
   if(old.zc||add.zc){out.zc={};[add.zc,old.zc].forEach(function(z){if(z)Object.keys(z).forEach(function(k2){out.zc[k2]=z[k2]})})}
-  if(caption)out.ctxlab.push({t:String(caption).slice(0,20),c:mk(sn,true)([(nb[0]+nb[2])/2/sn,nb[1]/sn-8/sn]),f:9,big:true});
+  if(caption)out.ctxlab.push({t:String(caption).slice(0,20),c:mk(sn,true)([(nb[0]+nb[2])/2/sn,nb[1]/sn-8/sn]),f:9,big:true,pc:addMap[addP[0].id]});
+  out.pieces=pieces;if(old.north||add.north)out.north=old.north||add.north;
   return out;
 }
+function geoPiecesJS_(g){return (g.pieces&&g.pieces.length)?g.pieces:[{id:'p0',name:geoSecsJS_(g).join('、')||'原圖'}]}
 function cadPvHTML_(k){
   var X=plx_(k);if(!X||!X.add)return '';
   if(!X.old)return '<p class="small muted">讀取現有地圖中…</p>';
@@ -6224,6 +6232,336 @@ document.addEventListener('change',function(e){
   var fo=$('#f-tag-other'),on=$$('#f-tags input:checked').some(function(c){return c.value==='其他'});
   if(fo){fo.hidden=!on;if(on)fo.focus();else fo.value=''}
 });
+
+/* ===== 地圖:比例尺、指北針、匯出圖片 ===== */
+var NICE_M=[1,2,5,10,20,50,100,200,500,1000,2000,5000,10000];
+function niceM_(raw){var v=NICE_M[0];NICE_M.forEach(function(n){if(n<=raw)v=n});return v}
+function mLabel_(m){return m>=1000?(m/1000)+' 公里':m+' 公尺'}
+function mapOverlay_(){
+  var svg=$('#map'),wrap=svg&&svg.parentNode;if(!wrap)return;
+  var pr=PRJ[S.proj],geo=pr&&pr.geo,n=$('#mapnorth'),sc=$('#mapscale'),ex=$('#mapexp');
+  if(!n){
+    n=document.createElement('div');n.id='mapnorth';n.setAttribute('role','img');n.setAttribute('aria-label','指北針');
+    n.style.cssText='position:absolute;right:12px;top:12px;width:48px;padding:5px 0 3px;text-align:center;background:var(--surface);border:1px solid var(--line);border-radius:10px;font-size:12px;color:var(--ink);pointer-events:none';
+    n.innerHTML='<svg viewBox="-20 -26 40 46" width="30" height="34" aria-hidden="true"><g id="mapnorth-g"><path d="M0 -22L9 8L0 3L-9 8Z" fill="currentColor"/></g></svg><div style="font-weight:700;line-height:1">北</div>';
+    wrap.appendChild(n);
+    sc=document.createElement('div');sc.id='mapscale';sc.setAttribute('role','img');sc.setAttribute('aria-label','比例尺');
+    sc.style.cssText='position:absolute;right:12px;bottom:44px;padding:5px 10px 4px;background:var(--surface);border:1px solid var(--line);border-radius:8px;font-size:12px;color:var(--ink);pointer-events:none';
+    sc.innerHTML='<div id="mapscale-t" style="margin-bottom:2px;white-space:nowrap"></div><div id="mapscale-b" style="height:6px;border:2px solid currentColor;border-top:0;box-sizing:border-box"></div>';
+    wrap.appendChild(sc);
+    ex=document.createElement('button');ex.id='mapexp';ex.type='button';ex.className='btn small';ex.textContent='匯出圖片';ex.setAttribute('aria-label','把目前看到的地圖匯出成圖片');
+    ex.style.cssText='position:absolute;right:12px;top:78px';wrap.appendChild(ex);
+  }
+  var show=!!geo&&geo.scale>0;
+  n.style.display=sc.style.display=show?'':'none';ex.style.display=pr?'':'none';
+  if(!show)return;
+  var g=document.getElementById('mapnorth-g');if(g)g.setAttribute('transform','rotate('+(Number(geo.north)||0)+')');
+  n.setAttribute('aria-label','指北針:北方在畫面'+(Number(geo.north)?'順時針 '+geo.north+' 度':'正上方'));
+  var r=svg.getBoundingClientRect(),cw=r.width||1000,ch=r.height||660,ppu=Math.min(cw/vb.w,ch/vb.h),mpp=geo.scale/ppu;
+  var m=niceM_(mpp*130),px=m/mpp;
+  $('#mapscale-t').textContent=mLabel_(m);$('#mapscale-b').style.width=Math.max(10,Math.round(px))+'px';
+}
+window.addEventListener('resize',function(){if(location.hash==='#map')mapOverlay_()});
+function expMapPng_(){
+  var pr=PRJ[S.proj],svg=$('#map');if(!pr||!svg){toast('目前沒有地圖。');return}
+  var r=svg.getBoundingClientRect(),cw=Math.max(300,r.width||1000),ch=Math.max(200,r.height||660),
+      ppu=Math.min(cw/vb.w,ch/vb.h),vw=cw/ppu,vh=ch/ppu,vx=vb.x+vb.w/2-vw/2,vy=vb.y+vb.h/2-vh/2,
+      k=Math.min(4,Math.max(1,2400/cw)),W=Math.round(cw*k),H=Math.round(ch*k),
+      rs=getComputedStyle(document.documentElement),css=function(n,d){return (rs.getPropertyValue(n)||'').trim()||d},
+      bg=css('--map-bg','#E3EAE5'),ink=css('--ink','#15251F'),ink2=css('--ink-2','#4A5B54'),sur=css('--surface','#fff'),line=css('--line','#D5DDD8');
+  var cl=svg.cloneNode(true),o=svg.querySelectorAll('*'),c=cl.querySelectorAll('*');
+  var PR=['fill','fill-opacity','fill-rule','stroke','stroke-opacity','stroke-linejoin','opacity','font-size','font-weight','font-family','text-anchor','dominant-baseline','display','visibility'];
+  for(var i=0;i<o.length;i++){
+    var e=o[i],t=c[i];if(!t||/^(defs|pattern|title)$/i.test(e.tagName))continue;
+    var cs=getComputedStyle(e),st='';
+    PR.forEach(function(p){var v=cs.getPropertyValue(p);if(v)st+=p+':'+v+';'});
+    var ns=(e.getAttribute('vector-effect')==='non-scaling-stroke'||cs.getPropertyValue('vector-effect')==='non-scaling-stroke');
+    var sw=parseFloat(cs.getPropertyValue('stroke-width'));
+    if(isFinite(sw))st+='stroke-width:'+(ns?sw/ppu:sw)+';';
+    var da=cs.getPropertyValue('stroke-dasharray');
+    if(da&&da!=='none')st+='stroke-dasharray:'+da.split(/[ ,]+/).map(function(x){var v=parseFloat(x);return isFinite(v)?(ns?v/ppu:v):0}).join(' ')+';';
+    if(ns){t.removeAttribute('vector-effect')}
+    PR.concat(['stroke-width','stroke-dasharray']).forEach(function(p){if(st.indexOf(p+':')>=0)t.removeAttribute(p)});
+    t.setAttribute('style',st);
+  }
+  cl.setAttribute('width',W);cl.setAttribute('height',H);
+  cl.setAttribute('viewBox',vx+' '+vy+' '+vw+' '+vh);cl.removeAttribute('style');cl.removeAttribute('class');
+  var bgr=document.createElementNS('http://www.w3.org/2000/svg','rect');
+  bgr.setAttribute('x',vx);bgr.setAttribute('y',vy);bgr.setAttribute('width',vw);bgr.setAttribute('height',vh);bgr.setAttribute('fill',bg);cl.insertBefore(bgr,cl.firstChild);
+  var xml=new XMLSerializer().serializeToString(cl),url=URL.createObjectURL(new Blob([xml],{type:'image/svg+xml;charset=utf-8'})),img=new Image();
+  img.onerror=function(){URL.revokeObjectURL(url);toast('匯出圖片失敗,請換 Chrome 或 Edge 再試一次。')};
+  img.onload=function(){
+    try{
+      var cv=document.createElement('canvas');cv.width=W;cv.height=H;var x=cv.getContext('2d');
+      x.fillStyle=bg;x.fillRect(0,0,W,H);x.drawImage(img,0,0,W,H);URL.revokeObjectURL(url);
+      var pad=14*k,F="'Noto Sans TC','Microsoft JhengHei',sans-serif",geo=pr.geo;
+      var mode={int:'意願',own:'承辦人',zone:'使用分區'}[S.mode]||'跟進狀態';
+      // 標題
+      var title=pr.name+'　地籍圖('+mode+')',date=iso(new Date());
+      x.font='bold '+(17*k)+'px '+F;var tw=Math.max(x.measureText(title).width,0);
+      x.fillStyle=sur;x.strokeStyle=line;x.lineWidth=k;x.beginPath();
+      if(x.roundRect)x.roundRect(pad,pad,tw+20*k,44*k,8*k);else x.rect(pad,pad,tw+20*k,44*k);x.fill();x.stroke();
+      x.fillStyle=ink;x.textBaseline='alphabetic';x.fillText(title,pad+10*k,pad+19*k);
+      x.font=(12*k)+'px '+F;x.fillStyle=ink2;x.fillText('匯出日期 '+date,pad+10*k,pad+37*k);
+      if(geo&&geo.scale>0){
+        // 指北針
+        var nx=W-pad-26*k,ny=pad+8*k;
+        x.fillStyle=sur;x.beginPath();if(x.roundRect)x.roundRect(W-pad-52*k,pad,52*k,62*k,8*k);else x.rect(W-pad-52*k,pad,52*k,62*k);x.fill();x.stroke();
+        x.save();x.translate(nx,ny+24*k);x.rotate((Number(geo.north)||0)*Math.PI/180);
+        x.fillStyle=ink;x.beginPath();x.moveTo(0,-20*k);x.lineTo(9*k,8*k);x.lineTo(0,3*k);x.lineTo(-9*k,8*k);x.closePath();x.fill();x.restore();
+        x.font='bold '+(13*k)+'px '+F;x.textAlign='center';x.fillStyle=ink;x.fillText('北',nx,pad+57*k);x.textAlign='left';
+        // 比例尺
+        var mpp=geo.scale/(ppu*k),m=niceM_(mpp*130*k),bw=m/mpp,lab=mLabel_(m);
+        x.font=(13*k)+'px '+F;var lw=x.measureText(lab).width,bx=W-pad-Math.max(bw,lw)-20*k,by=H-pad-46*k;
+        x.fillStyle=sur;x.beginPath();if(x.roundRect)x.roundRect(bx,by,Math.max(bw,lw)+20*k,46*k,8*k);else x.rect(bx,by,Math.max(bw,lw)+20*k,46*k);x.fill();x.stroke();
+        x.fillStyle=ink;x.fillText(lab,bx+10*k,by+18*k);
+        x.strokeStyle=ink;x.lineWidth=2*k;x.beginPath();x.moveTo(bx+10*k,by+26*k);x.lineTo(bx+10*k,by+36*k);x.lineTo(bx+10*k+bw,by+36*k);x.lineTo(bx+10*k+bw,by+26*k);x.stroke();
+      }
+      // 圖例
+      var items=[].slice.call(document.querySelectorAll('#maplegend span')).map(function(sp){
+        var sw=sp.firstElementChild,col=sw?getComputedStyle(sw).backgroundColor:'';
+        return {t:(sp.textContent||'').trim(),c:col}
+      }).filter(function(q){return q.t});
+      if(items.length){
+        x.font=(13*k)+'px '+F;var lh=22*k,cols=Math.max(1,Math.min(items.length,Math.floor((W*0.6)/(150*k)))),rows=Math.ceil(items.length/cols),cwid=150*k,
+            lx=pad,ly=H-pad-rows*lh-14*k;
+        x.fillStyle=sur;x.strokeStyle=line;x.lineWidth=k;x.beginPath();if(x.roundRect)x.roundRect(lx,ly,cols*cwid+16*k,rows*lh+14*k,8*k);else x.rect(lx,ly,cols*cwid+16*k,rows*lh+14*k);x.fill();x.stroke();
+        items.forEach(function(q,j){
+          var cx=lx+8*k+(j%cols)*cwid,cy=ly+7*k+Math.floor(j/cols)*lh;
+          if(q.c&&q.c!=='rgba(0, 0, 0, 0)'){x.fillStyle=q.c;x.fillRect(cx,cy+3*k,14*k,14*k);x.strokeStyle=line;x.strokeRect(cx,cy+3*k,14*k,14*k)}
+          x.fillStyle=ink;x.fillText(q.t,cx+(q.c&&q.c!=='rgba(0, 0, 0, 0)'?20*k:0),cy+15*k);
+        });
+      }
+      cv.toBlob(function(b){
+        if(!b){toast('匯出圖片失敗');return}
+        downloadBlob(String(pr.name).replace(/[\\\/:*?"<>|]+/g,'_')+'_地圖_'+date+'.png',b);
+        toast('已匯出圖片(目前畫面範圍)。');
+        api('logExport',{label:'地圖圖片',name:pr.name}).catch(function(){});
+      },'image/png');
+    }catch(er){URL.revokeObjectURL(url);toast('匯出圖片失敗:'+(er.message||er))}
+  };
+  img.src=url;
+}
+document.addEventListener('click',function(e){var t=e.target;if(t&&t.closest&&t.closest('#mapexp'))expMapPng_()});
+
+/* ===== 圖資分段編輯:合併之後再調整每一段的位置、改名、刪除,設定北方向 ===== */
+var GE=null,GEPAL=['#2f8f6b','#d9822b','#4a7fc1','#b0508f','#8a8f2a','#c4553f','#5b6b8c','#7a5ca8'];
+function geoEdOpen_(pid){
+  var d=$('#dlg-geoed');
+  if(!d){d=document.createElement('dialog');d.id='dlg-geoed';d.setAttribute('aria-label','調整圖資位置');d.style.width='min(880px,96vw)';d.innerHTML='<div class="dlg" id="geoed-body"></div>';document.body.appendChild(d)}
+  GE={pid:pid,g:null,pieces:[],sel:'',step:20,north:0,err:'',busy:false};
+  $('#geoed-body').innerHTML='<h2>調整圖資位置</h2><p class="muted">讀取地圖中…</p>';
+  if(!d.open)d.showModal();
+  api('getGeo',{projectId:pid}).then(function(g){
+    if(!g||!g.parcels||!Object.keys(g.parcels).length){GE.err='這個專案還沒有地圖圖資,請先上傳地籍圖。';geoEdRender_();return}
+    GE.g=g;GE.north=Number(g.north)||0;
+    var ps=(g.pieces&&g.pieces.length)?g.pieces:[{id:'p0',name:''}],first=ps[0].id,by={};
+    Object.keys(g.parcels).forEach(function(k){var q=g.parcels[k],id=q.pc||first,i=k.indexOf('|'),sec=q.sec||(i>=0?k.slice(0,i):'');var b=by[id]||(by[id]={n:0,secs:{},pts:[]});b.n++;if(sec)b.secs[sec]=1;q.pts.forEach(function(pt){b.pts.push(pt)})});
+    GE.pieces=ps.map(function(q,i){
+      var b=by[q.id]||{n:0,secs:{},pts:[]},bb=[1e18,1e18,-1e18,-1e18];
+      b.pts.forEach(function(pt){bb=[Math.min(bb[0],pt[0]),Math.min(bb[1],pt[1]),Math.max(bb[2],pt[0]),Math.max(bb[3],pt[1])]});
+      var secs=Object.keys(b.secs);
+      return {id:q.id,name:q.name||secs.join('、')||'原圖',orig:q.name||secs.join('、')||'原圖',east:0,north:0,del:false,n:b.n,secs:secs,bb:bb,col:GEPAL[i%GEPAL.length]};
+    }).filter(function(q){return q.n>0});
+    GE.sel=GE.pieces.length>1?GE.pieces[GE.pieces.length-1].id:(GE.pieces[0]?GE.pieces[0].id:'');
+    geoEdRender_();
+  }).catch(function(e){if(e.auth){showLogin('登入已過期,請重新登入');return}GE.err=e.userMessage||e.message;geoEdRender_()});
+}
+function geoEdPath_(pc){
+  var g=GE.g,first=(g.pieces&&g.pieces.length)?g.pieces[0].id:'p0',d='';
+  Object.keys(g.parcels).forEach(function(k){var q=g.parcels[k];if((q.pc||first)!==pc)return;d+='M'+q.pts.map(function(pt){return pt[0]+','+pt[1]}).join('L')+'Z'});
+  return d;
+}
+function geoEdRender_(){
+  var el=$('#geoed-body');if(!el||!GE)return;
+  var h='<h2>調整圖資位置</h2>';
+  if(GE.err){el.innerHTML=h+'<div class="notice">'+esc(GE.err)+'</div><div class="actions"><button class="btn" type="button" data-ged-cancel>關閉</button></div>';return}
+  var g=GE.g,sc=g.scale||1,P=GE.pieces,multi=P.length>1,x0=1e18,y0=1e18,x1=-1e18,y1=-1e18;
+  P.forEach(function(q){var dx=q.east/sc,dy=-q.north/sc;x0=Math.min(x0,q.bb[0]+dx);y0=Math.min(y0,q.bb[1]+dy);x1=Math.max(x1,q.bb[2]+dx);y1=Math.max(y1,q.bb[3]+dy)});
+  var pad=Math.max(x1-x0,y1-y0)*0.06,vbx=[x0-pad,y0-pad,x1-x0+pad*2,y1-y0+pad*2],fs=Math.max(vbx[2],vbx[3])/30;
+  h+='<p class="small muted" style="margin:0 0 8px">'+(multi?'這張圖是由 '+P.length+' 段合起來的。在圖上直接拖動某一段,或用下面的方向鍵微調,排好再按「儲存」。':'目前圖上只有一段。之後再合併新的地籍圖,每一段都能單獨移動。')+' 距離是實際公尺。</p>';
+  h+='<svg id="ged-svg" viewBox="'+vbx.map(function(v){return v.toFixed(1)}).join(' ')+'" style="width:100%;height:320px;touch-action:none;background:#f4f7f5;border:1px solid var(--line);border-radius:10px" role="img" aria-label="各段圖資位置預覽">';
+  P.forEach(function(q){
+    var dx=q.east/sc,dy=-q.north/sc,on=q.id===GE.sel;
+    h+='<g data-gepc="'+esc(q.id)+'" data-bx="'+dx+'" data-by="'+dy+'" transform="translate('+dx.toFixed(1)+' '+dy.toFixed(1)+')" style="cursor:'+(multi?'grab':'default')+';opacity:'+(q.del?0.25:1)+'">'
+      +'<rect x="'+q.bb[0]+'" y="'+q.bb[1]+'" width="'+(q.bb[2]-q.bb[0])+'" height="'+(q.bb[3]-q.bb[1])+'" fill="'+q.col+'" fill-opacity="0.04" stroke="'+q.col+'" stroke-dasharray="'+(on?'0':'6 4')+'" stroke-width="'+(on?2.5:1)+'" vector-effect="non-scaling-stroke"/>'
+      +'<path d="'+geoEdPath_(q.id)+'" fill="'+q.col+'" fill-opacity="'+(on?0.45:0.28)+'" stroke="'+q.col+'" stroke-width="1" vector-effect="non-scaling-stroke"/>'
+      +'<text x="'+((q.bb[0]+q.bb[2])/2)+'" y="'+(q.bb[1]-fs*0.35)+'" text-anchor="middle" font-size="'+fs+'" font-weight="700" fill="'+q.col+'">'+esc(q.name)+(q.del?'(將刪除)':'')+'</text></g>';
+  });
+  h+='</svg>';
+  h+='<div class="field" style="margin-top:10px"><label for="ged-step">方向鍵每按一次移動</label><select id="ged-step">'+[5,10,20,50,100,200].map(function(v){return '<option value="'+v+'"'+(GE.step===v?' selected':'')+'>'+v+' 公尺</option>'}).join('')+'</select></div>';
+  h+='<div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>圖資</th><th>名稱</th><th>已移動</th><th>調整</th></tr></thead><tbody>';
+  P.forEach(function(q){
+    var on=q.id===GE.sel,e=Math.round(q.east),n=Math.round(q.north),mv=(e||n)?((e?(e>0?'東 ':'西 ')+Math.abs(e)+' 公尺':'')+(e&&n?'、':'')+(n?(n>0?'北 ':'南 ')+Math.abs(n)+' 公尺':'')):'沒有移動';
+    h+='<tr'+(on?' style="background:var(--surface-2)"':'')+'><td><button type="button" class="link" data-ged-sel="'+esc(q.id)+'"><span style="display:inline-block;width:12px;height:12px;background:'+q.col+';border-radius:3px;margin-right:6px"></span>'+(on?'<b>已選這段</b>':'選這段')+'</button><div class="small muted">'+q.n+' 筆地號'+(q.secs.length?'('+esc(q.secs.join('、'))+')':'')+'</div></td>'
+      +'<td><input type="text" data-ged-name="'+esc(q.id)+'" value="'+esc(q.name)+'" maxlength="20" aria-label="這一段的名稱" style="width:150px"></td>'
+      +'<td class="small">'+esc(mv)+'</td><td style="white-space:nowrap">'
+      +[['N','↑','往北'],['W','←','往西'],['E','→','往東'],['S','↓','往南']].map(function(a){return '<button class="btn small" type="button" data-ged-nudge="'+esc(q.id)+'|'+a[0]+'" aria-label="'+a[2]+'移動">'+a[1]+'</button>'}).join(' ')
+      +' <button class="btn small" type="button" data-ged-reset="'+esc(q.id)+'">歸位</button>'
+      +(multi?' <button class="btn small" type="button" data-ged-del="'+esc(q.id)+'">'+(q.del?'取消刪除':'刪除這段')+'</button>':'')+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  h+='<div class="row2" style="margin-top:10px;align-items:end"><div class="field"><label for="ged-north">北方向(畫面正上方偏幾度)</label><input type="number" id="ged-north" min="-180" max="360" step="1" value="'+GE.north+'"></div>'
+    +'<div class="small muted" style="padding-bottom:8px">地籍圖謄本多半是上北下南,填 0 就好。如果圖是斜的,填「北方在畫面順時針幾度」,例如北方指向右上 45° 就填 45。地圖上的指北針會跟著轉。</div></div>';
+  h+='<div class="actions"><button class="btn" type="button" data-ged-cancel>取消</button><button class="btn primary" type="button" data-ged-save'+(GE.busy?' disabled':'')+'>'+(GE.busy?'儲存中…':'儲存')+'</button></div>';
+  el.innerHTML=h;
+}
+(function(){
+  var dg=null;
+  function pcOf(id){return GE&&GE.pieces.filter(function(q){return q.id===id})[0]}
+  document.addEventListener('click',function(e){
+    var t=e.target;if(!t||!t.closest)return;var b;
+    if((b=t.closest('[data-ad-geoedit]'))){geoEdOpen_(b.dataset.adGeoedit);return}
+    if(!GE||!t.closest('#dlg-geoed'))return;
+    if(t.closest('[data-ged-cancel]')){var d=$('#dlg-geoed');if(d&&d.open)d.close();GE=null;return}
+    if((b=t.closest('[data-ged-sel]'))){GE.sel=b.dataset.gedSel;geoEdRender_();return}
+    if((b=t.closest('[data-ged-nudge]'))){var a=b.dataset.gedNudge.split('|'),q=pcOf(a[0]);if(!q)return;GE.sel=q.id;var s=GE.step;
+      if(a[1]==='E')q.east+=s;else if(a[1]==='W')q.east-=s;else if(a[1]==='N')q.north+=s;else q.north-=s;geoEdRender_();return}
+    if((b=t.closest('[data-ged-reset]'))){var q2=pcOf(b.dataset.gedReset);if(q2){q2.east=0;q2.north=0;geoEdRender_()}return}
+    if((b=t.closest('[data-ged-del]'))){var q3=pcOf(b.dataset.gedDel);if(q3){q3.del=!q3.del;if(GE.pieces.every(function(x){return x.del})){q3.del=false;toast('不能把所有圖都刪掉。要整張重來請用「取代圖資」。')}geoEdRender_()}return}
+    if(t.closest('[data-ged-save]')){geoEdSave_();return}
+  });
+  document.addEventListener('input',function(e){var t=e.target;if(!GE||!t||!t.dataset)return;
+    if(t.dataset.gedName!==undefined){var q=pcOf(t.dataset.gedName);if(q)q.name=t.value}
+    else if(t.id==='ged-north'){GE.north=Number(t.value)||0}
+  });
+  document.addEventListener('change',function(e){var t=e.target;if(GE&&t&&t.id==='ged-step'){GE.step=Number(t.value)||20}});
+  document.addEventListener('pointerdown',function(e){
+    var t=e.target;if(!GE||!t||!t.closest)return;var g=t.closest('#ged-svg [data-gepc]');if(!g)return;
+    var svg=$('#ged-svg'),ctm=svg&&svg.getScreenCTM();if(!ctm)return;
+    var q=pcOf(g.dataset.gepc);if(!q||GE.pieces.length<2||q.del)return;
+    if(GE.sel!==q.id){GE.sel=q.id;$$('#ged-svg [data-gepc] path').forEach(function(p){var on=p.parentNode.dataset.gepc===GE.sel;p.setAttribute('fill-opacity',on?0.45:0.28)})}
+    var pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;var p0=pt.matrixTransform(ctm.inverse());
+    dg={g:g,svg:svg,inv:ctm.inverse(),x:p0.x,y:p0.y,bx:Number(g.dataset.bx),by:Number(g.dataset.by),ddx:0,ddy:0,id:q.id};
+    try{svg.setPointerCapture(e.pointerId)}catch(x){}
+    g.style.cursor='grabbing';e.preventDefault();
+  });
+  document.addEventListener('pointermove',function(e){
+    if(!dg)return;var pt=dg.svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;var p=pt.matrixTransform(dg.inv);
+    dg.ddx=p.x-dg.x;dg.ddy=p.y-dg.y;dg.g.setAttribute('transform','translate('+(dg.bx+dg.ddx).toFixed(1)+' '+(dg.by+dg.ddy).toFixed(1)+')');
+  });
+  function end(){
+    if(!dg)return;var d=dg;dg=null;
+    if(GE){var q=pcOf(d.id);if(q&&(d.ddx||d.ddy)){var sc=GE.g.scale||1;q.east+=d.ddx*sc;q.north-=d.ddy*sc}geoEdRender_()}
+  }
+  document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);
+})();
+function geoEdSave_(){
+  if(!GE||GE.busy)return;
+  var moves=[],remove=[],names={};
+  GE.pieces.forEach(function(q){
+    if(q.del)remove.push(q.id);
+    else{if(Math.round(q.east*10)||Math.round(q.north*10))moves.push({id:q.id,east:Math.round(q.east*10)/10,north:Math.round(q.north*10)/10});
+      var nm=String(q.name||'').trim();if(nm&&nm!==q.orig)names[q.id]=nm}
+  });
+  if(remove.length&&!window.confirm('要刪除 '+remove.length+' 段圖資嗎?這些段上的地號圖形會從地圖移除,之後要重新上傳那份地籍圖才找得回來。'))return;
+  var north=Number(GE.north)||0,changedNorth=north!==(Number(GE.g.north)||0);
+  if(!moves.length&&!remove.length&&!Object.keys(names).length&&!changedNorth){var d0=$('#dlg-geoed');if(d0&&d0.open)d0.close();GE=null;toast('沒有任何變更。');return}
+  GE.busy=true;geoEdRender_();var pid=GE.pid;
+  api('editGeo',{projectId:pid,moves:moves,remove:remove,names:names,north:north}).then(function(r){
+    GEOC[pid]=undefined;if(PRJ[pid])PRJ[pid]._geoLazy=true;AP.list=null;
+    var d=$('#dlg-geoed');if(d&&d.open)d.close();GE=null;
+    toast('已更新圖資:現在圖上有 '+r.parcels+' 筆地號。');
+    return ensureGeo(pid)}).then(function(){renderAdmin()}).catch(function(er){
+    if(GE){GE.busy=false;geoEdRender_()}
+    if(er.auth){showLogin('登入已過期,請重新登入');return}toast('失敗:'+(er.userMessage||er.message))});
+}
+
+/* ===== 專案檔案區:「業務共用」業務看得到,「公司存檔」只有專案負責人以上看得到 ===== */
+var FL={pid:'',data:null,loading:false,err:'',edit:'',busy:'',msg:''};
+var DOC_AREA_HINT={'業務共用':'給業務使用的資料,例如合約範本、說明簡報、價格表、話術。專案成員都看得到。','公司存檔':'公司內部存檔,例如簽核文件、合約掃描檔、對外往來函文。只有專案負責人以上看得到。'};
+function flSize_(n){return n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?Math.round(n/1024)+' KB':n?n+' B':''}
+function flLoad_(force){
+  if(!FL.pid||FL.loading)return;
+  if(!force&&FL.data&&FL.data._pid===FL.pid)return;
+  FL.loading=true;FL.err='';
+  api('listProjectDocs',{projectId:FL.pid}).then(function(d){d._pid=FL.pid;FL.data=d}).catch(function(e){
+    if(e.auth){showLogin('登入已過期,請重新登入');return}FL.err=e.userMessage||e.message;
+  }).then(function(){FL.loading=false;renderFiles()});
+}
+function renderFiles(){
+  var el=$('#files-page');if(!el)return;
+  var vis=DB.projects.filter(function(p){return PRJ[p.id]});
+  if(!FL.pid||!PRJ[FL.pid])FL.pid=PRJ[S.proj]?S.proj:(vis[0]?vis[0].id:'');
+  var h='<h1>專案檔案</h1>';
+  if(!FL.pid){el.innerHTML=h+'<div class="empty">目前沒有可看的專案。</div>';return}
+  h+='<div class="field" style="max-width:360px"><label for="fl-proj">專案</label><select id="fl-proj">'+vis.map(function(p){return '<option value="'+esc(p.id)+'"'+(p.id===FL.pid?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select></div>';
+  if(FL.err){el.innerHTML=h+'<div class="notice">讀不到檔案區:'+esc(FL.err)+' <button class="btn small" type="button" data-fl-retry>重試</button></div>';return}
+  var d=FL.data;
+  if(!d||d._pid!==FL.pid){el.innerHTML=h+'<p class="muted">載入中…</p>';flLoad_(false);return}
+  if(FL.msg)h+='<div class="notice" role="status">'+esc(FL.msg)+'</div>';
+  d.areas.forEach(function(area){
+    var docs=d.docs.filter(function(x){return x.area===area}),folders=[];
+    docs.forEach(function(x){if(x.folder&&folders.indexOf(x.folder)<0)folders.push(x.folder)});folders.sort();
+    h+='<div class="panel" style="margin-top:14px"><h2>'+esc(area)+' <span class="count">'+docs.length+' 份</span></h2><p class="small muted" style="margin:0 0 8px">'+esc(DOC_AREA_HINT[area])+'</p>';
+    h+='<div class="orow" style="gap:8px;flex-wrap:wrap;align-items:flex-end"><div class="field" style="margin:0"><label for="fl-file-'+esc(area)+'">選檔案(可多選,單檔 8 MB 內)</label><input type="file" id="fl-file-'+esc(area)+'" data-fl-area="'+esc(area)+'" multiple></div>'
+      +'<div class="field" style="margin:0"><label for="fl-fold-'+esc(area)+'">放在哪個資料夾(可空白)</label><input type="text" id="fl-fold-'+esc(area)+'" list="fl-dl-'+esc(area)+'" maxlength="30" placeholder="例如 合約範本"><datalist id="fl-dl-'+esc(area)+'">'+folders.map(function(f){return '<option value="'+esc(f)+'">'}).join('')+'</datalist></div>'
+      +'<div class="field" style="margin:0"><label for="fl-desc-'+esc(area)+'">說明(可空白)</label><input type="text" id="fl-desc-'+esc(area)+'" maxlength="300"></div>'
+      +'<button class="btn primary" type="button" data-fl-up="'+esc(area)+'"'+(FL.busy?' disabled':'')+'>'+(FL.busy===area?'上傳中…':'上傳')+'</button></div>';
+    h+='<details style="margin-top:8px"><summary class="small">改放雲端連結(檔案太大或格式不支援時用,例如 Google 雲端硬碟的資料夾網址)</summary><div class="orow" style="gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:6px"><div class="field" style="margin:0"><label for="fl-lname-'+esc(area)+'">連結名稱</label><input type="text" id="fl-lname-'+esc(area)+'" maxlength="80"></div><div class="field" style="margin:0;min-width:260px"><label for="fl-lurl-'+esc(area)+'">網址(https:// 開頭)</label><input type="url" id="fl-lurl-'+esc(area)+'"></div><button class="btn" type="button" data-fl-link="'+esc(area)+'">加入連結</button></div></details>';
+    if(!docs.length)h+='<div class="empty" style="margin-top:10px">還沒有文件。</div>';
+    var groups=[''].concat(folders);
+    groups.forEach(function(f){
+      var list=docs.filter(function(x){return x.folder===f});if(!list.length)return;
+      h+='<h3 style="margin:14px 0 4px">'+(f?'📁 '+esc(f):'未分資料夾')+' <span class="count">'+list.length+'</span></h3><div class="tablewrap" style="margin-top:0"><table><thead><tr><th>名稱</th><th>說明</th><th>上傳</th><th></th></tr></thead><tbody>';
+      list.forEach(function(x){
+        if(FL.edit===x.id){
+          h+='<tr><td colspan="4"><div class="orow" style="gap:8px;flex-wrap:wrap;align-items:flex-end"><div class="field" style="margin:0"><label for="fl-en">名稱</label><input type="text" id="fl-en" value="'+esc(x.name)+'" maxlength="80"></div><div class="field" style="margin:0"><label for="fl-ef">資料夾</label><input type="text" id="fl-ef" value="'+esc(x.folder)+'" maxlength="30"></div><div class="field" style="margin:0"><label for="fl-ed">說明</label><input type="text" id="fl-ed" value="'+esc(x.desc)+'" maxlength="300"></div><div class="field" style="margin:0"><label for="fl-ea">區域</label><select id="fl-ea">'+d.areas.map(function(a){return '<option'+(a===x.area?' selected':'')+'>'+esc(a)+'</option>'}).join('')+'</select></div><button class="btn primary small" type="button" data-fl-esave="'+esc(x.id)+'">存</button><button class="btn small" type="button" data-fl-ecancel>取消</button></div></td></tr>';return;
+        }
+        h+='<tr><td class="wrapcell"><button class="link" type="button" data-fl-open="'+esc(x.id)+'">'+(x.kind==='連結'?'🔗 ':'📄 ')+esc(x.name)+'</button>'+(x.size?'<div class="small muted">'+esc(flSize_(x.size))+'</div>':'')+'</td><td class="wrapcell small">'+esc(x.desc)+'</td><td class="small">'+esc(x.by)+'<br>'+esc(x.date)+'</td><td style="white-space:nowrap"><button class="btn small" type="button" data-fl-open="'+esc(x.id)+'">'+(x.kind==='連結'?'開啟':'下載')+'</button>'
+          +(d.manager?' <button class="btn small" type="button" data-fl-edit="'+esc(x.id)+'">修改</button>':'')
+          +((d.manager||x.mine)?' <button class="btn small" type="button" data-fl-del="'+esc(x.id)+'">刪除</button>':'')+'</td></tr>';
+      });
+      h+='</tbody></table></div>';
+    });
+    h+='</div>';
+  });
+  if(!d.manager)h+='<p class="small muted" style="margin-top:10px">公司存檔區只有專案負責人以上看得到。</p>';
+  el.innerHTML=h;
+}
+async function flUpload_(area){
+  var inp=document.getElementById('fl-file-'+area),files=inp?[].slice.call(inp.files||[]):[];
+  if(!files.length){toast('請先選檔案。');return}
+  var folder=(document.getElementById('fl-fold-'+area)||{}).value||'',desc=(document.getElementById('fl-desc-'+area)||{}).value||'';
+  var big=files.filter(function(f){return f.size>8*1024*1024});
+  if(big.length){toast('檔案超過 8 MB:'+big[0].name+'。太大的檔案請放到雲端,再用「加入連結」。');return}
+  FL.busy=area;FL.msg='';renderFiles();var ok=0,bad=[],pid=FL.pid;
+  for(var i=0;i<files.length;i++){
+    var f=files[i];
+    try{
+      var b64=await fileToB64(f);
+      await api('addProjectDoc',{projectId:pid,area:area,folder:folder,desc:desc,file:{name:f.name,mime:f.type||guessMime(f.name),data:b64}});ok++;
+    }catch(er){if(er.auth){showLogin('登入已過期,請重新登入');FL.busy='';return}bad.push(f.name+':'+(er.userMessage||er.message))}
+  }
+  FL.busy='';FL.msg=(ok?'已上傳 '+ok+' 個檔案。':'')+(bad.length?' 失敗 '+bad.length+' 個:'+bad.join(';'):'');
+  flLoad_(true);
+}
+document.addEventListener('click',function(e){
+  var t=e.target;if(!t||!t.closest||!t.closest('#files-page'))return;var b;
+  if(t.closest('[data-fl-retry]')){FL.err='';flLoad_(true);return}
+  if((b=t.closest('[data-fl-up]'))){flUpload_(b.dataset.flUp);return}
+  if((b=t.closest('[data-fl-link]'))){
+    var a=b.dataset.flLink,nm=(document.getElementById('fl-lname-'+a)||{}).value||'',u=(document.getElementById('fl-lurl-'+a)||{}).value||'';
+    api('addProjectDoc',{projectId:FL.pid,area:a,folder:(document.getElementById('fl-fold-'+a)||{}).value||'',desc:(document.getElementById('fl-desc-'+a)||{}).value||'',name:nm,url:u}).then(function(){FL.msg='已加入連結。';flLoad_(true)}).catch(function(er){if(er.auth){showLogin('登入已過期,請重新登入');return}toast('失敗:'+(er.userMessage||er.message))});return}
+  if((b=t.closest('[data-fl-open]'))){
+    var x=(FL.data&&FL.data.docs||[]).filter(function(q){return q.id===b.dataset.flOpen})[0];if(!x)return;
+    if(x.kind==='連結'){window.open(x.link,'_blank','noopener');return}
+    toast('下載中…');
+    api('getProjectDoc',{id:x.id}).then(function(r){downloadB64(r.name||x.name,r.mime||'application/octet-stream',r.data)}).catch(function(er){if(er.auth){showLogin('登入已過期,請重新登入');return}toast('失敗:'+(er.userMessage||er.message))});return}
+  if((b=t.closest('[data-fl-edit]'))){FL.edit=b.dataset.flEdit;renderFiles();return}
+  if(t.closest('[data-fl-ecancel]')){FL.edit='';renderFiles();return}
+  if((b=t.closest('[data-fl-esave]'))){
+    var id=b.dataset.flEsave,v=function(i){return (document.getElementById(i)||{}).value};
+    api('updateProjectDoc',{id:id,name:v('fl-en'),folder:v('fl-ef'),desc:v('fl-ed'),area:v('fl-ea')}).then(function(){FL.edit='';FL.msg='已更新。';flLoad_(true)}).catch(function(er){if(er.auth){showLogin('登入已過期,請重新登入');return}toast('失敗:'+(er.userMessage||er.message))});return}
+  if((b=t.closest('[data-fl-del]'))){
+    var dx=(FL.data&&FL.data.docs||[]).filter(function(q){return q.id===b.dataset.flDel})[0];if(!dx)return;
+    if(!window.confirm('刪除「'+dx.name+'」?刪除後無法復原。'))return;
+    api('deleteProjectDoc',{id:dx.id}).then(function(){FL.msg='已刪除。';flLoad_(true)}).catch(function(er){if(er.auth){showLogin('登入已過期,請重新登入');return}toast('失敗:'+(er.userMessage||er.message))});return}
+});
+document.addEventListener('change',function(e){
+  var t=e.target;if(t&&t.id==='fl-proj'){FL.pid=t.value;FL.data=null;FL.edit='';FL.msg='';FL.err='';renderFiles()}
+});
+window.addEventListener('hashchange',function(){if(location.hash==='#files')renderFiles()});
 
 /* ---------- start ---------- */
 function pickStart(){
