@@ -4280,10 +4280,20 @@ function sgBuild(ex,opts){
       assign[no]={pts:pts,area:area,n:idx.length,key:idx.slice().sort().join(',')};
     });
     if(!Object.keys(assign).length){isl.push({pages:c.pages,empty:true});return}
-    var share={};Object.keys(assign).forEach(function(no){(share[assign[no].key]=share[assign[no].key]||[]).push(no)});
+    var share={};
     var b=[1e18,1e18,-1e18,-1e18];Object.keys(assign).forEach(function(no){var q=sgBB(assign[no].pts);b=[Math.min(b[0],q[0]),Math.min(b[1],q[1]),Math.max(b[2],q[2]),Math.max(b[3],q[3])]});
     var r=[b[0]-MARG,b[1]-MARG,b[2]+MARG,b[3]+MARG],tg=Object.keys(assign).map(function(n){return assign[n]});
     var polys=mkPolygonize(segs,0.15).filter(function(p){return p.area>0.2&&p.area<60000}),ctx=[],ctxlab=[];
+    // 專案裡有、但圖上沒有灰底的地號:改用「圖上的地號文字落在哪一塊地」來對(旁邊的非本案地也能綁上)
+    var lblUsed={};
+    if(only){Object.keys(only).forEach(function(no){
+      if(assign[no])return;var hits=[];
+      polys.forEach(function(pl,i){if(lblUsed[i])return;var c=0;labT.forEach(function(t){if(t.s===no&&mkInPoly([t.x,t.y],pl.pts))c++});if(c)hits.push({i:i,c:c,a:pl.area})});
+      if(!hits.length)return;hits.sort(function(a,b){return b.c-a.c||a.a-b.a});
+      var h=hits[0],pl=polys[h.i];lblUsed[h.i]=1;
+      assign[no]={pts:pl.pts,area:pl.area,n:1,key:'L'+h.i,lbl:1};tg.push(assign[no]);
+      var q2=sgBB(pl.pts);r=[Math.min(r[0],q2[0]-MARG),Math.min(r[1],q2[1]-MARG),Math.max(r[2],q2[2]+MARG),Math.max(r[3],q2[3]+MARG)];
+    })}
     polys.forEach(function(p){
       if(tg.some(function(t){return mkInPoly(mkCentroid(p.pts),t.pts)||mkInPoly(sgInnerPt(p.pts),t.pts)}))return;
       var q=sgBB(p.pts);if(q[2]<r[0]||q[0]>r[2]||q[3]<r[1]||q[1]>r[3])return;
@@ -4291,9 +4301,10 @@ function sgBuild(ex,opts){
       if(p.area>150){var lab=texts.filter(function(t){return /^\d+(-\d+)?$/.test(t.s)&&mkInPoly([t.x,t.y],p.pts)})[0];if(lab)ctxlab.push({t:lab.s,c:mkCentroid(p.pts),f:0})}
     });
     var parcels={};
+    Object.keys(assign).forEach(function(no){(share[assign[no].key]=share[assign[no].key]||[]).push(no)});
     Object.keys(assign).forEach(function(no){
       var p=assign[no],shared=share[p.key].length>1,lab=texts.filter(function(t){return t.s===no&&mkInPoly([t.x,t.y],p.pts)})[0];
-      parcels[no]={pts:p.pts,area:Math.round(p.area*10)/10,shared:shared?share[p.key].filter(function(x){return x!==no}):null,pieces:p.n,cpos:shared&&lab?[lab.x,lab.y]:null};
+      parcels[no]={pts:p.pts,area:Math.round(p.area*10)/10,shared:shared?share[p.key].filter(function(x){return x!==no}):null,pieces:p.n,lbl:!!p.lbl,cpos:shared&&lab?[lab.x,lab.y]:null};
     });
     isl.push({pages:c.pages,parcels:parcels,ctx:ctx,ctxlab:ctxlab,rect:r});
   });
@@ -4307,7 +4318,7 @@ function sgBuild(ex,opts){
   var parcels={},ctx=[],ctxlab=[],vb=[1e18,1e18,-1e18,-1e18],cy=0,mv;
   use.forEach(function(x,i){
     var dx=-x.rect[0],dy=cy-x.rect[1];mv=function(p){return [p[0]+dx,p[1]+dy]};
-    Object.keys(x.parcels).forEach(function(no){var p=x.parcels[no];parcels[sec+'|'+no]={sec:sec,pts:p.pts.map(mv),poly_m2:p.area,mix:{},flag:p.shared?'shared':'ok',cpos:p.cpos?mv(p.cpos):null,_isl:i}});
+    Object.keys(x.parcels).forEach(function(no){var p=x.parcels[no];parcels[sec+'|'+no]={sec:sec,pts:p.pts.map(mv),poly_m2:p.area,mix:{},flag:p.shared?'shared':(p.lbl?'label':'ok'),cpos:p.cpos?mv(p.cpos):null,_isl:i}});
     x.ctx.forEach(function(rg){ctx.push(rg.map(mv))});x.ctxlab.forEach(function(l){ctxlab.push({t:l.t,c:mv(l.c),f:0})});
     if(use.length>1)ctxlab.push({t:(sec||'')+'('+(i+1)+')',c:[(x.rect[2]-x.rect[0])/2,cy+8],f:-1,big:true});
     vb=[Math.min(vb[0],0),Math.min(vb[1],cy),Math.max(vb[2],x.rect[2]-x.rect[0]),Math.max(vb[3],cy+x.rect[3]-x.rect[1])];
