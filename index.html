@@ -4310,23 +4310,29 @@ function sgBuild(ex,opts){
     var b=[1e18,1e18,-1e18,-1e18];Object.keys(assign).forEach(function(no){var q=sgBB(assign[no].pts);b=[Math.min(b[0],q[0]),Math.min(b[1],q[1]),Math.max(b[2],q[2]),Math.max(b[3],q[3])]});
     var r=[b[0]-MARG,b[1]-MARG,b[2]+MARG,b[3]+MARG],tg=Object.keys(assign).map(function(n){return assign[n]});
     var polys=mkPolygonize(segs,0.15).filter(function(p){return p.area>0.2&&p.area<60000}),ctx=[],ctxlab=[];
-    // 專案裡有、但圖上沒有灰底的地號:改用「圖上的地號文字落在哪一塊地」來對(旁邊的非本案地也能綁上)
-    var lblUsed={};
-    if(only){Object.keys(only).forEach(function(no){
-      if(assign[no])return;var hits=[];
-      polys.forEach(function(pl,i){var c=0;labT.forEach(function(t){if(t.s===no&&mkInPoly([t.x,t.y],pl.pts))c++});if(c)hits.push({i:i,c:c,a:pl.area,u:lblUsed[i]?1:0})});
-      if(!hits.length){   // 備援:細長地塊裝不下地號字,字會跑到地塊外面,改找字旁邊最近、而且明顯比其他塊近的那一塊
-        var pts2=labT.filter(function(t){return t.s===no}),cand=[];
-        pts2.forEach(function(t){polys.forEach(function(pl,i){if(pl.area<0.5)return;var d=mkDistPoly([t.x,t.y],pl.pts);cand.push({i:i,d:d,a:pl.area})})});
-        cand.sort(function(a,b){return a.d-b.d});
-        if(cand.length&&cand[0].d<=14){var nx=cand.filter(function(c){return c.i!==cand[0].i})[0];if(!nx||nx.d>=cand[0].d*1.6+1||cand[0].d<=6)hits.push({i:cand[0].i,c:0,a:cand[0].a,near:1})}
-        if(!hits.length)return;
-      }
-      hits.sort(function(a,b){return a.u-b.u||b.c-a.c||a.a-b.a});
-      var h=hits[0],pl=polys[h.i];lblUsed[h.i]=1;   // 已被別的地號佔用就共用同一塊(細長地的地號字常疊在一起)
-      assign[no]={pts:pl.pts,area:pl.area,n:1,key:'L'+h.i,lbl:h.near?2:1};tg.push(assign[no]);
-      var q2=sgBB(pl.pts);r=[Math.min(r[0],q2[0]-MARG),Math.min(r[1],q2[1]-MARG),Math.max(r[2],q2[2]+MARG),Math.max(r[3],q2[3]+MARG)];
-    })}
+    // 專案裡有、但圖上沒有灰底的地號:用「地號字附近的地塊」+「登記面積對得上」來綁。
+    // 細長地的字常落在旁邊的大地塊裡,所以只看字在哪塊不可靠;面積對不上就寧可不綁(留在小方格),不要綁錯。
+    var lblUsed={},areas=opts.areas||{};
+    if(only){
+      var nos=Object.keys(only).filter(function(no){return !assign[no]}).sort(function(a,b){return (Number(areas[b])||0)-(Number(areas[a])||0)});   // 大的先配
+      nos.forEach(function(no){
+        var A=Number(areas[no])||0,tol=A>=60?0.25:0.6,cand=[];
+        labT.filter(function(t){return t.s===no}).forEach(function(t){
+          polys.forEach(function(pl,i){
+            if(lblUsed[i]||pl.area<0.5)return;
+            var inside=mkInPoly([t.x,t.y],pl.pts),d=inside?0:mkDistPoly([t.x,t.y],pl.pts);
+            if(d>14)return;
+            if(A>0){var r=pl.area/A;if(Math.abs(r-1)>tol)return;var cc=mkCentroid(pl.pts),dc=Math.hypot(cc[0]-t.x,cc[1]-t.y);cand.push({i:i,d:d,sc:Math.abs(r-1)*40+d+0.3*dc,inside:inside,a:pl.area})}
+            else if(inside)cand.push({i:i,d:0,sc:pl.area/1000,inside:true,a:pl.area});   // 沒有登記面積:只認字就在塊裡面的
+          });
+        });
+        if(!cand.length)return;
+        cand.sort(function(x,y){return x.sc-y.sc});
+        var h=cand[0],pl=polys[h.i];lblUsed[h.i]=1;
+        assign[no]={pts:pl.pts,area:pl.area,n:1,key:'L'+h.i,lbl:h.inside?1:2};tg.push(assign[no]);
+        var q2=sgBB(pl.pts);r=[Math.min(r[0],q2[0]-MARG),Math.min(r[1],q2[1]-MARG),Math.max(r[2],q2[2]+MARG),Math.max(r[3],q2[3]+MARG)];
+      });
+    }
     polys.forEach(function(p){
       if(tg.some(function(t){return mkInPoly(mkCentroid(p.pts),t.pts)||mkInPoly(sgInnerPt(p.pts),t.pts)}))return;
       var q=sgBB(p.pts);if(q[2]<r[0]||q[0]>r[2]||q[3]<r[1]||q[1]>r[3])return;
@@ -5791,6 +5797,7 @@ async function cadStart(pid,file){
   }catch(e){CAD.busy='';CAD.err='讀取失敗:'+(e&&e.message?e.message:e)}
   cadRender();
 }
+function cadAreas_(){var o={};DB.parcels.forEach(function(p){if(p.proj===CAD.pid&&p.area>0&&(!p.sec||!CAD.sec||p.sec===CAD.sec))o[String(p.no)]=p.area});return o}
 function cadOnly_(){
   if(!CAD.onlyOn)return null;
   var l=DB.parcels.filter(function(p){return p.proj===CAD.pid&&(!p.sec||!CAD.sec||p.sec===CAD.sec)}).map(function(p){return String(p.no)});
@@ -5798,7 +5805,7 @@ function cadOnly_(){
 }
 function cadRun(){
   CAD.err='';
-  try{var on=cadOnly_();CAD.res=sgBuild(CAD.ex,{sec:CAD.sec,only:on,links:CAD.links});if(on&&!CAD.res.ok){CAD.res=sgBuild(CAD.ex,{sec:CAD.sec,links:CAD.links});if(CAD.res.ok)CAD.res.warns.unshift('專案裡的地號和這張圖上的對不上,所以先列出圖上所有的地號。請確認段別是否正確。')}}catch(e){CAD.res=null;CAD.err='整理失敗:'+(e&&e.message?e.message:e)}
+  try{var on=cadOnly_();CAD.res=sgBuild(CAD.ex,{sec:CAD.sec,only:on,areas:cadAreas_(),links:CAD.links});if(on&&!CAD.res.ok){CAD.res=sgBuild(CAD.ex,{sec:CAD.sec,links:CAD.links});if(CAD.res.ok)CAD.res.warns.unshift('專案裡的地號和這張圖上的對不上,所以先列出圖上所有的地號。請確認段別是否正確。')}}catch(e){CAD.res=null;CAD.err='整理失敗:'+(e&&e.message?e.message:e)}
 }
 function cadSVG(geo){
   var h='<svg viewBox="0 0 1000 660" style="width:100%;max-height:380px;background:#f4f7f5;border:1px solid var(--line);border-radius:10px" role="img" aria-label="地籍圖預覽">';
@@ -5980,7 +5987,8 @@ function cbReset_(){CB={items:[],sel:null,busy:'',err:''}}
 function cbBuild_(it){
   var only=null;
   if(IM.res&&IM.res.parcels&&IM.res.parcels.length){only=IM.res.parcels.filter(function(p){return !p.sec||!it.sec||p.sec===it.sec}).map(function(p){return String(p.no)})}
-  var r=sgBuild(it.ex,{sec:it.sec,only:only&&only.length?only:null,links:it.links||{}});
+  var ar={};if(IM.res&&IM.res.parcels)IM.res.parcels.forEach(function(p){if(p.area>0)ar[String(p.no)]=p.area});
+  var r=sgBuild(it.ex,{sec:it.sec,only:only&&only.length?only:null,areas:ar,links:it.links||{}});
   if(only&&only.length&&!r.ok)r=sgBuild(it.ex,{sec:it.sec,links:it.links||{}});
   it.res=r;
 }
