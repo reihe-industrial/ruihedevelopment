@@ -4315,6 +4315,8 @@ function sgBuild(ex,opts){
     var b=[1e18,1e18,-1e18,-1e18];Object.keys(assign).forEach(function(no){var q=sgBB(assign[no].pts);b=[Math.min(b[0],q[0]),Math.min(b[1],q[1]),Math.max(b[2],q[2]),Math.max(b[3],q[3])]});
     var r=[b[0]-MARG,b[1]-MARG,b[2]+MARG,b[3]+MARG],tg=Object.keys(assign).map(function(n){return assign[n]});
     var polys=mkPolygonize(segs,0.15).filter(function(p){return p.area>0.2&&p.area<60000}),ctx=[],ctxlab=[];
+    if(typeof SG_DEBUG!=='undefined'&&SG_DEBUG&&SG_DEBUG.on)SG_DEBUG.allPolys=polys;
+    if(typeof SG_DEBUG!=='undefined'&&SG_DEBUG&&SG_DEBUG.on){SG_DEBUG.labT=labT;SG_DEBUG.inPoly=mkInPoly;SG_DEBUG.distPoly=mkDistPoly}
     // 專案裡有、但圖上沒有灰底的地號:用「地號字附近的地塊」+「登記面積對得上」來綁。
     // 細長地的字常落在旁邊的大地塊裡,所以只看字在哪塊不可靠;面積對不上就寧可不綁(留在小方格),不要綁錯。
     var lblUsed={},areas=opts.areas||{},diag={};
@@ -4351,7 +4353,19 @@ function sgBuild(ex,opts){
         var all=[];
         nos.forEach(function(no){if(assign[no])return;cands(no,pass).forEach(function(c){c.no=no;all.push(c)})});
         all.sort(function(x,y){return x.sc-y.sc});
-        all.forEach(function(c){if(assign[c.no]||lblUsed[c.i])return;bind(c.no,c,pass>=2?3:(c.inside?1:2))});
+        // 先照分數一個個配,再做「兩兩互換」:互換後兩邊分數加起來更小就換(避免面積差不多的幾塊細長地整排錯開一格)
+        var pick={},usedI={},cm={};
+        all.forEach(function(c){cm[c.no+'|'+c.i]=c});
+        all.forEach(function(c){if(pick[c.no]||usedI[c.i])return;pick[c.no]=c;usedI[c.i]=1});
+        for(var it=0;it<20;it++){
+          var changed=false,ks=Object.keys(pick);
+          for(var x=0;x<ks.length;x++)for(var y=x+1;y<ks.length;y++){
+            var n1=ks[x],n2=ks[y],c1=pick[n1],c2=pick[n2],d1=cm[n1+'|'+c2.i],d2=cm[n2+'|'+c1.i];
+            if(d1&&d2&&d1.sc+d2.sc<c1.sc+c2.sc-0.01){pick[n1]=d1;pick[n2]=d2;changed=true}
+          }
+          if(!changed)break;
+        }
+        Object.keys(pick).forEach(function(no){var c=pick[no];if(assign[no]||lblUsed[c.i])return;bind(no,c,pass>=2?3:(c.inside?1:2))});
       });
       // 沒配到的:記下原因(清冊面積、圖上字旁邊最近的塊多大),方便你判斷是圖的問題還是清冊面積不對
       nos.forEach(function(no){
@@ -6057,9 +6071,9 @@ function cadRender(){
       if(!cur.length)h+='<p class="small muted" style="margin:0">這個專案目前沒有地圖,套用後就是這一張。</p><input type="hidden" id="cad-mode" value="merge">';
       else{
         h+='<p class="small muted" style="margin:0 0 6px">專案現有的圖資段別:'+cur.map(esc).join('、')+'。</p>'
-          +'<label style="display:flex;gap:6px;align-items:center;font-size:14px"><input type="radio" name="cad-mode" value="merge" style="width:auto"'+(!has&&!CAD.replace?' checked':'')+(has?' disabled':'')+'> 合併:把這一段加到現有地圖旁邊'+(has?'(這一段已在圖上,不能合併)':'')+'</label>'
-          +'<label style="display:flex;gap:6px;align-items:center;font-size:14px;margin-top:4px"><input type="radio" name="cad-mode" value="replace" style="width:auto"'+(has||CAD.replace?' checked':'')+'> 取代:整張地圖換成這一份(現有的其他段會消失)</label>'
-          +cadPlaceHTML_('cad',!(has||CAD.replace));
+          +'<label style="display:flex;gap:6px;align-items:center;font-size:14px"><input type="radio" name="cad-mode" value="merge" style="width:auto"'+(!CAD.replace?' checked':'')+'> 合併:把這一份加到現有地圖旁邊'+(has?'(同一段也可以:兩份都有的地號保留現有的,只補上沒有的)':'')+'</label>'
+          +'<label style="display:flex;gap:6px;align-items:center;font-size:14px;margin-top:4px"><input type="radio" name="cad-mode" value="replace" style="width:auto"'+(CAD.replace?' checked':'')+'> 取代:整張地圖換成這一份(現有的其他段會消失)</label>'
+          +cadPlaceHTML_('cad',!CAD.replace);
       }
       h+='</div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px"><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="button" data-cad-apply>套用到專案</button></div>';
     }
@@ -6306,7 +6320,7 @@ function cadApply(){
   var btn=$('[data-cad-apply]');if(btn)btn.disabled=true;toast('處理中…');
   var pid=CAD.pid;
   api('mergeGeo',{projectId:pid,geo:r.geo,replace:replace,place:{dir:($('#cad-dir')||{}).value||'E',gap:($('#cad-gap')||{}).value,east:($('#cad-e')||{}).value,north:($('#cad-n')||{}).value},caption:replace?'':(r.sec||'')}).then(function(x){
-    GEOC[pid]=undefined;geoLsDel_(pid);if(PRJ[pid])PRJ[pid]._geoLazy=true;AP.list=null;toast('完成:現在圖上有 '+x.parcels+' 筆地號('+x.sections.join('、')+')。');
+    GEOC[pid]=undefined;geoLsDel_(pid);if(PRJ[pid])PRJ[pid]._geoLazy=true;AP.list=null;toast('完成:現在圖上有 '+x.parcels+' 筆地號('+x.sections.join('、')+')。'+(x.skipped?'其中 '+x.skipped+' 筆兩份都有,保留現有的。':''));
     var d=$('#dlg-cad');if(d&&d.open)d.close();CAD=null;return ensureGeo(pid)}).then(function(){renderAdmin()}).catch(function(er){if(btn)btn.disabled=false;if(er.auth)showLogin('登入已過期,請重新登入');else toast('失敗:'+(er.userMessage||er.message))});
 }
 document.addEventListener('click',function(e){
@@ -6413,6 +6427,14 @@ function mapOverlay_(){
     ex.style.cssText='position:absolute;right:12px;top:78px';wrap.appendChild(ex);
     var rb=document.createElement('button');rb.id='mapratio';rb.type='button';rb.className='btn small';rb.textContent='縮放到 1:1000';rb.setAttribute('aria-label','把地圖縮放到比例尺 1:1000');
     rb.style.cssText='position:absolute;right:12px;top:112px';wrap.appendChild(rb);
+    var ab=document.createElement('button');ab.id='mapassign';ab.type='button';ab.className='btn small';ab.textContent='指定圖塊';ab.setAttribute('aria-label','指定選取的地號要用圖上哪一塊');
+    ab.style.cssText='position:absolute;right:12px;top:146px';wrap.appendChild(ab);
+    ab.addEventListener('click',function(){
+      if(S.role!=='admin'){toast('只有管理員可以指定圖塊。');return}
+      var p0=S.sel!==null?DB.parcels[S.sel]:null;
+      if(!p0){toast('請先在地圖上點選一個地號,再按「指定圖塊」。');return}
+      MAPASG=p0;document.getElementById('map').style.cursor='crosshair';mapAsgBar_();
+    });
     rb.addEventListener('click',function(){
       var g=PRJ[S.proj]&&PRJ[S.proj].geo;if(!g||!(g.scale>0))return;
       var sv=$('#map'),rr=sv.getBoundingClientRect(),cw2=rr.width||1000,ch2=rr.height||660,ppu2=g.scale/(1000*0.000264583),cx=vb.x+vb.w/2,cy=vb.y+vb.h/2;
@@ -6420,7 +6442,7 @@ function mapOverlay_(){
     });
   }
   var show=!!geo&&geo.scale>0;
-  n.style.display=sc.style.display=show?'':'none';ex.style.display=pr?'':'none';var rb2=$('#mapratio');if(rb2)rb2.style.display=show?'':'none';
+  n.style.display=sc.style.display=show?'':'none';ex.style.display=pr?'':'none';var rb2=$('#mapratio');if(rb2)rb2.style.display=show?'':'none';var ab2=$('#mapassign');if(ab2)ab2.style.display=(show&&S.role==='admin')?'':'none';
   if(!show)return;
   var g=document.getElementById('mapnorth-g');if(g)g.setAttribute('transform','rotate('+(Number(geo.north)||0)+')');
   n.setAttribute('aria-label','指北針:北方在畫面'+(Number(geo.north)?'順時針 '+geo.north+' 度':'正上方'));
@@ -6875,6 +6897,36 @@ function deedProjPick_(){
   return '<div class="projpick"><div><div class="pp-k">要更新的專案</div><div class="pp-n">'+esc(pr.name)+'</div></div>'
     +(vis.length>1?'<label>換專案<select class="pswitch" aria-label="切換專案">'+opts+'</select></label>':'')+'</div>';
 }
+
+/* ---- 手動指定地號用圖上哪一塊(管理員) ---- */
+var MAPASG=null;
+function mapAsgBar_(){
+  var wrap=document.querySelector('.mapwrap'),b=document.getElementById('mapasg-bar');if(!wrap)return;
+  if(!MAPASG){if(b)b.style.display='none';var sv=document.getElementById('map');if(sv)sv.style.cursor='';return}
+  if(!b){b=document.createElement('div');b.id='mapasg-bar';b.style.cssText='position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:7;display:flex;gap:10px;align-items:center;padding:10px 16px;background:#1F5C46;color:#fff;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.35);font-size:15px;font-weight:700;white-space:nowrap';wrap.appendChild(b)}
+  b.innerHTML='請在地圖上點一下「'+esc(MAPASG.no)+'」要用的那一塊 <button type="button" class="btn small" data-mapasg-cancel style="margin-left:6px">取消</button>';b.style.display='flex';
+}
+document.addEventListener('click',function(e){
+  if(e.target&&e.target.closest&&e.target.closest('[data-mapasg-cancel]')){MAPASG=null;mapAsgBar_();return}
+},true);
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&MAPASG){MAPASG=null;mapAsgBar_()}});
+(function(){
+  var t=setInterval(function(){
+    var sv=document.getElementById('map');if(!sv)return;clearInterval(t);
+    sv.addEventListener('click',function(e){
+      if(!MAPASG)return;
+      e.stopPropagation();e.preventDefault();
+      if(typeof moved!=='undefined'&&moved)return;
+      var pt=svgPt(e.clientX,e.clientY),p0=MAPASG;
+      if(!window.confirm('要把「'+p0.no+'」改成用你點的這一塊嗎?\n如果那一塊本來是別的地號,兩個會互換。'))return;
+      MAPASG=null;mapAsgBar_();
+      api('setParcelShape',{projectId:p0.proj,parcelId:p0._srv,point:[pt.x,pt.y]}).then(function(r){
+        GEOC[p0.proj]=undefined;geoLsDel_(p0.proj);if(PRJ[p0.proj])PRJ[p0.proj]._geoLazy=true;ensureGeo(p0.proj);
+        toast(r&&r.swapped?'已指定,並和「'+r.swapped+'」互換。':'已指定。');
+      }).catch(function(er){if(er.auth){showLogin('登入已過期,請重新登入');return}toast('指定失敗:'+(er.userMessage||er.message))});
+    },true);
+  },300);
+})();
 
 /* ---------- start ---------- */
 function pickStart(){
