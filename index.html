@@ -4281,6 +4281,21 @@ function sgUnionRings(rings){
   var faces=mkPolygonize(keep.map(function(e){return [e.p[0],e.p[1],e.q[0],e.q[1]]}),0.5).sort(function(x,y){return y.area-x.area});
   return faces[0]||null;
 }
+// 把線在「別條線的端點碰到它」和「兩線交叉」的地方切開,讓 mkPolygonize 能接起來
+function sgNode(segs,tol){
+  var out=[];
+  segs.forEach(function(a,i){
+    var cuts=[0,1],dx=a[2]-a[0],dy=a[3]-a[1],L=dx*dx+dy*dy;if(!L)return;
+    segs.forEach(function(b,j){if(i===j)return;
+      [[b[0],b[1]],[b[2],b[3]]].forEach(function(q){var t=((q[0]-a[0])*dx+(q[1]-a[1])*dy)/L;if(t<=1e-6||t>=1-1e-6)return;var x=a[0]+t*dx-q[0],y=a[1]+t*dy-q[1];if(Math.hypot(x,y)<=tol)cuts.push(t)});
+      var ex=b[2]-b[0],ey=b[3]-b[1],den=dx*ey-dy*ex;if(Math.abs(den)<1e-12)return;
+      var t=((b[0]-a[0])*ey-(b[1]-a[1])*ex)/den,u=((b[0]-a[0])*dy-(b[1]-a[1])*dx)/den;
+      if(t>1e-6&&t<1-1e-6&&u>=-1e-6&&u<=1+1e-6)cuts.push(t)});
+    cuts.sort(function(x,y){return x-y});
+    for(var k=0;k<cuts.length-1;k++){if(cuts[k+1]-cuts[k]<1e-6)continue;out.push([a[0]+dx*cuts[k],a[1]+dy*cuts[k],a[0]+dx*cuts[k+1],a[1]+dy*cuts[k+1]])}
+  });
+  return out;
+}
 function sgBB(pts){var a=1e18,b=1e18,c=-1e18,d=-1e18;pts.forEach(function(p){if(p[0]<a)a=p[0];if(p[0]>c)c=p[0];if(p[1]<b)b=p[1];if(p[1]>d)d=p[1]});return [a,b,c,d]}
 function sgBuild(ex,opts){
   opts=opts||{};
@@ -4317,6 +4332,40 @@ function sgBuild(ex,opts){
     var polys=mkPolygonize(segs,0.15).filter(function(p){return p.area>0.2&&p.area<60000}),ctx=[],ctxlab=[];
     if(typeof SG_DEBUG!=='undefined'&&SG_DEBUG&&SG_DEBUG.on)SG_DEBUG.allPolys=polys;
     if(typeof SG_DEBUG!=='undefined'&&SG_DEBUG&&SG_DEBUG.on){SG_DEBUG.labT=labT;SG_DEBUG.inPoly=mkInPoly;SG_DEBUG.distPoly=mkDistPoly}
+    // 灰底把好幾筆地號連成一塊時,灰底範圍不可靠:改用地籍線切出的小格子,每個地號挑「字所在、面積最像」的那一格
+    (function(){
+      var areasG=opts.areas||{},grp={};
+      Object.keys(assign).forEach(function(n){(grp[assign[n].key]=grp[assign[n].key]||[]).push(n)});
+      Object.keys(grp).forEach(function(k){
+        var nos=grp[k];if(nos.length<2)return;
+        var ring=assign[nos[0]].pts,RA=assign[nos[0]].area,bb=sgBB(ring),all=[];
+        var locS=segs.filter(function(q){return Math.max(q[0],q[2])>=bb[0]-15&&Math.min(q[0],q[2])<=bb[2]+15&&Math.max(q[1],q[3])>=bb[1]-15&&Math.min(q[1],q[3])<=bb[3]+15});
+        var fl=mkPolygonize(sgNode(locS,0.3),0.15).filter(function(p){return p.area>0.3});
+        if(typeof SG_DEBUG!=='undefined'&&SG_DEBUG&&SG_DEBUG.on){(SG_DEBUG.grp=SG_DEBUG.grp||[]).push({nos:nos,RA:RA,bb:bb,locN:locS.length,nodN:sgNode(locS,0.3).length,fl:fl.map(function(f){return [Math.round(f.area*10)/10,f.pts.length,nos.map(function(n){return labT.filter(function(t){return t.s===n&&mkInPoly([t.x,t.y],f.pts)}).length?n:''}).join('')]})})}
+        fl.forEach(function(pl,i){
+          if(pl.area<0.3||pl.area>RA*1.5)return;
+          var ip=sgInnerPt(pl.pts),gray=rings.some(function(r){return mkInPoly(ip,r.pts)});  // 沒灰底的格子扣分
+          var q=sgBB(pl.pts);if(q[0]<bb[0]-15||q[1]<bb[1]-15||q[2]>bb[2]+15||q[3]>bb[3]+15)return;
+          nos.forEach(function(n){var A=Number(areasG[n])||0;
+            labT.filter(function(t){return t.s===n}).forEach(function(t){
+              var ins=mkInPoly([t.x,t.y],pl.pts),d=ins?0:mkDistPoly([t.x,t.y],pl.pts);if(d>6)return;
+              var cc=mkCentroid(pl.pts);all.push({n:n,i:i,sc:(gray?0:12)+Math.hypot(cc[0]-t.x,cc[1]-t.y)*0.5+d+(A>0?Math.abs(pl.area/A-1)*40:0)})})})});
+        // 字常壓在地籍線上,所以不能一個個搶:全部一起配,先求配到最多個,再求總分最小
+        var cl={};all.forEach(function(c){var m=cl[c.n]=cl[c.n]||{};if(m[c.i]===undefined||c.sc<m[c.i])m[c.i]=c.sc});
+        var best={cnt:-1,cost:1e18,pn:{}},cur={};
+        (function dfs(ix,cnt,cost,usedI){
+          if(ix===nos.length){if(cnt>best.cnt||(cnt===best.cnt&&cost<best.cost)){best={cnt:cnt,cost:cost,pn:JSON.parse(JSON.stringify(cur))}}return}
+          var n=nos[ix],m=cl[n]||{};
+          Object.keys(m).forEach(function(i){if(usedI[i])return;usedI[i]=1;cur[n]=+i;dfs(ix+1,cnt+1,cost+m[i],usedI);delete cur[n];delete usedI[i]});
+          dfs(ix+1,cnt,cost+50,usedI);
+        })(0,0,0,{});
+        var pn=best.pn,pi={};
+        if(Object.keys(pn).length<2)return;
+        if(typeof SG_DEBUG!=='undefined'&&SG_DEBUG&&SG_DEBUG.on){SG_DEBUG.pk=SG_DEBUG.pk||{};nos.forEach(function(n){if(pn[n]!==undefined)SG_DEBUG.pk[n]=fl[pn[n]].pts});SG_DEBUG.fl=(SG_DEBUG.fl||[]).concat(fl.map(function(f){return f.pts}))}
+        nos.forEach(function(n){if(pn[n]===undefined)return;var pl=fl[pn[n]];assign[n]={pts:pl.pts,area:pl.area,n:1,key:'S'+pn[n]+'_'+k,lbl:assign[n].lbl}});
+      });
+      tg=Object.keys(assign).map(function(n){return assign[n]});
+    })();
     // 專案裡有、但圖上沒有灰底的地號:用「地號字附近的地塊」+「登記面積對得上」來綁。
     // 細長地的字常落在旁邊的大地塊裡,所以只看字在哪塊不可靠;面積對不上就寧可不綁(留在小方格),不要綁錯。
     var lblUsed={},areas=opts.areas||{},diag={};
@@ -4434,7 +4483,7 @@ function sgBuild(ex,opts){
   return {ok:true,geo:geo,sec:sec,den:den,warns:warns,list:list,islands:use.map(function(x){return x.pages}),pages:prep.pages.map(function(p){return {no:p.no,skip:p.skip||null,gray:p.grays.length}}),comps:lay.comps};
 }
 
-var API_URL='https://script.google.com/macros/s/AKfycbwhelUD2Yi2ZI-TomN72vjnTMO8VKRaYYOcwg3K5r4QOfzZfmmIeW5-K3hJosYQpKdyaQ/exec';
+var API_URL='PASTE_YOUR_WEB_APP_URL_HERE';
 /* pages removed from the production build */
 
 var TOKEN='';
@@ -6910,7 +6959,7 @@ function mapAsgBar_(){
   var wrap=document.querySelector('.mapwrap'),b=document.getElementById('mapasg-bar');if(!wrap)return;
   if(!MAPASG){if(b)b.style.display='none';var dg=document.getElementById('mapdraw-g');if(dg)dg.remove();var sv=document.getElementById('map');if(sv)sv.style.cursor='';return}
   if(!b){b=document.createElement('div');b.id='mapasg-bar';b.style.cssText='position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:7;display:flex;gap:10px;align-items:center;padding:10px 16px;background:#1F5C46;color:#fff;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.35);font-size:15px;font-weight:700;flex-wrap:wrap;max-width:94%;justify-content:center';if(!document.getElementById('mapasg-css')){var st=document.createElement('style');st.id='mapasg-css';st.textContent='#mapasg-bar .btn{background:#fff;color:#1F5C46;font-weight:700;border:0}#mapasg-bar .btn:disabled{opacity:.5}';document.head.appendChild(st)}wrap.appendChild(b)}
-  b.innerHTML=''+(MAPDRAW?'「'+esc(MAPASG.no)+'」:沿著邊界一個角一個角點(已點 '+MAPDRAW.pts.length+' 點,會自動吸到附近的角) <button type="button" class="btn small" data-mapdraw-undo>退一步</button><button type="button" class="btn small" data-mapdraw-done'+(MAPDRAW.pts.length<3?' disabled':'')+'>完成</button>':'請點一下「'+esc(MAPASG.no)+'」要用的那一塊 <button type="button" class="btn small" data-mapdraw-start>找不到?改成自己描</button>')+' <button type="button" class="btn small" data-mapasg-cancel style="margin-left:6px">取消</button>';b.style.display='flex';mapDrawPaint_();
+  b.innerHTML=''+(MAPDRAW?'「'+esc(MAPASG.no)+'」:沿著邊界一個角一個角點(已點 '+MAPDRAW.pts.length+' 點,會自動吸到附近的角) <button type="button" class="btn small" data-mapdraw-undo>退一步</button><button type="button" class="btn small" data-mapdraw-done'+(MAPDRAW.pts.length<3?' disabled':'')+'>完成</button>':'請點一下「'+esc(MAPASG.no)+'」要用的那一塊')+' <button type="button" class="btn small" data-mapasg-cancel style="margin-left:6px">取消</button>';b.style.display='flex';mapDrawPaint_();
 }
 document.addEventListener('click',function(e){
   var tg=e.target&&e.target.closest?e.target:null;if(!tg)return;
@@ -6929,7 +6978,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'&&MAPASG){MAP
       if(typeof moved!=='undefined'&&moved)return;
       var pt=svgPt(e.clientX,e.clientY),p0=MAPASG;
       if(MAPDRAW){var sp=mapSnap_(pt);MAPDRAW.pts.push([sp.x,sp.y]);mapAsgBar_();return}
-      if(!mapHit_(pt)){var sp0=mapSnap_(pt);MAPDRAW={pts:[[sp0.x,sp0.y]]};mapAsgBar_();toast('這裡沒有現成的塊,改成自己描:沿著邊界一個角一個角點。');return}
+      if(!mapHit_(pt)){toast('這個位置沒有圖塊,請點圖上有的格子。');return}
       if(!window.confirm('要把「'+p0.no+'」改成用你點的這一塊嗎?\n如果那一塊本來是別的地號,兩個會互換。'))return;
       MAPASG=null;mapAsgBar_();
       api('setParcelShape',{projectId:p0.proj,parcelId:p0._srv,point:[pt.x,pt.y]}).then(function(r){
