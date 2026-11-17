@@ -905,7 +905,7 @@ function updateLabels(){
       for(var i=0;i<placed.length;i++){var r=placed[i];if(bx<r[2]&&bx+w>r[0]&&by<r[3]&&by+h>r[1]){hit=true;break}}
       if(!hit){chosen=steps[k];box=[bx,by,bx+w,by+h];break}
     }
-    var f1=f0*chosen;
+    var f1=Math.max(f0*chosen,9/sc);   // 再小的地號,字在畫面上也不小於約 9px
     if(!box)box=[e.p.cx-len*f1*0.31,e.p.cy-f1/2,e.p.cx+len*f1*0.31,e.p.cy+f1/2];
     placed.push(box);
     e.l1.setAttribute('font-size',Math.round(f1*100)/100);
@@ -913,7 +913,7 @@ function updateLabels(){
     var second=f1*sc>=12;
     e.l2.setAttribute('font-size',Math.round(f1*80)/100);
     e.l2.setAttribute('y',e.p.cy+f1*1.05);e.l2.setAttribute('dominant-baseline','central');
-    e.l2.setAttribute('display',second?'':'none');
+    e.l2.setAttribute('display','none');   // 地號下面的第二行(底線)不顯示
   });
 }
 /* ---------- viewBox ---------- */
@@ -6406,20 +6406,28 @@ function mapOverlay_(){
     n.innerHTML='<svg viewBox="-20 -26 40 46" width="30" height="34" aria-hidden="true"><g id="mapnorth-g"><path d="M0 -22L9 8L0 3L-9 8Z" fill="currentColor"/></g></svg><div style="font-weight:700;line-height:1">北</div>';
     wrap.appendChild(n);
     sc=document.createElement('div');sc.id='mapscale';sc.setAttribute('role','img');sc.setAttribute('aria-label','比例尺');
-    sc.style.cssText='position:absolute;right:12px;bottom:44px;padding:8px 14px 7px;background:var(--surface);border:1px solid var(--line);border-radius:10px;font-size:16px;font-weight:700;color:var(--ink);pointer-events:none';
+    sc.style.cssText='position:absolute;right:12px;bottom:44px;padding:4px 8px 3px;background:rgba(255,255,255,.85);border:1px solid var(--line);border-radius:6px;font-size:12px;font-weight:600;color:var(--ink);pointer-events:none';
     sc.innerHTML='<div id="mapscale-t" style="margin-bottom:4px;white-space:nowrap"></div><div id="mapscale-b" style="height:10px;border:2px solid currentColor;border-top:0;box-sizing:border-box"></div>';
     wrap.appendChild(sc);
     ex=document.createElement('button');ex.id='mapexp';ex.type='button';ex.className='btn small';ex.textContent='匯出圖片';ex.setAttribute('aria-label','把目前看到的地圖匯出成圖片');
     ex.style.cssText='position:absolute;right:12px;top:78px';wrap.appendChild(ex);
+    var rb=document.createElement('button');rb.id='mapratio';rb.type='button';rb.className='btn small';rb.textContent='縮放到 1:1000';rb.setAttribute('aria-label','把地圖縮放到比例尺 1:1000');
+    rb.style.cssText='position:absolute;right:12px;top:112px';wrap.appendChild(rb);
+    rb.addEventListener('click',function(){
+      var g=PRJ[S.proj]&&PRJ[S.proj].geo;if(!g||!(g.scale>0))return;
+      var sv=$('#map'),rr=sv.getBoundingClientRect(),cw2=rr.width||1000,ch2=rr.height||660,ppu2=g.scale/(1000*0.000264583),cx=vb.x+vb.w/2,cy=vb.y+vb.h/2;
+      vb.w=cw2/ppu2;vb.h=ch2/ppu2;vb.x=cx-vb.w/2;vb.y=cy-vb.h/2;clampVB();applyVB();
+    });
   }
   var show=!!geo&&geo.scale>0;
-  n.style.display=sc.style.display=show?'':'none';ex.style.display=pr?'':'none';
+  n.style.display=sc.style.display=show?'':'none';ex.style.display=pr?'':'none';var rb2=$('#mapratio');if(rb2)rb2.style.display=show?'':'none';
   if(!show)return;
   var g=document.getElementById('mapnorth-g');if(g)g.setAttribute('transform','rotate('+(Number(geo.north)||0)+')');
   n.setAttribute('aria-label','指北針:北方在畫面'+(Number(geo.north)?'順時針 '+geo.north+' 度':'正上方'));
   var r=svg.getBoundingClientRect(),cw=r.width||1000,ch=r.height||660,ppu=Math.min(cw/vb.w,ch/vb.h),mpp=geo.scale/ppu;
-  var m=niceM_(mpp*600),px=m/mpp;
-  $('#mapscale-t').textContent=mLabel_(m);$('#mapscale-b').style.width=Math.max(10,Math.round(px))+'px';
+  var m=niceM_(mpp*110),px=m/mpp;
+  var ratio=Math.round(mpp/0.000264583/10)*10;   // 以螢幕 96dpi 換算的比例尺分母
+  $('#mapscale-t').textContent=mLabel_(m)+'  ·  約 1:'+ratio.toLocaleString('en-US');$('#mapscale-b').style.width=Math.max(10,Math.round(px))+'px';
 }
 window.addEventListener('resize',function(){if(location.hash==='#map')mapOverlay_()});
 function expMapPng_(){
