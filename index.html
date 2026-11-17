@@ -897,7 +897,7 @@ function updateLabels(){
     var len=String(e.p.no).length,f0=15;
     if(e.p.lf){
       if(!e.bb){var x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;e.p.pts.forEach(function(q){if(q[0]<x0)x0=q[0];if(q[0]>x1)x1=q[0];if(q[1]<y0)y0=q[1];if(q[1]>y1)y1=q[1]});e.bb=[x1-x0,y1-y0]}
-      f0=Math.min(e.p.lf*0.7,e.bb[0]/(len*0.62)*0.8);
+      f0=Math.min(15/sc,e.p.lf*0.7,e.bb[0]/(len*0.62)*0.8);
     }
     var chosen=steps[steps.length-1],box=null;
     for(var k=0;k<steps.length;k++){
@@ -965,6 +965,7 @@ function initMapEvents(){
     if(moved)return;
     var t=e.target.closest?e.target.closest('polygon.p'):null;
     if(t)selectParcel(+t.getAttribute('data-id'),false);
+    else if(S.sel!==null||S.focusOwner!==null){S.sel=null;S.focusOwner=null;renderSide();paintMap();renderDetail()}   // 點空白處:取消選取和框選,回到一般地圖
   });
   svg.addEventListener('keydown',function(e){
     if((e.key==='Enter'||e.key===' ')&&e.target.classList&&e.target.classList.contains('p')){
@@ -3923,6 +3924,7 @@ function route(){
   if(r==='admin'&&S.role!=='admin')r='projects';
   if(r==='import'&&S.role!=='admin')r='projects';
   if(r==='reports'&&S.role==='staff')r='projects';
+  if(!permOK_(r))r='projects';
   $$('.view').forEach(function(v){v.classList.toggle('on',v.id==='view-'+r)});
   $$('.tabs a').forEach(function(a){if(a.dataset.v===r||(r==='map'&&a.dataset.v==='projects'))a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
   if(S.viewer&&r!=='projects'&&r!=='map'){r='projects';$$('.view').forEach(function(v){v.classList.toggle('on',v.id==='view-projects')})}
@@ -3930,6 +3932,7 @@ function route(){
   $('#tab-admin').style.display=S.role==='admin'?'':'none';
   $('#tab-import').style.display=S.role==='admin'?'':'none';
   $('#tab-reports').style.display=S.role==='staff'?'none':'';
+  applyPermTabs_();
   if(r==='map')setTimeout(function(){paintMap();mapOverlay_()},0);
 }
 function renderAll(){
@@ -4508,11 +4511,11 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[]};
+var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
   if(!c)return;
-  CFG.stageNames=c.stageNames||null;CFG.headPct=c.headPct;CFG.sharePct=c.sharePct;CFG.expireDays=c.expireDays;CFG.tags=(c.tags||[]).slice();
+  CFG.stageNames=c.stageNames||null;CFG.headPct=c.headPct;CFG.sharePct=c.sharePct;CFG.expireDays=c.expireDays;CFG.tags=(c.tags||[]).slice();CFG.rolePerms=c.rolePerms||null;
   if(c.expireDays>0)DEED_EXPIRE_DAYS=c.expireDays;
   if(CFG.tags.length){CONCERNS.length=0;CFG.tags.forEach(function(t){CONCERNS.push(t)})}
 }
@@ -4729,8 +4732,8 @@ function syncFocusFloat(){
   var wrap=document.querySelector('.mapwrap');if(!wrap)return;
   var b=document.getElementById('focus-float'),o=S.focusOwner!==null?OWN[S.focusOwner]:null;
   if(!o){if(b)b.style.display='none';return}
-  if(!b){b=document.createElement('button');b.id='focus-float';b.type='button';b.className='btn small primary';b.setAttribute('data-focus-clear','');wrap.appendChild(b)}
-  b.textContent='✕ 取消框選:'+o.name;b.style.display='';
+  if(!b){b=document.createElement('button');b.id='focus-float';b.type='button';b.className='btn primary';b.setAttribute('data-focus-clear','');b.style.cssText='position:absolute;left:50%;top:14px;transform:translateX(-50%);z-index:6;padding:12px 22px;font-size:17px;font-weight:700;background:#E8590C;border:2px solid #fff;color:#fff;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.35);cursor:pointer;white-space:nowrap';wrap.appendChild(b)}
+  b.textContent='✕ 取消框選:'+o.name;b.style.display='';b.setAttribute('aria-label','取消框選 '+o.name);
 }
 function focusBanner(){
   syncFocusFloat();
@@ -5659,6 +5662,36 @@ function loadAP(){AP.busy=true;AP.err='';api('listProjectsAdmin').then(function(
 function setArchive(id,on,msg){
   api('setProjectArchived',{projectId:id,archived:on}).then(function(){toast(msg);AP.list=null;return refreshData()}).then(function(){renderAdmin()}).catch(function(er){if(er.auth)showLogin('登入已過期,請重新登入');else toast('失敗:'+(er.userMessage||er.message))});
 }
+var PERM_V_=[['projects','專案總覽'],['import','新增專案'],['visits','案件拜訪總覽'],['deeds','謄本更新'],['tasks','行事曆與待辦'],['reports','報表'],['stats','統計'],['data','匯入匯出']];
+var PERM_CEIL_={lead:['projects','import','visits','deeds','tasks','reports','stats','data'],staff:['projects','visits','deeds','tasks','stats','data'],viewer:['projects']};
+var PERM_ROLE_=[['lead','專案負責人'],['staff','業務人員'],['viewer','業主']];
+function permRole_(){return S.viewer?'viewer':S.role}
+// 這個角色在畫面上看不看得到這個功能(管理員全部都有;地圖跟著專案總覽)
+function permOK_(v){
+  if(S.role==='admin'||v==='admin'||v==='map'&&false)return true;
+  if(v==='map')v='projects';
+  var rp=CFG.rolePerms,k=permRole_(),l=rp&&rp[k];
+  if(!l)return (PERM_CEIL_[k]||PERM_CEIL_.staff).indexOf(v)>=0;
+  return l.indexOf(v)>=0;
+}
+function applyPermTabs_(){
+  $$('.tabs a[data-v],#mnav a[data-v],#msheet a[data-v]').forEach(function(a){
+    var v=a.dataset.v;if(v==='admin')return;
+    if(!permOK_(v))a.style.display='none';
+    else if(v!=='import'&&v!=='reports')a.style.display=(S.viewer&&v!=='projects')?'none':'';   // 新增專案、報表的顯示另有規則,這裡只負責「隱藏」
+  });
+}
+var SETTAB='base';
+function setPermHTML(){
+  var rp=CFG.rolePerms||{};
+  var h='<div class="panel span2"><h2>各角色可以用的功能</h2><p class="sethint">勾起來的功能,這個身分才看得到。管理員固定全部都有;灰色的格子是這個身分本來就不能用。</p>'
+    +'<div class="tablewrap"><table><thead><tr><th>功能</th>'+PERM_ROLE_.map(function(r){return '<th style="text-align:center">'+r[1]+'</th>'}).join('')+'</tr></thead><tbody>'
+    +PERM_V_.map(function(v){return '<tr><td>'+esc(v[1])+'</td>'+PERM_ROLE_.map(function(r){
+      var can=PERM_CEIL_[r[0]].indexOf(v[0])>=0,on=can&&(rp[r[0]]?rp[r[0]].indexOf(v[0])>=0:true),fixed=v[0]==='projects';
+      return '<td style="text-align:center"><input type="checkbox" data-set-perm="'+r[0]+':'+v[0]+'" style="width:auto"'+(on?' checked':'')+((can&&!fixed)?'':' disabled')+' aria-label="'+r[1]+' 可用 '+esc(v[1])+'"></td>'}).join('')+'</tr>'}).join('')
+    +'</tbody></table></div></div>';
+  return h;
+}
 function setHTML(){
   var tagArr=(CFG.tags.length?CFG.tags:CONCERNS),nm=CFG.stageNames||STAGES;
   var css='<style>.setwrap{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px;align-items:stretch}.setwrap .panel{margin-top:0}.setwrap .span2{grid-column:1/-1}.setwrap h2{margin:0 0 4px}.setwrap .sethint{margin:0 0 14px;font-size:13px;color:var(--muted)}'
@@ -5667,17 +5700,20 @@ function setHTML(){
     +'.setchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.setchips span{background:var(--soft,#eef3ef);border:1px solid var(--line);border-radius:999px;padding:3px 12px;font-size:13px}'
     +'.setstages{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:10px}.setstages .field{margin:0}.setstages .stno{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--brand,#1f5c46);color:#fff;font-size:12px;margin-right:6px}.setstages input{width:100%;text-align:center}'
     +'@media(max-width:1180px){.setstages{grid-template-columns:repeat(4,minmax(0,1fr))}}@media(max-width:900px){.setwrap{grid-template-columns:1fr}}@media(max-width:640px){.setgrid{grid-template-columns:1fr}.setstages{grid-template-columns:repeat(2,minmax(0,1fr))}}</style>';
-  return css+'<div class="setwrap">'
-    +'<div class="panel"><h2>謄本與同意門檻</h2><p class="sethint">天數填 30 以上;兩個門檻都填 1 到 100 的數字。</p><div class="setgrid">'
+  var tabs=[['base','謄本與同意門檻'],['tags','關注原因標籤'],['stages','簽約階段名稱'],['perm','各角色功能']];
+  var bar='<div class="orow" id="set-tabs" style="gap:8px;flex-wrap:wrap;margin-top:12px">'+tabs.map(function(t){return '<button class="btn small'+(SETTAB===t[0]?' primary':'')+'" type="button" data-set-tab="'+t[0]+'">'+t[1]+'</button>'}).join('')+'</div>';
+  return css+bar+'<div class="setwrap">'
+    +'<div class="panel" data-set-pane="base"><h2>謄本與同意門檻</h2><p class="sethint">天數填 30 以上;兩個門檻都填 1 到 100 的數字。</p><div class="setgrid">'
     +'<div class="field"><label for="set-days">謄本有效天數</label><div class="setunit"><input type="number" id="set-days" min="30" max="3650" step="1" value="'+esc(String(CFG.expireDays))+'"><span>天</span></div></div>'
     +'<div class="field"><label for="set-head">同意門檻:人數</label><div class="setunit"><input type="number" id="set-head" min="1" max="100" step="any" value="'+esc(String(CFG.headPct))+'"><span>%</span></div></div>'
     +'<div class="field"><label for="set-share">同意門檻:持分</label><div class="setunit"><input type="number" id="set-share" min="1" max="100" step="any" value="'+esc(String(CFG.sharePct))+'"><span>%</span></div></div></div></div>'
-    +'<div class="panel"><h2>訪談的關注原因標籤</h2><p class="sethint">一行填一個,最多 20 個,每個 12 字內。</p>'
+    +'<div class="panel" data-set-pane="tags"><h2>訪談的關注原因標籤</h2><p class="sethint">一行填一個,最多 20 個,每個 12 字內。</p>'
     +'<textarea id="set-tags" rows="7" style="width:100%">'+esc(tagArr.join('\n'))+'</textarea>'
     +'<div class="setchips" id="set-tagchips">'+tagArr.map(function(t){return '<span>'+esc(t)+'</span>'}).join('')+'</div></div>'
-    +'<div class="panel span2"><h2>簽約階段名稱</h2><p class="sethint">共 8 個,依序是第 1 到第 8 階段,每個 10 字內、不能重複。</p><div class="setstages">'
+    +'<div class="panel span2" data-set-pane="stages"><h2>簽約階段名稱</h2><p class="sethint">共 8 個,依序是第 1 到第 8 階段,每個 10 字內、不能重複。</p><div class="setstages">'
     +STAGES.map(function(x,i){return '<div class="field"><label for="set-st'+i+'"><span class="stno">'+(i+1)+'</span>階段</label><input type="text" id="set-st'+i+'" data-set-stage="'+i+'" maxlength="10" value="'+esc(nm[i]||x)+'"></div>'}).join('')+'</div>'
     +'<div class="actions"><button class="btn small" type="button" data-set-resetstage>還原預設名稱</button></div></div>'
+    +'<div data-set-pane="perm" class="span2">'+setPermHTML()+'</div>'
     +'<div class="actions span2" style="margin-top:0"><button class="btn primary" type="button" data-set-save>儲存設定</button></div></div>';
 }
 document.addEventListener('input',function(e){
@@ -5685,8 +5721,17 @@ document.addEventListener('input',function(e){
   var box=document.getElementById('set-tagchips');if(!box)return;
   box.innerHTML=e.target.value.split(/\n/).map(function(x){return x.trim()}).filter(Boolean).slice(0,20).map(function(t){return '<span>'+esc(t.slice(0,12))+'</span>'}).join('');
 });
+function setPermRead_(){
+  var o={lead:[],staff:[],viewer:[]};
+  $$('[data-set-perm]').forEach(function(i){var a=i.dataset.setPerm.split(':');if(i.checked||i.disabled&&i.checked)o[a[0]].push(a[1])});
+  return o;
+}
+function setTabShow_(){
+  $$('[data-set-pane]').forEach(function(x){x.style.display=x.dataset.setPane===SETTAB?'':'none'});
+  $$('[data-set-tab]').forEach(function(b){b.classList.toggle('primary',b.dataset.setTab===SETTAB)});
+}
 function saveSettingsUI(){
-  var req={expireDays:$('#set-days').value,headPct:$('#set-head').value,sharePct:$('#set-share').value,tags:$('#set-tags').value.split(/\n/).map(function(x){return x.trim()}).filter(Boolean),stageNames:$$('[data-set-stage]').map(function(i){return i.value.trim()})};
+  var req={expireDays:$('#set-days').value,headPct:$('#set-head').value,sharePct:$('#set-share').value,tags:$('#set-tags').value.split(/\n/).map(function(x){return x.trim()}).filter(Boolean),rolePerms:setPermRead_(),stageNames:$$('[data-set-stage]').map(function(i){return i.value.trim()})};
   api('saveSettings',req).then(function(c){applyCfg(c);toast('已儲存設定。');renderAll()}).catch(function(er){if(er.auth)showLogin('登入已過期,請重新登入');else toast('儲存失敗:'+(er.userMessage||er.message))});
 }
 /* ---- admin: users ---- */
@@ -5743,7 +5788,7 @@ function renderAdmin(){
     el.innerHTML=ph;return;
   }
   if(AD.tab==='set'){
-    el.innerHTML='<h1>後台</h1>'+tabs+setHTML();return;
+    el.innerHTML='<h1>後台</h1>'+tabs+setHTML();setTabShow_();return;
   }
   if(AD.tab==='log'){
     if(LG.rows===null&&!LG.busy&&!LG.err&&location.hash==='#admin'){loadLog(0);return}
@@ -5807,6 +5852,7 @@ document.addEventListener('click',function(e){
     return;
   }
   if(t.closest('[data-lg-login]')){LG.f={user:'',act:'',q:'登入',from:'',to:''};loadLog(0);return}
+  var tb=t.closest('[data-set-tab]');if(tb){SETTAB=tb.dataset.setTab;setTabShow_();return}
   if(t.closest('[data-set-save]')){saveSettingsUI();return}
   if(t.closest('[data-set-resetstage]')){$$('[data-set-stage]').forEach(function(i){i.value=STAGES[+i.dataset.setStage]});return}
   if((b=t.closest('[data-ad-delproj]'))){
@@ -6372,7 +6418,7 @@ function mapOverlay_(){
   var g=document.getElementById('mapnorth-g');if(g)g.setAttribute('transform','rotate('+(Number(geo.north)||0)+')');
   n.setAttribute('aria-label','指北針:北方在畫面'+(Number(geo.north)?'順時針 '+geo.north+' 度':'正上方'));
   var r=svg.getBoundingClientRect(),cw=r.width||1000,ch=r.height||660,ppu=Math.min(cw/vb.w,ch/vb.h),mpp=geo.scale/ppu;
-  var m=niceM_(mpp*420),px=m/mpp;
+  var m=niceM_(mpp*600),px=m/mpp;
   $('#mapscale-t').textContent=mLabel_(m);$('#mapscale-b').style.width=Math.max(10,Math.round(px))+'px';
 }
 window.addEventListener('resize',function(){if(location.hash==='#map')mapOverlay_()});
