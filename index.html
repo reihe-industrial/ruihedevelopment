@@ -4673,11 +4673,12 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null};
+var FRONT_VER='2026-11-18-g';
+var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
   if(!c)return;
-  CFG.stageNames=c.stageNames||null;CFG.headPct=c.headPct;CFG.sharePct=c.sharePct;CFG.expireDays=c.expireDays;CFG.tags=(c.tags||[]).slice();CFG.rolePerms=c.rolePerms||null;CFG.rlCols=c.rlCols||null;
+  CFG.stageNames=c.stageNames||null;CFG.headPct=c.headPct;CFG.sharePct=c.sharePct;CFG.expireDays=c.expireDays;CFG.tags=(c.tags||[]).slice();CFG.rolePerms=c.rolePerms||null;CFG.rlCols=c.rlCols||null;CFG.ver=c.ver||'';
   if(c.expireDays>0)DEED_EXPIRE_DAYS=c.expireDays;
   if(CFG.tags.length){CONCERNS.length=0;CFG.tags.forEach(function(t){CONCERNS.push(t)})}
 }
@@ -5873,6 +5874,8 @@ function setHTML(){
     +'@media(max-width:900px){.setwrap{grid-template-columns:1fr}}@media(max-width:640px){.setgrid{grid-template-columns:1fr}.setstages{grid-template-columns:repeat(2,minmax(0,1fr))}}</style>';
   var tabs=[['base','謄本與同意門檻'],['tags','關注原因標籤'],['stages','簽約階段名稱'],['perm','各角色功能'],['rl','歸戶清冊欄位']];
   var bar='<div class="orow" id="set-tabs" style="gap:8px;flex-wrap:wrap;justify-content:flex-start;margin-top:12px">'+tabs.map(function(t){return '<button class="btn small'+(SETTAB===t[0]?' primary':'')+'" type="button" data-set-tab="'+t[0]+'">'+t[1]+'</button>'}).join('')+'</div>';
+  var vok=CFG.ver===FRONT_VER;
+  bar+='<p class="small" id="ver-line" style="margin:8px 0 0;'+(vok?'color:var(--muted)':'color:#B03020;font-weight:700')+'">網頁版本 '+esc(FRONT_VER)+' · 後端版本 '+esc(CFG.ver||'舊版(沒有版本)')+(vok?' · 兩邊一致':' · ⚠ 兩邊版本不一致:請把最新的 Code.gs 貼進 Apps Script 並重新部署新版本,再按 Ctrl+F5')+'</p>';
   return css+bar+'<div class="setwrap">'
     +'<div class="panel" data-set-pane="base"><h2>謄本與同意門檻</h2><p class="sethint">天數填 30 以上;兩個門檻都填 1 到 100 的數字。</p><div class="setgrid">'
     +'<div class="field"><label for="set-days">謄本有效天數</label><div class="setunit"><input type="number" id="set-days" min="30" max="3650" step="1" value="'+esc(String(CFG.expireDays))+'"><span>天</span></div></div>'
