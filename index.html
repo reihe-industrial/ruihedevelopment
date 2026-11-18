@@ -164,7 +164,7 @@ dialog::backdrop{background:rgba(8,18,14,.55)}
 .notice{border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:8px 12px;font-size:13px;color:var(--ink-2);margin-top:10px}
 textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
 .btn[disabled]{opacity:.5;cursor:not-allowed}
-.pcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:14px}
+.pcards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px}@media(max-width:760px){.pcards{grid-template-columns:1fr}}
 .pcard{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px}
 .pcard.cur{border:2px solid var(--brand);padding:15px}
 .pcard h2{font-size:17px;margin:0}
@@ -1134,7 +1134,8 @@ function visitFilterOwner(r){
   if(q){
     var see=canSeeOwner(r.o,r.pr.id),hay=[r.o.name,r.pr.name].concat(r.ps.map(function(x){return secOf(x.p)+' '+x.p.no}),r.ps.map(function(x){return secOf(x.p)+x.p.no}));
     if(see)hay.push(regOf(r.o),r.o.resAddr||'');
-    if(!hay.some(function(x){return String(x).indexOf(q)>=0}))return false;
+    if(see)hay.push(r.o.phone||'',r.o.contact||'');
+    if(!vqMatch_(hay,q))return false;
   }
   return true;
 }
@@ -1151,7 +1152,7 @@ function parcelRowsAll(){
       if(!quickOk(s,owners.some(function(x){return x.o.pending}),r0changed(p)))return;
       if(q){
         var hay=[secOf(p)+' '+p.no,secOf(p)+p.no,pr.name].concat(owners.map(function(x){return x.o.name}));
-        if(!hay.some(function(x){return String(x).indexOf(q)>=0}))return;
+        if(!vqMatch_(hay,q))return;
       }
       out.push({p:p,pr:pr,owners:owners,s:s});
     });
@@ -1211,12 +1212,13 @@ function renderVisits(refocus){
   var rowsAll=ownerRowsAll(),rows=rowsAll.filter(visitFilterOwner);
   var scope=S.role==='admin'?'管理者:全部專案、全部地主的拜訪狀況與資料。':S.role==='lead'?'專案負責人:你負責的 '+vis.length+' 個專案,可以分專案看全部地主。':'承辦人員:只看得到被指派給你的地主。';
   var h='<h1>案件拜訪總覽</h1><p class="muted" style="margin:0">'+scope+'</p>';
+  h+=visitSearchBar_();
   h+='<div class="bar-tools"><div class="seg" role="group" aria-label="檢視方式" style="min-width:400px;grid-template-columns:repeat(4,1fr)">'
     +['proj|依專案','parcel|依地號','owner|依地主','due|依跟進日'].map(function(x){var a=x.split('|');return '<button type="button" data-vw="'+a[0]+'" aria-pressed="'+(S.vw===a[0])+'">'+a[1]+'</button>'}).join('')+'</div>'
     +'<label class="small muted" for="v-proj">專案</label><select id="v-proj"><option value="all">全部專案</option>'+vis.map(function(p){return '<option value="'+p.id+'"'+(S.vproj===p.id?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select>'
     +(manage?'<label class="small muted" for="v-asg">承辦人</label><select id="v-asg"><option value="all">全部</option>'+staffIds().map(function(x){return '<option value="'+esc(x)+'"'+(S.vasg===x?' selected':'')+'>承辦人'+esc(x)+'</option>'}).join('')+'</select>':'')
     +'<label class="small muted" for="v-lv">意願</label><select id="v-lv"><option value="all">全部</option>'+LEVELS.map(function(l){return '<option value="'+l.k+'"'+(S.vlv===l.k?' selected':'')+'>'+lvl(l)+'</option>'}).join('')+'</select>'
-    +'<input type="search" id="vq" placeholder="搜尋地主、地號、地址" value="'+esc(S.vq)+'" aria-label="搜尋"></div>';
+    +'</div>';
   h+='<div class="chips" style="margin-top:8px" role="group" aria-label="快速篩選">'
     +QCHIPS.map(function(x){return '<button type="button" class="chip tog" data-vquick="'+x[0]+'" title="'+x[2]+'" aria-pressed="'+(S.vquick===x[0])+'">'+x[1]+'</button>'}).join('')+'</div>'
     +(S.vquick!=='all'?'<p class="vhint">目前篩選「'+QCHIPS.filter(function(x){return x[0]===S.vquick})[0][1]+'」:'+QCHIPS.filter(function(x){return x[0]===S.vquick})[0][2]+'。</p>':'');
@@ -1250,7 +1252,7 @@ function renderVisits(refocus){
     h+='</tbody></table></div>';
   }else{
     if(manage)h+=bulkBarHTML();
-    var shown=vis.filter(function(p){return S.vproj==='all'||S.vproj===p.id});
+    var shown=vis.filter(function(p){return (S.vproj==='all'||S.vproj===p.id)&&(!S.vq.trim()||rows.some(function(r){return r.pr.id===p.id}))});
     shown.forEach(function(pr){
       var rr=rows.filter(function(r){return r.pr.id===pr.id}),by={};
       LEVELS.forEach(function(l){by[l.k]=0});
@@ -2236,9 +2238,11 @@ function statusControl(pr){
 function renderProjects(){
   var el=$('#projects-page');if(!el)return;
   var vis=visibleProjects(),hidden=DB.projects.length-vis.length,manage=S.role==='admin'||S.role==='lead';
-  var h='<h1>專案總覽</h1><p class="muted" style="margin:0">這個角色可以看到 '+vis.length+' 個專案。點卡片進入專案,也可以用右上角的選單切換。'+(manage?'管理者和專案負責人可以在卡片上設定承辦業務'+(S.role==='admin'?',管理者還能修改專案狀態':'')+'。':'')+'</p>';
-  h+='<div class="pcards">';
-  vis.forEach(function(pr){
+  var h=projHead_()+'<p class="muted" style="margin:0">這個角色可以看到 '+vis.length+' 個專案。點卡片進入專案,也可以用右上角的選單切換。'+(manage?'管理者和專案負責人可以在卡片上設定承辦業務'+(S.role==='admin'?',管理者還能修改專案狀態':'')+'。':'')+'</p>';
+  h+=projFilterBar_(vis)+'<div class="pcards">';
+  var shownP=projFilter_(vis);
+  if(!shownP.length)h+='<div class="notice" style="grid-column:1/-1">沒有符合條件的專案。</div>';
+  shownP.forEach(function(pr){
     var st=stats(pr.id),over=0,allBy={};
     LEVELS.forEach(function(l){allBy[l.k]=st.by[l.k].a});
     projOwners(pr.id).forEach(function(o){var s=oState(o,pr.id);if(s.next&&diffDays(s.next)<0)over++});
@@ -3929,11 +3933,11 @@ function route(){
   if(r==='reports'&&S.role==='staff')r='projects';
   if(!permOK_(r))r='projects';
   $$('.view').forEach(function(v){v.classList.toggle('on',v.id==='view-'+r)});
-  $$('.tabs a').forEach(function(a){if((a.dataset.v===r&&!(r==='import'&&IM.opts.target))||(r==='map'&&a.dataset.v==='projects')||(r==='import'&&IM.opts.target&&a.dataset.v==='deeds'))a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+  $$('.tabs a').forEach(function(a){if((a.dataset.v===r&&r!=='import')||(r==='map'&&a.dataset.v==='projects')||(r==='import'&&IM.opts.target&&a.dataset.v==='deeds')||(r==='import'&&!IM.opts.target&&a.dataset.v==='projects'))a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
   if(S.viewer&&r!=='projects'&&r!=='map'){r='projects';$$('.view').forEach(function(v){v.classList.toggle('on',v.id==='view-projects')})}
   $$('.tabs a').forEach(function(a){if(S.viewer&&a.dataset.v!=='projects')a.style.display='none';else if(S.viewer===false&&a.dataset.v!=='import'&&a.dataset.v!=='reports'&&a.dataset.v!=='admin')a.style.display=''});
   $('#tab-admin').style.display=S.role==='admin'?'':'none';
-  $('#tab-import').style.display=S.role==='admin'?'':'none';
+  $('#tab-import').style.display='none';
   $('#tab-reports').style.display=S.role==='staff'?'none':'';
   applyPermTabs_();
   if(r==='map')setTimeout(function(){paintMap();mapOverlay_()},0);
@@ -4606,7 +4610,7 @@ async function bootstrap_(data0){
   S.proj=DB.projects.length?DB.projects[0].id:'';
   indexDB();
   if(S.proj){resetFilters();buildMap();renderAll();pickStart()}
-  else{renderProjects();$('#projects-page').innerHTML='<h1>專案總覽</h1><div class="notice">目前沒有你可以看的專案。請聯絡管理員把你加入專案。</div>'}
+  else{renderProjects();$('#projects-page').innerHTML=projHead_()+'<div class="notice">目前沒有你可以看的專案。請聯絡管理員把你加入專案。</div>'}
   route();
   UL.done=false;UL.busy=false;LG.rows=null;LG.err='';AD.tab='users';
 }
@@ -7519,6 +7523,60 @@ function ddGoImport_(pid){
     var add=UP.recs.slice(n0).map(function(x){return x.rec});
     if(add.length&&UP.pid)deedCloudSave_(UP.pid,add);
   };
+})();
+
+/* ---- 專案總覽:新增專案按鈕、篩選列 / 案件拜訪總覽:大搜尋列 ---- */
+var PF={q:'',status:'all',type:'all',region:'all'};
+function projHead_(){
+  return '<div class="orow" style="margin-bottom:4px"><h1 style="margin:0">專案總覽</h1>'+(S.role==='admin'?'<button class="btn primary" type="button" data-pj-new>＋ 新增專案</button>':'')+'</div>';
+}
+function projFilterBar_(vis){
+  var uniq=function(k){var m={};vis.forEach(function(p){if(p[k])m[p[k]]=1});return Object.keys(m)};
+  var sel=function(id,label,k,val,items){return items.length>0?'<label class="small muted" for="'+id+'">'+label+'</label><select id="'+id+'"><option value="all">全部</option>'+items.map(function(x){return '<option value="'+esc(x)+'"'+(val===x?' selected':'')+'>'+esc(x)+'</option>'}).join('')+'</select>':''};
+  var n=projFilter_(vis).length,on=PF.q.trim()||PF.status!=='all'||PF.type!=='all'||PF.region!=='all';
+  return '<style>.pfbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px}.pfbar input[type=search]{flex:1 1 260px;min-width:200px;font-size:15px;padding:8px 10px}</style>'
+    +'<div class="pfbar" role="search" aria-label="篩選專案"><input type="search" id="pf-q" placeholder="搜尋專案名稱、區域、類型" value="'+esc(PF.q)+'" aria-label="搜尋專案">'
+    +sel('pf-status','狀態','status',PF.status,uniq('status'))+sel('pf-type','類型','type',PF.type,uniq('type'))+sel('pf-region','區域','region',PF.region,uniq('region'))
+    +(on?'<button class="btn small" type="button" data-pf-clear>清除篩選</button>':'')
+    +'<span class="small muted" style="margin-left:auto">顯示 '+n+' / '+vis.length+' 個專案</span></div>';
+}
+function projFilter_(vis){
+  var toks=PF.q.trim().split(/\s+/).filter(Boolean);
+  return vis.filter(function(p){
+    if(PF.status!=='all'&&p.status!==PF.status)return false;
+    if(PF.type!=='all'&&p.type!==PF.type)return false;
+    if(PF.region!=='all'&&p.region!==PF.region)return false;
+    var hay=[p.name,p.region||'',p.type||'',p.status||''].join(' ');
+    return toks.every(function(t){return hay.indexOf(t)>=0});
+  });
+}
+// 搜尋:多個關鍵字用空格分開,每個關鍵字都要找得到(找得到的欄位不限)
+function vqMatch_(hay,q){
+  var all=hay.map(function(x){return String(x==null?'':x)}).join(' ');
+  return String(q).trim().split(/\s+/).filter(Boolean).every(function(t){return all.indexOf(t)>=0});
+}
+function visitSearchBar_(){
+  return '<style>.vsbar{display:flex;gap:8px;margin-top:12px}.vsbar input{flex:1;font-size:16px;padding:11px 14px;border:2px solid var(--brand,#1f5c46);border-radius:10px;background:var(--surface,#fff)}</style>'
+    +'<div class="vsbar" role="search"><input type="search" id="vq" placeholder="搜尋案件(專案名稱)、地主姓名、地號、地址、電話;多個關鍵字用空格分開" value="'+esc(S.vq)+'" aria-label="搜尋案件或地主">'
+    +(S.vq?'<button class="btn" type="button" data-vq-clear>清除</button>':'')+'</div>';
+}
+(function(){
+  function refocus(id){var i=document.getElementById(id);if(i){i.focus();try{i.setSelectionRange(i.value.length,i.value.length)}catch(e){}}}
+  document.addEventListener('input',function(e){
+    if(e.target&&e.target.id==='pf-q'){PF.q=e.target.value;renderProjects();refocus('pf-q')}
+  });
+  document.addEventListener('change',function(e){
+    var t=e.target;if(!t)return;
+    if(t.id==='pf-status'){PF.status=t.value;renderProjects()}
+    else if(t.id==='pf-type'){PF.type=t.value;renderProjects()}
+    else if(t.id==='pf-region'){PF.region=t.value;renderProjects()}
+  });
+  document.addEventListener('click',function(e){
+    var t=e.target;if(!t||!t.closest)return;
+    if(t.closest('[data-pf-clear]')){PF={q:'',status:'all',type:'all',region:'all'};renderProjects();return}
+    if(t.closest('[data-pj-new]')){IM.opts.target='';if(location.hash==='#import'){route();renderImport()}else{location.hash='#import';renderImport()}return}
+    if(t.closest('[data-vq-clear]')){S.vq='';renderVisits('vq');return}
+  });
 })();
 
 /* ---------- start ---------- */
