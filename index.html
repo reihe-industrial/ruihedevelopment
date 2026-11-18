@@ -4419,10 +4419,29 @@ function sgBuild(ex,opts){
       polys.forEach(function(pl,i){if(lblUsed[i])return;var cc=mkCentroid(pl.pts);if(grayUsed.some(function(g){return Math.abs(g.A/pl.area-1)<0.01&&Math.hypot(g.c[0]-cc[0],g.c[1]-cc[1])<1}))lblUsed[i]='灰底'});
       // 一次全部一起配(匈牙利法,總成本最小):成本以「登記面積和圖形面積差多少」為主、字離圖形多遠為輔。
       // 細長地排成一排時字常常壓在隔壁那一格,只看字旁邊的格子會整排錯開一格;面積才分得出來。
+      // 字的位置和地塊中心常有固定的偏移(整排細長地的字都偏同一個方向):先用「面積很確定」的地號量出附近的偏移,再把字挪回去比對
+      var anchors=[];
+      Object.keys(only).forEach(function(no){
+        var A0=Number(areas[no])||0;if(!(A0>=100))return;
+        var ts0=labT.filter(function(t){return t.s===no});if(ts0.length!==1)return;var t0=ts0[0],ers=[];
+        polys.forEach(function(pl,i){if(pl.area<0.5)return;var d0=mkInPoly([t0.x,t0.y],pl.pts)?0:mkDistPoly([t0.x,t0.y],pl.pts);if(d0>45)return;var er0=Math.abs(pl.area/A0-1);if(er0<0.12)ers.push({er:er0,pl:pl})});
+        ers.sort(function(x,y){return x.er-y.er});
+        if(ers.length&&ers[0].er<=0.02&&(ers.length<2||ers[1].er>0.02)){var cc0=mkCentroid(ers[0].pl.pts);anchors.push({no:no,x:t0.x,y:t0.y,ox:cc0[0]-t0.x,oy:cc0[1]-t0.y})}
+      });
+      function med(v){var s=v.slice().sort(function(a,b){return a-b});return s[Math.floor(s.length/2)]}
+      function corr(t){
+        var nb=anchors.filter(function(a){return a.no!==t.s&&Math.hypot(a.x-t.x,a.y-t.y)<=80});if(nb.length<3)return null;
+        var mx=med(nb.map(function(a){return a.ox})),my=med(nb.map(function(a){return a.oy}));
+        var ok=nb.filter(function(a){return Math.abs(a.ox-mx)<=5&&Math.abs(a.oy-my)<=5}).length;
+        if(ok<Math.max(2,Math.ceil(nb.length*0.6)))return null;
+        if(Math.hypot(mx,my)<3)return null;   // 偏移很小就不用修正
+        return {x:t.x+mx,y:t.y+my,s:t.s};
+      }
       var cl={},rows=nos.filter(function(no){return !assign[no]}),colIdx={},cols=[];
       rows.forEach(function(no){
         var A=Number(areas[no])||0,seen={};
-        labT.filter(function(t){return t.s===no}).forEach(function(t){
+        labT.filter(function(t){return t.s===no}).forEach(function(t0){
+          var t=corr(t0)||t0,moved=t!==t0;
           polys.forEach(function(pl,i){
             if(lblUsed[i]||pl.area<0.5)return;
             var inside=mkInPoly([t.x,t.y],pl.pts),d=inside?0:mkDistPoly([t.x,t.y],pl.pts);
@@ -4430,9 +4449,9 @@ function sgBuild(ex,opts){
             var cc=mkCentroid(pl.pts),dc=Math.hypot(cc[0]-t.x,cc[1]-t.y),ok1,fl,cost;
             if(A>0){
               var rt=pl.area/A,er=Math.abs(rt-1);
-              ok1=(d<=14&&er<=(A>=60?0.25:0.6))||(d<=14&&inside&&er<=0.6)||(d<=30&&er<=0.08);
+              ok1=(d<=14&&er<=(A>=60?0.15:0.6))||(d<=14&&inside&&er<=(A>=60?0.15:0.6))||(d<=30&&er<=0.08);
               if(!ok1)return;
-              fl=(inside||d<=8)&&er<=(A>=60?0.25:0.6)?(inside?1:2):3;if(er>0.25&&A>=60)fl=3;
+              fl=(inside||d<=8)&&er<=(A>=60?0.15:0.6)?(inside?1:2):3;if(er>0.15&&A>=60)fl=3;
               cost=er*150+d*0.15+(inside?0:0.5)+(d>14?20:0)+0.002*dc;   // 離字太遠的(跨到馬路對面那種)寧可不綁
             }else{
               if(!inside&&!(d<=3&&pl.area<=3000))return;
@@ -4464,6 +4483,7 @@ function sgBuild(ex,opts){
         var lost=rows.filter(function(no){return !got[no]});
         Object.keys(pick).forEach(function(no){var pk=pick[no],A=Number(areas[no])||0,fl=pk.fl;
           if(A>0&&lost.some(function(l){var A2=Number(areas[l])||0;return A2>0&&Math.abs(A2/A-1)<0.08&&cl[l]&&cl[l][pk.i]}))fl=3;
+          if(fl===3)return;   // 沒把握的不標,留給使用者手動指定(寧可空著,不要標錯)
           bind(no,{i:pk.i},fl)});
       }
       // 面積幾乎一樣的相鄰細長地(例如 454-7 和 454-24):字雖然壓在隔壁格,但「字的先後順序」和「格子的先後順序」一定一致,不一致就互換
@@ -4532,7 +4552,7 @@ function sgBuild(ex,opts){
       if(!d.best)return n+'(字旁邊沒有封閉的地塊,可能線沒畫完整)';
       if(d.A>0&&d.best.by&&Math.abs(d.best.a/d.A-1)<=0.25)return n+'(清冊 '+d.A+' ㎡,字旁的塊 '+d.best.a+' ㎡ 大小對得上,但這一塊已經給了地號 '+d.best.by+')';
       return n+(d.A>0?'(清冊 '+d.A+' ㎡,圖上字旁最近的塊 '+d.best.a+' ㎡,差太多不敢綁)':'(清冊沒有面積,字不在地塊內)')};
-    warns.push('這些地號圖上沒有灰底、也找不到面積對得上的地塊,沒有放進地圖:'+miss.map(why).join('、')+'。')}
+    warns.push('這些地號圖上沒有灰底、也找不到面積對得上的地塊,沒有放進地圖,請套用後自己手動標:'+miss.map(why).join('、')+'。')}
   }
   if(!use.length)return {ok:false,warns:warns,sec:sec,den:den,pages:prep.pages.map(function(p){return {no:p.no,skip:p.skip||null,gray:p.grays.length}}),comps:lay.comps};
   // 多塊島由上往下排(各留 40 m 間隔),再整張縮進 920 x 580 畫布
@@ -6255,6 +6275,7 @@ function cadRender(){
     else{
       h+=cadSVG(r.geo);
       h+='<p class="small" style="margin:6px 0 0">共 <b>'+r.list.length+'</b> 筆地號,段別「'+esc(r.sec||'未標')+'」,比例尺 1/'+r.den+'。'+(r.islands.length>1?'分成 '+r.islands.length+' 塊:'+r.islands.map(function(x){return '第 '+x.join('、')+' 頁'}).join(' / '):'全部接成一塊。')+'黃色=兩筆以上共用的圖形。</p>';
+      h+=unplacedHTML_(CAD.onlyOn?cadUnplaced_(r):[]);
       if(r.warns&&r.warns.length)h+='<div class="notice" style="margin-top:6px">'+r.warns.map(esc).join('<br>')+'</div>';
     }
     if(r.ok)h+=geoChkHTML_(geoAreaCheck_(geoRefsDB_(CAD.pid),r.geo.parcels,r.sec||CAD.sec));
@@ -6472,7 +6493,8 @@ function cbFinalHTML_(){
   if(f.err)return '<div class="notice bad" style="margin-top:8px">'+esc(f.err)+'</div>';
   if(!f.geo)return '';
   var cov=cbCoverage_(f.geo),n=Object.keys(f.geo.parcels).length;
-  var h='<h3>合起來的結果</h3>'+cadSVG(f.geo)+'<p class="small" style="margin:6px 0 0">圖上共 <b>'+n+'</b> 筆地號'+(cov.total?',專案的 '+cov.total+' 筆地號裡有 <b>'+(cov.total-cov.miss.length)+'</b> 筆對到圖上':'')+'。'+(cov.miss.length?'<span class="bad"> 沒對到:'+cov.miss.slice(0,15).map(esc).join('、')+(cov.miss.length>15?' 等 '+cov.miss.length+' 筆':'')+'。</span><span class="muted"> 這些地號會用示意方格排在地圖下方,可以再傳含有它們的地籍圖。</span>':'')+'</p>';
+  var h='<h3>合起來的結果</h3>'+cadSVG(f.geo)+'<p class="small" style="margin:6px 0 0">圖上共 <b>'+n+'</b> 筆地號'+(cov.total?',專案的 '+cov.total+' 筆地號裡有 <b>'+(cov.total-cov.miss.length)+'</b> 筆對到圖上':'')+'。'+(cov.miss.length?'<span class="bad"> 沒對到(下方紅框):'+cov.miss.slice(0,15).map(esc).join('、')+(cov.miss.length>15?' 等 '+cov.miss.length+' 筆':'')+'。</span><span class="muted"> 這些地號會用示意方格排在地圖下方,可以再傳含有它們的地籍圖。</span>':'')+'</p>';
+  h+=unplacedHTML_(cov.miss,'這些地號會先用示意方格排在地圖下方。建立專案後,在地圖上點該地號,按「指定圖塊」或「描形狀」手動標;也可以再傳含有它們的地籍圖。');
   if(IM.res&&IM.res.parcels&&IM.res.parcels.length)h+=geoChkHTML_(geoAreaCheck_(IM.res.parcels.map(function(p){return {sec:p.sec||'',no:p.no,area:p.area}}),f.geo.parcels));
   return h;
 }
@@ -6537,6 +6559,18 @@ document.addEventListener('change',function(e){
   var dup=CB.items.filter(function(x){return x!==it&&x.sec===it.sec});if(dup.length)it.warn='段別「'+it.sec+'」和「'+dup[0].name+'」重複,合不起來。';
   renderCbPanel();
 });
+function unplacedHTML_(list,where){
+  if(!list||!list.length)return '';
+  return '<div role="alert" style="margin:12px 0;padding:14px 16px;border:3px solid #C0392B;background:#FDECEA;border-radius:12px"><div style="font-size:19px;font-weight:800;color:#B03020">⚠ 有 '+list.length+' 筆地號沒有標到圖上,要自己手動標</div>'
+    +'<div style="font-size:17px;font-weight:700;margin-top:8px;line-height:1.8;color:#7A1F14">'+list.map(esc).join('、')+'</div>'
+    +'<div class="small" style="margin-top:8px;color:#7A1F14">'+(where||'套用後,在地圖上點這個地號,按「指定圖塊」(選一塊現成的圖形)或「描形狀」(自己沿邊界點角)。')+'</div></div>';
+}
+function cadUnplaced_(res){   // 專案裡有、但這次圖上沒標到的地號
+  var got={};(res.list||[]).forEach(function(p){got[String(p.no)]=1});
+  var sec=res.sec||CAD.sec,out=[];
+  DB.parcels.forEach(function(p){if(p.proj!==CAD.pid||(p.sec&&sec&&p.sec!==sec))return;if(!got[String(p.no)])out.push(p.no)});
+  return out;
+}
 function cadAreasMap_(pid){var o={};DB.parcels.forEach(function(p){if(p.proj===pid&&p.area>0){o[(p.sec||'')+'|'+p.no]=p.area;if(o[String(p.no)]===undefined)o[String(p.no)]=p.area}});return o}
 function cadApply(){
   var r=CAD&&CAD.res;if(!r||!r.ok)return;
