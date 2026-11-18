@@ -3201,7 +3201,7 @@ function sampleText2(){return toCSV(sampleRows2()).replace(/^\uFEFF/,'')}
 function renderImport(){
   var el=$('#import-page');if(!el)return;
   if(S.role!=='admin'){el.innerHTML='<h1>新增專案</h1><div class="notice">只有管理員可以新增專案。</div>';return}
-  var h='<h1>新增專案:匯入並自動整理資料</h1><p class="muted" style="margin:0">把謄本整理表或 Excel 貼上來,系統會自動統一格式、拆開共有人、合併重複的列,確認沒問題再建立專案。</p>';
+  var h='<h1>'+(IM.opts.target?'謄本更新:新增地號到「'+esc((PRJ[IM.opts.target]||{}).name||'')+'」':'新增專案:匯入並自動整理資料')+'</h1>'+(IM.opts.target?'<div class="notice" style="margin:10px 0">這裡只會把專案還沒有的地號加進去。<button class="btn small" type="button" data-im-canceltarget style="margin-left:8px">取消,回謄本更新</button></div>':'')+'<p class="muted" style="margin:0">把謄本整理表或 Excel 貼上來,系統會自動統一格式、拆開共有人、合併重複的列,確認沒問題再建立專案。</p>';
   h+='<div class="panel" style="margin-top:14px"><h2><span class="no">1</span>提供資料</h2>';
   h+='<p class="small muted" style="margin:0">必要欄位:地號、面積、所有權人。謄本整理表常見的縣市、鄉鎮市區、段、小段、使用分區、使用地類別、公告現值、權利範圍、登記原因、登記日期、他項權利、住址(記為戶籍地)也會自動對應。假設格式是「一位地主一列」,同一地號有多位地主時,地號可以重複,也可以留空。身分證字號和統一編號會一併保留,只有專案負責人以上和負責的業務看得到。</p>';
   h+='';
@@ -3277,8 +3277,8 @@ function renderImResult(){
   var groups=importGroups(res);
   var opt=function(v,cur,t){return '<option value="'+v+'"'+(v===cur?' selected':'')+'>'+t+'</option>'};
   h+='<div id="geo-panel"></div>';
-  h+='<div class="panel"><h2><span class="no">5</span>建立專案</h2>';
-  h+='<div class="field"><label for="im-target">匯入到</label><select id="im-target"><option value="">建立新專案</option>'+DB.projects.map(function(p){return '<option value="'+esc(p.id)+'"'+(IM.opts.target===p.id?' selected':'')+'>加入既有專案:'+esc(p.name)+'</option>'}).join('')+'</select></div>'+(IM.opts.target?'<p class="small muted" style="margin:0 0 10px">加入既有專案時,專案裡已經有的地號(段別加地號相同)會略過,只新增沒有的地號。專案名稱、類型、狀態都不會改。</p>':'');
+  h+='<div class="panel"><h2><span class="no">5</span>'+(IM.opts.target?'加入專案':'建立專案')+'</h2>';
+  if(IM.opts.target)h+='<p class="small muted" style="margin:0 0 10px">加入專案時,專案裡已經有的地號(段別加地號相同)會略過,只新增沒有的地號。專案名稱、類型、狀態都不會改。</p>';
   h+='<div class="row2"><div class="field"><label for="im-name">專案名稱</label><input type="text" id="im-name" value="'+esc(IM.opts.name)+'"></div>'
     +'<div class="field"><label for="im-type">開發類型</label><select id="im-type">'+['產業用地開發','工業區擴編','都市計畫變更','其他'].map(function(t){return opt(t,IM.opts.type,t)}).join('')+'</select></div></div>';
   h+='<div class="row2"><div class="field"><label for="im-status">狀態</label><select id="im-status">'+['規劃中','執行中'].map(function(t){return opt(t,IM.opts.status,t)}).join('')+'</select></div>'
@@ -3929,7 +3929,7 @@ function route(){
   if(r==='reports'&&S.role==='staff')r='projects';
   if(!permOK_(r))r='projects';
   $$('.view').forEach(function(v){v.classList.toggle('on',v.id==='view-'+r)});
-  $$('.tabs a').forEach(function(a){if(a.dataset.v===r||(r==='map'&&a.dataset.v==='projects'))a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+  $$('.tabs a').forEach(function(a){if((a.dataset.v===r&&!(r==='import'&&IM.opts.target))||(r==='map'&&a.dataset.v==='projects')||(r==='import'&&IM.opts.target&&a.dataset.v==='deeds'))a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
   if(S.viewer&&r!=='projects'&&r!=='map'){r='projects';$$('.view').forEach(function(v){v.classList.toggle('on',v.id==='view-projects')})}
   $$('.tabs a').forEach(function(a){if(S.viewer&&a.dataset.v!=='projects')a.style.display='none';else if(S.viewer===false&&a.dataset.v!=='import'&&a.dataset.v!=='reports'&&a.dataset.v!=='admin')a.style.display=''});
   $('#tab-admin').style.display=S.role==='admin'?'':'none';
@@ -5362,6 +5362,8 @@ async function createFromImport(opt){
       else if(fin.err)geoMsg='專案已建立,但地籍圖合併失敗('+fin.err+'),請到「後台 → 專案」再上傳。';
       cbReset_();
     }
+    var deedSave=((IM.deed&&IM.deed.recs)||[]).map(function(x){return x.rec}).concat((IM.deedBld||[]).map(function(x){return x&&x.rec?x.rec:x}));
+    if(deedSave.length)await deedCloudSave_(r.projectId,deedSave);
     IM.text='';IM.res=null;IM.map=null;IM.deed={files:[],recs:[],msgs:[]};IM.deedBld=[];IM.opts.name='';IM.opts.target='';
     await refreshData();
     if(PRJ[r.projectId])switchProject(r.projectId);
@@ -5460,7 +5462,7 @@ async function applyUpdateGroup(cat){
     if(e.auth){showLogin('登入已過期,請重新登入')}else{toast('套用失敗:'+(e.userMessage||e.message));if(btn){btn.disabled=false;btn.textContent='套用勾選的項目'}}
   }finally{UPB.busy=false}
 }
-document.addEventListener('change',function(e){if(e.target&&e.target.id==='im-target'){IM.opts.target=e.target.value;renderImResult()}});
+
 document.addEventListener('click',function(e){
   var b=e.target&&e.target.closest&&e.target.closest('[data-changed-clear]');if(!b)return;
   var p=DB.parcels[+b.dataset.changedClear];if(p&&p._srv)apiSync('clearParcelChanged',{projectId:p.proj,parcelId:p._srv});
@@ -6903,8 +6905,10 @@ function peMatch_(x){
 function peOpen_(pid,view){
   var d=$('#dlg-pe');
   if(!d){d=document.createElement('dialog');d.id='dlg-pe';d.setAttribute('aria-label','調整地號');d.style.width='min(780px,96vw)';d.innerHTML='<div class="dlg" id="pe-body"></div>';document.body.appendChild(d)}
-  PE={pid:pid,view:view==='asg'?'asg':'adj',mode:'par',osel:{},q:'',f:'all',sel:{},busy:false,err:'',staff:'',role:'main'};
+  PE={pid:pid,view:view==='asg'?'asg':'adj',mode:'par',osel:{},q:'',f:'all',sel:{},busy:false,err:'',staff:'',role:'main',geo:undefined};
   peRender_();if(!d.open)d.showModal();
+  var me=PE;
+  api('getGeo',{projectId:pid}).then(function(g){me.geo=(g&&g.parcels&&Object.keys(g.parcels).length)?g:null;if(PE===me)peRender_()}).catch(function(e){if(e&&e.auth){showLogin('登入已過期,請重新登入');return}me.geo=null;if(PE===me)peRender_()});
 }
 function peTabs_(){if(PE.view!=='asg')return '';return '<div class="orow" style="gap:6px;margin:0 0 10px"><button class="btn small'+(PE.mode==='own'?'':' primary')+'" type="button" data-pe-mode="par">依地號</button><button class="btn small'+(PE.mode==='own'?' primary':'')+'" type="button" data-pe-mode="own">依地主分配業務</button></div>'}
 function peOwners_(){
@@ -6939,6 +6943,35 @@ function peRenderOwn_(el){
   var nq=el.querySelector('#pe-q');if(oq&&nq&&PE.focusQ)nq.parentNode.replaceChild(oq,nq);
   var tw1=el.querySelector('.tablewrap');if(tw1)tw1.scrollTop=sc0;PE.focusQ=false;
 }
+function peMapHTML_(all,list){
+  if(PE.geo===undefined)return '<p class="small muted" style="margin:0 0 8px">讀取地圖中…</p>';
+  if(!PE.geo)return PE.view==='adj'?'<p class="small muted" style="margin:0 0 8px">這個專案還沒有地圖圖資,上傳地籍圖後這裡會顯示地圖。</p>':'';
+  var g=PE.geo,keyOf={},byNo={},used={};
+  all.forEach(function(x){keyOf[(x.p.sec||'')+'|'+x.p.no]=x;(byNo[String(x.p.no)]=byNo[String(x.p.no)]||[]).push(x)});
+  var inList={};list.forEach(function(x){inList[x.sid]=1});
+  var x0=1e9,y0=1e9,x1=-1e9,y1=-1e9,polys='',labs='',nOnly=0,filt=!!PE.q.trim()||PE.f!=='all';
+  Object.keys(g.parcels).forEach(function(k){g.parcels[k].pts.forEach(function(q){if(q[0]<x0)x0=q[0];if(q[0]>x1)x1=q[0];if(q[1]<y0)y0=q[1];if(q[1]>y1)y1=q[1]})});
+  Object.keys(g.parcels).forEach(function(k){
+    var q=g.parcels[k],i=k.indexOf('|'),sec=i>=0?k.slice(0,i):'',no=k.slice(i+1);
+    var it=keyOf[sec+'|'+no]||keyOf['|'+no];if(!it){var c=byNo[no]||[];if(c.length===1)it=c[0]}
+    var fill,stroke='#15251F',sw=0.8,dash='',attr='';
+    if(!it){fill='#ffffff';stroke='#d33';dash=' stroke-dasharray="3 2"';nOnly++}
+    else{
+      used[it.sid]=1;attr=' data-pe-map="'+esc(it.sid)+'" style="cursor:pointer"';
+      fill=it.hidden?'#cfcfcf':'#a9dcbd';
+      if(PE.sel[it.sid]){fill='#f7a64a';stroke='#b45309';sw=2}
+      else if(filt&&inList[it.sid]){stroke='#1d4ed8';sw=2}
+    }
+    polys+='<polygon points="'+q.pts.map(function(z){return z.join(',')}).join(' ')+'" fill="'+fill+'" fill-opacity="0.85" stroke="'+stroke+'" stroke-width="'+sw+'"'+dash+attr+'><title>'+esc(sec?sec+' '+no:no)+(it?(it.hidden?'(不納入)':'(納入)'):'(專案沒有這個地號)')+'</title></polygon>';
+    if(q.lf>=3.5)labs+='<text x="'+q.c[0]+'" y="'+q.c[1]+'" text-anchor="middle" font-size="'+q.lf+'" fill="#15251F" pointer-events="none">'+esc(no)+'</text>';
+  });
+  var noMap=all.filter(function(x){return !used[x.sid]}).length;
+  var pad=Math.max(8,(x1-x0)*0.02),vb=[x0-pad,y0-pad,(x1-x0)+2*pad,(y1-y0)+2*pad].map(function(n){return Math.round(n*10)/10}).join(' ');
+  var sw1='display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;margin-right:4px;border:1px solid #15251F';
+  return '<svg viewBox="'+vb+'" style="width:100%;max-height:360px;background:#f4f7f5;border:1px solid var(--line);border-radius:10px" role="img" aria-label="專案地號地圖">'+polys+labs+'</svg>'
+    +'<p class="small" style="margin:6px 0 10px"><span style="'+sw1+';background:#a9dcbd"></span>納入 <span style="'+sw1+';background:#cfcfcf;margin-left:10px"></span>不納入 <span style="'+sw1+';background:#f7a64a;margin-left:10px"></span>已勾選 <span style="'+sw1+';background:#fff;border:1px dashed #d33;margin-left:10px"></span>圖上有、專案沒有的地號'
+    +(nOnly?'(<b>'+nOnly+'</b> 筆)':'')+'<br><span class="muted">點地圖上的地號可以勾選或取消勾選;勾好後按下方的按鈕。'+(noMap?'專案裡有 '+noMap+' 筆地號在圖上找不到。':'')+'</span></p>';
+}
 function peRender_(){
   var el=$('#pe-body');if(!el||!PE)return;
   if(PE.mode==='own')return peRenderOwn_(el);
@@ -6947,6 +6980,7 @@ function peRender_(){
   var selIds=Object.keys(PE.sel).filter(function(k){return byId[k]}),nOut=selIds.filter(function(k){return byId[k].hidden}).length,nIn=selIds.length-nOut,n=selIds.length;
   var asg=PE.view==='asg';var h='<h2>'+(asg?'業務分配':'調整地號')+':'+esc(pr.name)+'</h2>'+peTabs_()+'<p class="small muted" style="margin:0 0 10px">共 '+all.length+' 筆地號,納入 '+(all.length-hid)+' 筆、不納入 '+hid+' 筆。'+(asg?'勾選地號,選業務後按分配。':'勾選地號後,可以設為不納入此專案,或新增地號。')+'</p>';
   if(PE.err)h+='<div class="notice">'+esc(PE.err)+'</div>';
+  h+=peMapHTML_(all,list);
   h+='<div class="orow" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><input type="search" id="pe-q" placeholder="搜尋,或一次貼多個地號(空格或逗號分開)" aria-label="搜尋地號或段別" value="'+esc(PE.q)+'" style="max-width:320px;width:100%"><select id="pe-f" aria-label="篩選範圍" style="width:auto"><option value="all"'+(PE.f==='all'?' selected':'')+'>全部</option><option value="in"'+(PE.f==='in'?' selected':'')+'>只看納入</option><option value="out"'+(PE.f==='out'?' selected':'')+'>只看不納入</option></select><button class="btn small" type="button" data-pe-all>勾選目前列出的</button><button class="btn small" type="button" data-pe-none>全部取消</button></div>';
   var members=(PRJ[PE.pid]&&PRJ[PE.pid].staff)||[];
   if(asg)h+='<div class="orow" style="gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2,#f6f8f6)"><b style="font-size:14px">分配給業務</b>'
@@ -6978,6 +7012,7 @@ document.addEventListener('click',function(e){
   if((b=t.closest('[data-ad-assign]'))){peOpen_(b.dataset.adAssign,'asg');return}
   if(!PE||!t.closest('#dlg-pe'))return;
   if(t.closest('[data-pe-close]')){var d=$('#dlg-pe');if(d&&d.open)d.close();PE=null;return}
+  if((b=t.closest('[data-pe-map]'))){var ms=b.getAttribute('data-pe-map');if(PE.sel[ms])delete PE.sel[ms];else PE.sel[ms]=1;peRender_();return}
   if((b=t.closest('[data-pe-pick]'))){if(b.checked)PE.sel[b.dataset.pePick]=1;else delete PE.sel[b.dataset.pePick];peRender_();return}
   if(t.closest('[data-pe-all]')){peIds_(PE.pid).filter(peMatch_).forEach(function(x){PE.sel[x.sid]=1});peRender_();return}
   if(t.closest('[data-pe-none]')){PE.sel={};peRender_();return}
@@ -7006,8 +7041,8 @@ document.addEventListener('click',function(e){
     peRun_(function(){return api('assignParcels',{projectId:PE.pid,parcelIds:ids2,staff:who,role:role})},function(r){return '已分配 '+r.owners+' 位地主給「'+who+'」'+(r.alsoOnOthers?(',其中 '+r.alsoOnOthers+' 位在其他地號也有持分,一併改派'):'')+(r.skipped?(';'+r.skipped+' 位已是他的主要承辦,次要略過'):'')+'。'});return}
   if(t.closest('[data-pe-add]')){
     var pid=PE.pid,d2=$('#dlg-pe');if(d2&&d2.open)d2.close();PE=null;
-    IM.opts.target=pid;location.hash='#import';setTimeout(function(){try{renderImResult()}catch(x){}},50);
-    toast('請在這頁上傳新的清冊或謄本,「匯入到」已選好這個專案。');return}
+    ddGoImport_(pid);
+    toast('請在這頁上傳新的清冊或謄本,新地號會加進這個專案。');return}
 });
 document.addEventListener('change',function(e){if(!PE||!e.target)return;if(e.target.id==='pe-staff'){PE.staff=e.target.value;peRender_()}else if(e.target.id==='pe-role'){PE.role=e.target.value;peRender_()}else if(e.target.id==='pe-f'){PE.f=e.target.value;peRender_()}});
 document.addEventListener('input',function(e){if(PE&&e.target&&e.target.id==='pe-q'){PE.q=e.target.value;PE.focusQ=true;peRender_()}});
@@ -7191,9 +7226,32 @@ function rlSave_(){try{localStorage.setItem('ldc_rl',JSON.stringify({cols:RL.col
 function rlNoParts_(n){var m=String(n).split('-');return [parseInt(m[0],10)||0,parseInt(m[1]||'0',10)||0]}
 function rlNo_(n){var a=rlNoParts_(n);return ('000'+a[0]).slice(-4)+'-'+('000'+a[1]).slice(-4)}
 function rlFrac_(sh){var m=String(sh||'').match(/(\d+)分之(\d+)/);return m?{n:+m[2],d:+m[1]}:null}
+var RLC={pid:'',recs:[],saved:'',state:'',err:''};   // 雲端已存的謄本資料(依匯入匯出頁選的專案)
+function rlAll_(){return RLC.recs.map(function(r){return {rec:r,fileName:'(雲端)'}}).concat(RL.recs)}
+function rlProj_(){return (typeof DX!=='undefined'&&DX.proj)||S.proj}
+function rlCloudLoad_(){
+  var pid=rlProj_();
+  if(!pid||location.hash!=='#data'||(RLC.pid===pid&&RLC.state!==''))return;
+  if(RLC.pid!==pid){RL.files=[];RL.recs=[];RL.msgs=[]}
+  RLC={pid:pid,recs:[],saved:'',state:'loading',err:''};
+  api('getDeeds',{projectId:pid}).then(function(r){
+    if(RLC.pid!==pid)return;RLC.recs=(r&&r.recs)||[];RLC.saved=(r&&r.saved)||'';RLC.state='done';rlPanel_();
+  }).catch(function(e){
+    if(e&&e.auth){showLogin('登入已過期,請重新登入');return}
+    if(RLC.pid===pid){RLC.state='done';RLC.err=(e&&(e.userMessage||e.message))||'讀不到雲端的謄本資料';rlPanel_()}
+  });
+}
+// 謄本讀完就存到雲端(每個專案一份,同一地號只留列印日期最新的)
+function deedCloudSave_(pid,recs){
+  if(!pid||!recs||!recs.length||S.role==='staff')return Promise.resolve(null);
+  return api('saveDeeds',{projectId:pid,recs:recs}).then(function(r){
+    if(RLC.pid===pid&&RLC.state==='done'){var by={};RLC.recs.concat(recs).forEach(function(x){by[[x.kind,x.county,x.town,x.district,x.number,x.bno||''].join('|')]=x});RLC.recs=Object.keys(by).map(function(k){return by[k]});RLC.saved=iso(new Date())}
+    return r;
+  }).catch(function(e){if(e&&e.auth){showLogin('登入已過期,請重新登入');return null}toast('謄本資料沒有存到雲端:'+((e&&(e.userMessage||e.message))||'請再試一次'));return null});
+}
 function rlParcels_(){   // 同一地號有好幾份謄本:取列印日期最新的
   var best={};
-  RL.recs.forEach(function(it,i){
+  rlAll_().forEach(function(it,i){
     var r=it.rec;if(r.kind!=='land')return;
     var k=[r.county,r.town,r.district,r.number].join('|'),d=r.printDate||'';
     if(!best[k]||d>(best[k].rec.printDate||'')||(d===(best[k].rec.printDate||'')&&i>best[k].i))best[k]={rec:r,i:i};
@@ -7279,7 +7337,7 @@ async function rlExport_(){
   if(!owners.length){toast(rep0?'沒有任何所有權人有其他登記事項,請取消「只列有其他登記事項的所有權人」。':'還沒有讀到謄本,請先選擇謄本 PDF。');return}
   var cols=RL_COLS_.filter(function(c){return RL.cols[c.k]||c.lock});
   var POST=[['段',7],['小段',7],['地號',8],['面積\n(平方公尺)',10],['持分比例',10],['其 他 登 記 事 項',26],['備　　註',16]];
-  var N=cols.length+(RL.post?POST.length:0),title=(RL.title||'').trim()||((PRJ[S.proj]?PRJ[S.proj].name:'')+' 重劃前土地所有權人其他登記事項清冊');
+  var N=cols.length+(RL.post?POST.length:0),title=(RL.title||'').trim()||((PRJ[rlProj_()]?PRJ[rlProj_()].name:'')+' 重劃前土地所有權人其他登記事項清冊');
   var nowD=new Date(),today=nowD.getFullYear()+'/'+(nowD.getMonth()+1)+'/'+nowD.getDate();
   var startNo=parseInt(RL.serial,10);
   try{
@@ -7370,6 +7428,7 @@ async function rlReadFiles_(fileList){
       if(!recs.length){RL.msgs.push('「'+f.name+'」找不到土地標示部,可能不是土地謄本。');continue}
       RL.files.push(f.name);
       recs.forEach(function(r){RL.recs.push({rec:r,fileName:f.name})});
+      await deedCloudSave_(rlProj_(),recs);
     }catch(err){RL.msgs.push('「'+f.name+'」讀取失敗:'+(err&&err.message?err.message:err))}
   }
   RL.busy=false;rlPanel_();
@@ -7390,18 +7449,27 @@ function rlPanel_(){
   var old=document.getElementById('rl-panel');if(old)old.remove();
   var host=document.getElementById('data-page');if(!host||S.role==='staff'||!host.firstChild)return;
   var parcels=rlParcels_(),owners=rlOwners_(parcels),withOther=owners.filter(function(g){return g.rows.some(function(r){return deedBlank_(r.o.other)})}).length;
+  rlCloudLoad_();
+  var pj=PRJ[rlProj_()]||{name:''},nCloud=RLC.recs.filter(function(r){return r.kind==='land'}).length,have=parcels.length>0;
   var h='<div class="panel" id="rl-panel" style="margin-top:14px"><h2>產生重劃前歸戶清冊(其他登記事項清冊)</h2>'
-    +'<p class="small muted" style="margin:0 0 8px">選好土地謄本 PDF(可以一次選很多份),依所有權人歸戶,下載成 Excel,一位所有權人一頁。謄本只在你的瀏覽器裡讀,不會上傳。要出現哪些欄位,在「後台 → 系統設定 → 歸戶清冊欄位」勾選。</p>'
-    +'<div class="dropzone"><input type="file" id="rl-file" accept="application/pdf" multiple aria-label="選擇謄本 PDF">'
-    +'<div class="actions" style="margin-top:8px"><button class="btn small" type="button" data-rl-clear>清除已讀的謄本</button></div></div>';
+    +'<p class="small muted" style="margin:0 0 8px">專案:<b>'+esc(pj.name)+'</b>。用這個專案已經讀進系統的謄本資料,依所有權人歸戶,下載成 Excel,一位所有權人一頁。要出現哪些欄位,在「後台 → 系統設定 → 歸戶清冊欄位」勾選。</p>';
+  if(RLC.state!=='done')h+='<p class="small muted" style="margin:0 0 8px">讀取雲端的謄本資料中…</p>';
+  else if(RLC.err)h+='<div class="small bad" style="margin:0 0 8px">'+esc(RLC.err)+'</div>';
+  else if(nCloud)h+='<p class="small" style="margin:0 0 8px">雲端已有 <b>'+nCloud+'</b> 筆土地謄本資料(最後存入 '+esc(RLC.saved||'—')+'),可以直接下載。</p>';
+  else h+='<p class="small" style="margin:0 0 8px">這個專案雲端還沒有謄本資料。選好土地謄本 PDF 讀取後,會自動存到雲端,之後不用再上傳。</p>';
+  h+='<details'+((!nCloud&&RLC.state==='done')||RL.files.length||RL.msgs.length?' open':'')+'><summary class="small">'+(nCloud?'補充或更新謄本(選填)':'選擇謄本 PDF')+'</summary>'
+    +'<div class="dropzone" style="margin-top:6px"><input type="file" id="rl-file" accept="application/pdf" multiple aria-label="選擇謄本 PDF">'
+    +'<p class="small muted" style="margin:6px 0 0">可以一次選很多份。PDF 在你的瀏覽器裡讀,讀出來的資料會存到雲端,同一地號只留列印日期最新的。</p>'
+    +'<div class="actions" style="margin-top:8px"><button class="btn small" type="button" data-rl-clear>清除這次選的謄本</button></div></div></details>';
   RL.msgs.forEach(function(m){h+='<div class="small bad" style="margin-top:6px">'+esc(m)+'</div>'});
   if(RL.busy)h+='<p class="small muted" style="margin:8px 0 0">讀取中…</p>';
-  else if(RL.files.length)h+='<p class="small" style="margin:8px 0 0">已讀 <b>'+RL.files.length+'</b> 份謄本:<b>'+parcels.length+'</b> 個地號、<b>'+owners.length+'</b> 位所有權人(以姓名加遮蔽後的統編歸戶),其中 <b>'+withOther+'</b> 位有其他登記事項。</p>';
-  h+='<div class="row2"><div class="field"><label class="lab" for="rl-title">清冊標題</label><input type="text" id="rl-title" value="'+esc(RL.title)+'" placeholder="'+esc((PRJ[S.proj]?PRJ[S.proj].name:'')+' 重劃前土地所有權人其他登記事項清冊')+'"></div>'
+  else if(have)h+='<p class="small" style="margin:8px 0 0">共 <b>'+parcels.length+'</b> 個地號、<b>'+owners.length+'</b> 位所有權人(以姓名加遮蔽後的統編歸戶),其中 <b>'+withOther+'</b> 位有其他登記事項。</p>';
+  h+='<div class="row2"><div class="field"><label class="lab" for="rl-title">清冊標題</label><input type="text" id="rl-title" value="'+esc(RL.title)+'" placeholder="'+esc(pj.name+' 重劃前土地所有權人其他登記事項清冊')+'"></div>'
     +'<div class="field"><label class="lab" for="rl-serial">編號從幾號開始</label><input type="number" id="rl-serial" min="0" step="1" value="'+esc(RL.serial)+'" placeholder="不填就留空白"></div></div>';
-  h+='<div class="actions"><button class="btn primary" type="button" data-rl-go'+((RL.busy||!RL.files.length)?' disabled':'')+'>下載歸戶清冊(Excel)</button></div></div>';
+  h+='<div class="actions"><button class="btn primary" type="button" data-rl-go'+((RL.busy||!have)?' disabled':'')+'>下載歸戶清冊(Excel)</button></div></div>';
   host.insertAdjacentHTML('beforeend',h);
 }
+window.addEventListener('hashchange',function(){if(location.hash==='#data')rlPanel_()});
 (function(){
   rlLoad_();
   var base=renderData;
@@ -7423,6 +7491,42 @@ function rlPanel_(){
     if(t.closest('[data-rl-go]')){rlExport_();return}
     if(t.closest('[data-rl-clear]')){RL.files=[];RL.recs=[];RL.msgs=[];rlPanel_();return}
   });
+})();
+
+/* ---- 謄本更新頁:新增地號到這個專案(原本在「新增專案」頁的「匯入到」) ---- */
+function ddAddPanel_(){
+  var host=document.getElementById('deeds-page');if(!host||S.role!=='admin')return;
+  var old=document.getElementById('dd-addpar');if(old)old.remove();
+  var h='<div class="panel" id="dd-addpar" style="margin-top:12px"><h2>新增地號到這個專案</h2>'
+    +'<p class="small muted" style="margin:0 0 8px">清冊或謄本裡有專案還沒有的地號時,在這裡上傳。專案裡已有的地號會略過,只新增沒有的。</p>'
+    +'<button class="btn" type="button" data-dd-addpar>新增地號(上傳清冊或謄本)</button></div>';
+  var pick=host.querySelector('.projpick');
+  if(pick)pick.insertAdjacentHTML('afterend',h);else host.insertAdjacentHTML('beforeend',h);
+}
+function ddGoImport_(pid){
+  IM.opts.target=pid;
+  if(location.hash==='#import')route();else location.hash='#import';
+  renderImport();
+}
+(function(){
+  var base=renderDeeds;
+  renderDeeds=function(){base();ddAddPanel_()};
+  document.addEventListener('click',function(e){
+    var t=e.target;if(!t||!t.closest)return;
+    if(t.closest('[data-dd-addpar]')){ddGoImport_(S.proj);return}
+    if(t.closest('[data-im-canceltarget]')){IM.opts.target='';location.hash='#deeds';renderImport();return}
+    if(t.closest('#tab-import')&&IM.opts.target){IM.opts.target='';if(location.hash==='#import'){setTimeout(function(){route();renderImport()},0)}else renderImport()}
+  },true);
+})();
+
+/* ---- 謄本讀進來就存到雲端 ---- */
+(function(){
+  var base=addUpdatePages;
+  addUpdatePages=function(pages,name){
+    var n0=UP.recs.length;base(pages,name);
+    var add=UP.recs.slice(n0).map(function(x){return x.rec});
+    if(add.length&&UP.pid)deedCloudSave_(UP.pid,add);
+  };
 })();
 
 /* ---------- start ---------- */
