@@ -5898,6 +5898,7 @@ function mergeGeoUI(inp){
     if(!g||!g.parcels){toast('這個檔案不是圖資檔(找不到 parcels)。');return}
     var secs={};Object.keys(g.parcels).forEach(function(k){var i=k.indexOf('|');secs[g.parcels[k].sec||(i>=0?k.slice(0,i):'')||'(未標段別)']=1});
     var msg=(T.replace?'取代':'合併')+'圖資到「'+(pr?pr.name:'')+'」?\n新檔含 '+Object.keys(g.parcels).length+' 筆地號,段別:'+Object.keys(secs).join('、')+(T.replace?'\n\n這會把現有整張地圖換成新檔,無法復原。':'\n\n新的一段會放在現有地圖的'+(($('#ad-geodir')||{}).selectedOptions?$('#ad-geodir').selectedOptions[0].textContent:'東邊')+'。');
+    msg+=geoChkMsg_(geoAreaCheck_(geoRefsDB_(T.id),g.parcels));
     if(!window.confirm(msg))return;
     toast('處理中…');
     api('mergeGeo',{projectId:T.id,geo:g,replace:T.replace,place:{dir:($('#ad-geodir')||{}).value||'E',gap:($('#ad-geogap')||{}).value,east:($('#ad-geoe')||{}).value,north:($('#ad-geon')||{}).value},caption:T.replace?'':Object.keys(secs).length===1?Object.keys(secs)[0]:''}).then(function(r){
@@ -6047,6 +6048,61 @@ document.addEventListener('click',function(e){
 function shareTxtSafe_(v){var t=String(v==null?'':v).trim(),m=t.match(/^(\d+)\s*\/\s*(\d+)$/);return m?m[2]+'分之'+m[1]:t}
 
 /* ---------- 後台:上傳地籍圖 PDF → 預覽 → 合併/取代 ---------- */
+/* ---- 地籍圖面積核對:圖上面積 vs 清冊/謄本登記面積(上傳時先抓出切錯、綁錯的地號) ---- */
+var GEO_TOL_=0.10,GEO_BAD_=0.25;
+function geoRefsDB_(pid){return DB.parcels.filter(function(p){return p.proj===pid}).map(function(p){return {sec:p.sec||'',no:p.no,area:p.area}})}
+function geoAreaCheck_(refs,gp,sec){
+  // refs:[{sec,no,area}] 登記面積;gp:圖資的 parcels({'段|地號':{poly_m2,pts,flag}})
+  var byKey={},byNo={},cnt=0;
+  (refs||[]).forEach(function(p){if(!(p.area>0))return;cnt++;var no=String(p.no);byKey[(p.sec||'')+'|'+no]=p;(byNo[no]=byNo[no]||[]).push(p)});
+  var out={cmp:cnt>0,total:0,ok:0,rows:[],missing:[],shared:[]},used={},secs={};
+  if(!cnt)return out;
+  Object.keys(gp||{}).forEach(function(k){
+    var g=gp[k],i=k.indexOf('|'),s=i>=0?k.slice(0,i):'',no=k.slice(i+1);secs[s]=1;
+    if(g.flag==='shared')out.shared.push(no);
+    var ref=byKey[s+'|'+no]||byKey['|'+no];
+    if(!ref){var c=byNo[no]||[];if(c.length===1)ref=c[0]}
+    if(!ref)return;
+    used[(ref.sec||'')+'|'+String(ref.no)]=1;out.total++;
+    var a=g.poly_m2>0?g.poly_m2:0,d=(a-ref.area)/ref.area,ad=Math.abs(d);
+    if(ad<=GEO_TOL_){out.ok++;return}
+    out.rows.push({no:no,sec:s,g:a,ref:ref.area,d:d,lv:ad>GEO_BAD_?'bad':'warn',
+      why:d>0?'圖上比登記大,可能把旁邊的地也圈進來':'圖上比登記小,可能被切掉一塊,或綁到別塊'});
+  });
+  out.rows.sort(function(x,y){return Math.abs(y.d)-Math.abs(x.d)});
+  (refs||[]).forEach(function(p){
+    if(!(p.area>0))return;
+    if(p.sec&&!secs[p.sec]&&!secs[''])return;       // 不是這次上傳的段別
+    if(!used[(p.sec||'')+'|'+String(p.no)])out.missing.push((p.sec?p.sec+' ':'')+p.no);
+  });
+  out.nBad=out.rows.filter(function(r){return r.lv==='bad'}).length;out.nWarn=out.rows.length-out.nBad;
+  return out;
+}
+function geoChkMsg_(c){
+  if(!c||!c.cmp||(!c.rows.length&&!c.missing.length))return '';
+  var m='\n\n⚠ 面積核對(圖上面積和清冊差超過 '+Math.round(GEO_TOL_*100)+'% 的地號):'+c.nBad+' 筆差很多、'+c.nWarn+' 筆有點差'+(c.missing.length?'、圖上找不到 '+c.missing.length+' 筆':'')+'。';
+  c.rows.slice(0,6).forEach(function(r){m+='\n  '+r.no+':圖上 '+Math.round(r.g)+' ㎡,登記 '+Math.round(r.ref)+' ㎡('+(r.d>0?'+':'')+Math.round(r.d*100)+'%)'});
+  if(c.rows.length>6)m+='\n  …還有 '+(c.rows.length-6)+' 筆';
+  return m+'\n\n建議先把這些修好再套用。仍要套用請按確定。';
+}
+function geoChkHTML_(c){
+  if(!c)return '';
+  if(!c.cmp)return '<p class="small muted" style="margin:8px 0 0">專案裡沒有登記面積可以比對,這次沒有做面積核對。</p>';
+  var h='<div class="panel" style="margin-top:10px"><h3 style="margin:0 0 6px">面積核對(圖上面積 和 清冊/謄本面積)</h3>';
+  h+='<p class="small" style="margin:0">比對了 <b>'+c.total+'</b> 筆:<b>'+c.ok+'</b> 筆差在 '+Math.round(GEO_TOL_*100)+'% 以內'
+    +(c.rows.length?',<span class="bad"><b>'+c.rows.length+'</b> 筆差超過 '+Math.round(GEO_TOL_*100)+'%(差很多 '+c.nBad+'、有點差 '+c.nWarn+')</span>':'')
+    +(c.missing.length?',<span class="bad">圖上找不到 <b>'+c.missing.length+'</b> 筆</span>':'')+'。</p>';
+  if(!c.rows.length&&!c.missing.length)h+='<p class="small" style="margin:6px 0 0">全部對得上,可以套用。</p>';
+  else h+='<p class="small muted" style="margin:6px 0 0">先修好再套用比較不會錯。差很多多半是切錯塊、綁錯地號,或兩塊被併成一塊。</p>';
+  if(c.rows.length){
+    h+='<div class="tablewrap" style="margin-top:6px;max-height:220px;overflow:auto"><table><thead><tr><th>地號</th><th>圖上(㎡)</th><th>登記(㎡)</th><th>差異</th><th>可能原因</th></tr></thead><tbody>'
+      +c.rows.slice(0,60).map(function(r){return '<tr><td>'+esc((r.sec?r.sec+' ':'')+r.no)+'</td><td>'+Math.round(r.g)+'</td><td>'+Math.round(r.ref)+'</td><td class="'+(r.lv==='bad'?'bad':'')+'">'+(r.d>0?'+':'')+Math.round(r.d*100)+'%</td><td class="small muted">'+esc(r.why)+'</td></tr>'}).join('')+'</tbody></table></div>';
+    if(c.rows.length>60)h+='<p class="small muted" style="margin:4px 0 0">只列前 60 筆。</p>';
+  }
+  if(c.missing.length)h+='<p class="small" style="margin:6px 0 0"><b>圖上找不到:</b>'+c.missing.slice(0,60).map(esc).join('、')+(c.missing.length>60?' …等 '+c.missing.length+' 筆':'')+'</p>';
+  if(c.shared.length)h+='<p class="small muted" style="margin:6px 0 0">共用同一個圖形的地號:'+c.shared.slice(0,40).map(esc).join('、')+'。這幾筆的圖上面積是合在一起的,不會逐筆比對得準。</p>';
+  return h+'</div>';
+}
 var CAD=null;
 function cadTick(){return new Promise(function(r){setTimeout(r,20)})}
 function cadHas_(pid){var g=GEOC[pid],s={};if(g&&g.parcels)Object.keys(g.parcels).forEach(function(k){var i=k.indexOf('|');s[g.parcels[k].sec||(i>=0?k.slice(0,i):'')||'']=1});return Object.keys(s).filter(Boolean)}
@@ -6112,6 +6168,7 @@ function cadRender(){
       h+='<p class="small" style="margin:6px 0 0">共 <b>'+r.list.length+'</b> 筆地號,段別「'+esc(r.sec||'未標')+'」,比例尺 1/'+r.den+'。'+(r.islands.length>1?'分成 '+r.islands.length+' 塊:'+r.islands.map(function(x){return '第 '+x.join('、')+' 頁'}).join(' / '):'全部接成一塊。')+'黃色=兩筆以上共用的圖形。</p>';
       if(r.warns&&r.warns.length)h+='<div class="notice" style="margin-top:6px">'+r.warns.map(esc).join('<br>')+'</div>';
     }
+    if(r.ok)h+=geoChkHTML_(geoAreaCheck_(geoRefsDB_(CAD.pid),r.geo.parcels,r.sec||CAD.sec));
     var pg=(r.pages||[]).filter(function(p){return !p.skip});
     if(pg.length>1){
       h+='<details style="margin-top:8px"><summary class="small">接圖不對?手動指定每一頁接在哪一頁旁邊</summary><div class="small muted" style="margin:6px 0">不選 = 自動。指定後該頁就依你的設定接,其餘照舊。</div>';
@@ -6306,6 +6363,7 @@ function cbFinalHTML_(){
   if(!f.geo)return '';
   var cov=cbCoverage_(f.geo),n=Object.keys(f.geo.parcels).length;
   var h='<h3>合起來的結果</h3>'+cadSVG(f.geo)+'<p class="small" style="margin:6px 0 0">圖上共 <b>'+n+'</b> 筆地號'+(cov.total?',專案的 '+cov.total+' 筆地號裡有 <b>'+(cov.total-cov.miss.length)+'</b> 筆對到圖上':'')+'。'+(cov.miss.length?'<span class="bad"> 沒對到:'+cov.miss.slice(0,15).map(esc).join('、')+(cov.miss.length>15?' 等 '+cov.miss.length+' 筆':'')+'。</span><span class="muted"> 這些地號會用示意方格排在地圖下方,可以再傳含有它們的地籍圖。</span>':'')+'</p>';
+  if(IM.res&&IM.res.parcels&&IM.res.parcels.length)h+=geoChkHTML_(geoAreaCheck_(IM.res.parcels.map(function(p){return {sec:p.sec||'',no:p.no,area:p.area}}),f.geo.parcels));
   return h;
 }
 function cbFinalRefresh_(){var el=$('#cb-final');if(el)el.innerHTML=cbFinalHTML_()}
@@ -6373,6 +6431,7 @@ function cadApply(){
   var r=CAD&&CAD.res;if(!r||!r.ok)return;
   var pr=PRJ[CAD.pid],cur=CAD.cur||[],mode=cur.length?(($('input[name="cad-mode"]:checked')||{}).value||'merge'):'merge',replace=mode==='replace'&&cur.length>0;
   var msg=(replace?'取代':'套用')+'「'+(pr?pr.name:'')+'」的圖資?\n新圖含 '+r.list.length+' 筆地號,段別:'+(r.sec||'未標')+(replace&&cur.length?'\n\n這會把現有整張地圖換成這一份,無法復原。':'');
+  msg+=geoChkMsg_(geoAreaCheck_(geoRefsDB_(CAD.pid),r.geo.parcels,r.sec||CAD.sec));
   if(!window.confirm(msg))return;
   var btn=$('[data-cad-apply]');if(btn)btn.disabled=true;toast('處理中…');
   var pid=CAD.pid;
