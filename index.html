@@ -786,7 +786,7 @@ function buildMap(){
   if(pr.geo){
     var gb=mk('g',{id:'gbg'});
     pr.geo.ctx.forEach(function(r){mk('polygon',{points:r.map(function(q){return q.join(',')}).join(' '),fill:'none',stroke:'var(--ink-2)','stroke-width':0.6,opacity:.45,'vector-effect':'non-scaling-stroke'},gb)});
-    pr.geo.ctxlab.forEach(function(l){var tx=mk('text',{x:l.c[0],y:l.c[1],'text-anchor':'middle','font-size':l.f,fill:'var(--ink-2)',opacity:.7},gb);tx.textContent=l.t});
+    pr.geo.ctxlab.forEach(function(l){var tx=mk('text',{x:l.c[0],y:l.c[1],'text-anchor':'middle','font-size':l.f,fill:'var(--ink-2)',opacity:.7,'class':l.big?'':'ctxlab'},gb);tx.textContent=l.t});
   }
   var gp=mk('g',{id:'gp'});
   var gl=mk('g',{id:'gl','pointer-events':'none'});
@@ -3322,8 +3322,8 @@ function deedIsNoise_(line){
 }
 var DEED_LABELS_=['登記次序','登記日期','登記原因','原因發生日期','所有權人','統一編號','住址','權利範圍','權狀字號','相關他項權利登記次序','其他登記事項'];
 function deedParseOwnership_(lines){
-  var entries=[],cur=null,waiting='',cont=false;
-  function start(){cur={date:'',reason:'',name:'',id:'',share:'',addr:''};entries.push(cur);waiting='';cont=false}
+  var entries=[],cur=null,waiting='',cont=false,oc=false;
+  function start(){cur={date:'',reason:'',name:'',id:'',share:'',addr:'',order:'',link:'',other:''};entries.push(cur);waiting='';cont=false;oc=false}
   function put(label,val){
     val=String(val||'').replace(/\s+/g,'');
     if(label==='登記日期')cur.date=val;
@@ -3336,20 +3336,23 @@ function deedParseOwnership_(lines){
   }
   var TRACK={'登記日期':1,'登記原因':1,'所有權人':1,'統一編號':1,'權利範圍':1,'住址':1,'管理者':1};
   lines.forEach(function(raw){
-    var l=String(raw).trim().replace(/住\s+址(\s*:)/,'住址$1').replace(/管\s+理\s+者(\s*:)/,'管理者$1');if(!l||deedIsNoise_(l)||/^歷次取得權利範圍/.test(l))return;l=l.replace(/歷次取得權利範圍.*$/,'');if(!l.trim())return;
-    var parts=l.split(/(?=(?:登記次序|登記日期|登記原因|原因發生日期|所有權人|統一編號|住址|管理者|權利範圍|權狀字號|相關他項權利登記次序|其他登記事項)\s*:)/);
+    var l=deedPn_(String(raw).trim()).replace(/住\s+址(\s*:)/,'住址$1').replace(/管\s+理\s+者(\s*:)/,'管理者$1');if(!l||deedIsNoise_(l)||/^歷次取得權利範圍/.test(l))return;l=l.replace(/歷次取得權利範圍.*$/,'');if(!l.trim())return;
+    var parts=l.split(/(?=(?:(?<!權利)登記次序|登記日期|登記原因|原因發生日期|所有權人|統一編號|住址|管理者|權利範圍|權狀字號|相關他項權利登記次序|其他登記事項)\s*:)/);
     parts.forEach(function(part){
-      part=part.trim();if(!part||/^\(\d{4}\)$/.test(part))return;
+      part=part.trim();if(/^\(\d{4}\)$/.test(part)){oc=false;return}if(!part)return;
       var m=part.match(/^(登記次序|登記日期|登記原因|原因發生日期|所有權人|統一編號|住址|管理者|權利範圍|權狀字號|相關他項權利登記次序|其他登記事項)\s*:?\s*(.*)$/);
       if(m){
         var label=m[1],val=m[2];
-        cont=(label==='住址');
-        if(label==='登記次序'){start();return}
+        cont=(label==='住址');oc=false;
+        if(label==='登記次序'){start();cur.order=val.split(/\s{2,}/)[0].replace(/\s+/g,'');return}
+        if(label==='其他登記事項'){if(cur){cur.other=val;oc=true}waiting='';return}
+        if(label==='相關他項權利登記次序'){if(cur)cur.link=val.replace(/\s+/g,'');waiting='';return}
         if(!cur&&(label==='所有權人'||label==='登記日期'))start();
         if(!cur)return;
         if(TRACK[label]){if(val)put(label,val),waiting='';else waiting=label}
         else waiting='';
       }else if(waiting&&cur){var wl=waiting;put(waiting,part);waiting='';cont=(wl==='住址')}
+      else if(oc&&cur&&part){var cut=part.indexOf('〈');if(cut>=0){part=part.slice(0,cut);oc=false}if(part&&!deedHdrNoise_(part))cur.other+=deedStripWm_(part).replace(/\s+/g,'')}
       else if(cont&&cur&&part)cur.addr+=part.replace(/\s+/g,'');
     });
   });
@@ -3414,7 +3417,7 @@ function parseOneDeed_(rawPages){
       var vm=content.join('\n').match(/公告土地現值\s*:?\s*\**\s*([\d,]+(?:\.\d+)?)\s*元/);
       rec.value=vm?deedNum_(vm[1]):0;
       rec.ownership=deedParseOwnership_(own);
-      rec.liens=deedParseLiens_(lien);
+      rec.liens=deedParseLiens_(lien);rec.markOther=deedMarkOther_(content);rec.lienDetail=deedLienDetail_(lien);
       if(rec.areaM2===null)rec.warnings.push('找不到土地面積');
       if(!rec.ownership.length)rec.warnings.push('沒有讀到所有權部的地主資料(可能不是完整謄本)');
     }else{
@@ -6483,6 +6486,11 @@ function mapOverlay_(){
     rb.style.cssText='position:absolute;right:12px;top:112px';wrap.appendChild(rb);
     var ab=document.createElement('button');ab.id='mapassign';ab.type='button';ab.className='btn small';ab.textContent='指定圖塊';ab.setAttribute('aria-label','指定選取的地號要用圖上哪一塊');
     ab.style.cssText='position:absolute;right:12px;top:146px';wrap.appendChild(ab);
+    if(!document.getElementById('maplab-css')){var st2=document.createElement('style');st2.id='maplab-css';st2.textContent='.mapwrap .ctxlab{display:none}.mapwrap.ctxlab-on .ctxlab{display:inline}';document.head.appendChild(st2)}
+    var lb=document.createElement('button');lb.id='maplab';lb.type='button';lb.className='btn small';lb.style.cssText='position:absolute;right:12px;top:214px';wrap.appendChild(lb);
+    function labSet_(on){wrap.classList.toggle('ctxlab-on',on);lb.textContent=on?'底圖地號:顯示':'底圖地號:隱藏';lb.setAttribute('aria-pressed',on?'true':'false');try{localStorage.setItem('ldc_ctxlab',on?'1':'0')}catch(x){}}
+    var labOn=false;try{labOn=localStorage.getItem('ldc_ctxlab')==='1'}catch(x){}
+    labSet_(labOn);lb.addEventListener('click',function(){labSet_(!wrap.classList.contains('ctxlab-on'))});
     var cb=document.createElement('button');cb.id='mapcheck';cb.type='button';cb.className='btn small';cb.textContent='核對清單';cb.style.cssText='position:absolute;right:12px;top:180px';wrap.appendChild(cb);
     ab.addEventListener('click',function(){
       if(S.role!=='admin'){toast('只有管理員可以指定圖塊。');return}
@@ -6497,7 +6505,7 @@ function mapOverlay_(){
     });
   }
   var show=!!geo&&geo.scale>0;
-  n.style.display=sc.style.display=show?'':'none';ex.style.display=pr?'':'none';var rb2=$('#mapratio');if(rb2)rb2.style.display=show?'':'none';var ab2=$('#mapassign');if(ab2)ab2.style.display=(show&&S.role==='admin')?'':'none';var cb2=$('#mapcheck');if(cb2)cb2.style.display=(show&&S.role==='admin')?'':'none';
+  n.style.display=sc.style.display=show?'':'none';ex.style.display=pr?'':'none';var rb2=$('#mapratio');if(rb2)rb2.style.display=show?'':'none';var ab2=$('#mapassign');if(ab2)ab2.style.display=(show&&S.role==='admin')?'':'none';var lb2=$('#maplab');if(lb2)lb2.style.display=show?'':'none';var cb2=$('#mapcheck');if(cb2)cb2.style.display=(show&&S.role==='admin')?'':'none';
   if(!show)return;
   var g=document.getElementById('mapnorth-g');if(g)g.setAttribute('transform','rotate('+(Number(geo.north)||0)+')');
   n.setAttribute('aria-label','指北針:北方在畫面'+(Number(geo.north)?'順時針 '+geo.north+' 度':'正上方'));
@@ -7058,6 +7066,294 @@ document.addEventListener('click',function(e){
   if(go){var r=d._rows[+go.getAttribute('data-chk-go')];d.close();if(!r)return;
     selectParcel(r.p.id,true);MAPASG=r.p;MAPDRAW=null;document.getElementById('map').style.cursor='crosshair';mapAsgBar_()}
 });
+
+/* ===== 重劃前歸戶清冊(其他登記事項清冊):讀謄本 PDF → 依所有權人歸戶 → 下載 Excel =====
+   PDF 只在瀏覽器裡讀,不上傳;格式照「分配歸戶清冊」範例(一位所有權人一頁)。 */
+function deedStripWm_(s){return String(s).replace(/\s{2,}(?:.{2,12}地政事務所|[0-9A-Z]{1,3})$/,'')}
+/* PDF 讀出來的行,頭尾偶爾會黏著頁碼小記號(例如 J1、6R、16),前後是兩個以上空白;去掉 */
+function deedPn_(t){return String(t).replace(/^[0-9A-Z]{1,3}\s{2,}/,'').replace(/\s{2,}[0-9A-Z]{1,3}$/,'')}
+/* 逐格寫入(不靠 addRow 的陣列判斷,避免不同環境的陣列型別不相容) */
+function rlAddRow_(ws,arr){var n=ws.rowCount+1;arr.forEach(function(v,i){ws.getCell(n,i+1).value=v});return n}
+function deedHdrNoise_(t){
+  t=String(t).trim();
+  return /^(土地登記第二類謄本|本謄本|謄本種類碼|資料管轄機關|頁次|\(續次頁\)|\*{3,}|.*電謄字第)/.test(t)
+    ||/^\S{2,6}[區鄉鎮市]\S{1,6}段\s*\d{4}-\d{4}\s*地號$/.test(t)
+    ||/^.{2,12}地政事務所(\s|$)/.test(t)||/^[0-9A-Z]{1,3}$/.test(t);
+}
+function deedMarkOther_(content){
+  var out=[],on=false,i,t;
+  for(i=0;i<content.length;i++){
+    t=deedPn_(String(content[i]).trim());
+    if(/^其他登記事項\s*:/.test(t)){on=true;var v=t.replace(/^其他登記事項\s*:\s*/,'');if(v)out.push(deedStripWm_(v));continue}
+    if(!on)continue;
+    if(/^(登記日期|登記原因|使用分區|使用地類別|地上建物建號|面\s*積)\s*:/.test(t)||/^(本謄本|\*)/.test(t)||/公告土地現值/.test(t))break;
+    if(deedHdrNoise_(t))continue;
+    t=deedStripWm_(t);
+    /* 開頭是「項目名稱:」或「(註記)」才是新的一項;否則是上一行折行,直接接上 */
+    if(out.length&&!/^(\(|[^:\s]{1,14}:)/.test(t))out[out.length-1]+=t;else out.push(t);
+  }
+  var s=out.join('；').replace(/\s+/g,'');
+  return (s==='(空白)'||s==='空白')?'':s;
+}
+function deedLienDetail_(lines){
+  var out=[],cur=null;
+  (lines||[]).forEach(function(raw){
+    var t=deedPn_(String(raw).trim());if(!t)return;
+    var o=t.match(/^\(\d{4}\)\s*登記次序\s*:\s*(\S+)/),m;
+    if(o){cur={order:o[1],type:'',holder:'',amount:''};out.push(cur)}
+    if(!cur)return;
+    if((m=t.match(/權利種類\s*:\s*(\S+)/)))cur.type=m[1];
+    if((m=t.match(/^權\s*利\s*人\s*:\s*(\S.*)$/)))cur.holder=m[1].trim();
+    if((m=t.match(/擔保債權總金額\s*:\s*(.*)$/)))cur.amount=m[1].replace(/\*+/g,'').replace(/\s+/g,'').trim();
+  });
+  return out;
+}
+
+var RL={files:[],recs:[],msgs:[],busy:false,title:'',serial:'',cols:null,post:true,onlyOther:false};
+var RL_COLS_=[
+  {k:'qu',h:'鄉鎮市區',w:9,def:1},{k:'sec',h:'段',w:8,def:1},{k:'sub',h:'小段',w:7,def:1},
+  {k:'no',h:'地號',w:11,def:1,lock:1},{k:'area',h:'面積\n(平方公尺)',w:11,def:1},{k:'share',h:'持分比例',w:11,def:1},
+  {k:'ord',h:'主登記\n次序',w:8,def:1},{k:'other',h:'其 他 登 記 事 項',w:58,def:1,wide:1},
+  {k:'sharea',h:'持分面積\n(平方公尺)',w:12,def:0},{k:'date',h:'登記日期',w:12,def:0},{k:'reason',h:'登記原因',w:10,def:0},
+  {k:'mark',h:'土地標示部\n其他登記事項',w:32,def:0,wide:1},{k:'lien',h:'他項權利\n(抵押權等)',w:32,def:0,wide:1}
+];
+var RL_NAMES_={qu:'鄉鎮市區',sec:'段',sub:'小段',no:'地號',area:'面積',share:'持分比例',ord:'主登記次序',other:'其他登記事項(所有權部)',sharea:'持分面積',date:'登記日期',reason:'登記原因',mark:'土地標示部其他登記事項',lien:'他項權利(抵押權等)'};
+function rlLoad_(){
+  try{var s=JSON.parse(localStorage.getItem('ldc_rl')||'null');if(s){RL.cols=s.cols||null;if(s.post!==undefined)RL.post=!!s.post;if(s.onlyOther!==undefined)RL.onlyOther=!!s.onlyOther}}catch(e){}
+  if(!RL.cols)RL.cols={};
+  RL_COLS_.forEach(function(c){if(RL.cols[c.k]===undefined)RL.cols[c.k]=c.def});
+}
+function rlSave_(){try{localStorage.setItem('ldc_rl',JSON.stringify({cols:RL.cols,post:RL.post,onlyOther:RL.onlyOther}))}catch(e){}}
+function rlNoParts_(n){var m=String(n).split('-');return [parseInt(m[0],10)||0,parseInt(m[1]||'0',10)||0]}
+function rlNo_(n){var a=rlNoParts_(n);return ('000'+a[0]).slice(-4)+'-'+('000'+a[1]).slice(-4)}
+function rlFrac_(sh){var m=String(sh||'').match(/(\d+)分之(\d+)/);return m?{n:+m[2],d:+m[1]}:null}
+function rlParcels_(){   // 同一地號有好幾份謄本:取列印日期最新的
+  var best={};
+  RL.recs.forEach(function(it,i){
+    var r=it.rec;if(r.kind!=='land')return;
+    var k=[r.county,r.town,r.district,r.number].join('|'),d=r.printDate||'';
+    if(!best[k]||d>(best[k].rec.printDate||'')||(d===(best[k].rec.printDate||'')&&i>best[k].i))best[k]={rec:r,i:i};
+  });
+  return Object.keys(best).map(function(k){return best[k].rec});
+}
+function rlParcelCmp_(a,b){
+  if(a.district!==b.district)return a.district<b.district?-1:1;
+  var x=rlNoParts_(a.number),y=rlNoParts_(b.number);
+  return x[0]-y[0]||x[1]-y[1];
+}
+function rlOwners_(parcels){
+  var map={},keys=[];
+  parcels.forEach(function(p){
+    (p.ownership||[]).forEach(function(o){
+      var k=o.name+'|'+o.id;
+      if(!map[k]){map[k]={name:o.name,id:o.id,rows:[]};keys.push(k)}
+      map[k].rows.push({p:p,o:o});
+    });
+  });
+  keys.sort(function(a,b){var A=map[a],B=map[b];return A.name<B.name?-1:A.name>B.name?1:(A.id<B.id?-1:A.id>B.id?1:0)});
+  return keys.map(function(k){
+    var g=map[k];
+    g.rows.sort(function(a,b){return rlParcelCmp_(a.p,b.p)||((parseInt(a.o.order,10)||0)-(parseInt(b.o.order,10)||0))});
+    g.addr='';g.rows.some(function(r){var a=deedBlank_(r.o.addr);if(a){g.addr=a;return true}return false});
+    if(!g.addr)g.rows.some(function(r){if(r.o.manager){g.addr='管理者:'+r.o.manager+(deedBlank_(r.o.managerAddr)?'('+deedBlank_(r.o.managerAddr)+')':'');return true}return false});
+    return g;
+  });
+}
+function rlAddr_(g,o){var a=deedBlank_(o.addr);return a||(o.manager?'管理者:'+o.manager+(deedBlank_(o.managerAddr)?'('+deedBlank_(o.managerAddr)+')':''):'')}
+function rlLien_(p,o){
+  var out=[];
+  (p.lienDetail||[]).forEach(function(l){
+    if(o.link&&l.order&&o.link.indexOf(l.order)>=0)out.push((l.type||'他項權利')+'('+l.order+')'+(l.holder?l.holder:'')+(l.amount?' '+l.amount:''));
+  });
+  return out.join('；');
+}
+function rlDispW_(s){var n=0;String(s==null?'':s).split('').forEach(function(c){n+=c.charCodeAt(0)>255?2:1});return n}
+function rlCell_(c,p,o,txt){
+  switch(c.k){
+    case 'qu':return p.town||'';
+    case 'sec':return p.district||'';
+    case 'sub':return '';
+    case 'no':return rlNo_(p.number);
+    case 'area':return p.areaM2==null?'':p.areaM2;
+    case 'share':{var f=rlFrac_(o.share);return f?(f.n+'/'+f.d):(o.share||'')}
+    case 'sharea':{var f2=rlFrac_(o.share);return (f2&&p.areaM2!=null)?Math.round(p.areaM2*f2.n/f2.d*100)/100:''}
+    case 'ord':return parseInt(o.order,10)||o.order||'';
+    case 'other':return txt;
+    case 'date':return o.date||'';
+    case 'reason':return o.reason||'';
+    case 'mark':return p.markOther||'';
+    case 'lien':return rlLien_(p,o);
+  }
+  return '';
+}
+function rlLayout_(owners){
+  // 每位所有權人:列資料(含編號後的其他登記事項文字、列高),依列高分頁
+  var cols=RL_COLS_.filter(function(c){return RL.cols[c.k]||c.lock});
+  var PAGE_H=600;
+  return owners.map(function(g,gi){
+    var n=0,rows=g.rows.map(function(r){
+      var txt='',o=r.o,other=deedBlank_(o.other);
+      if(other){n++;txt=n+other}
+      var ht=24;
+      cols.forEach(function(c){
+        if(!c.wide)return;
+        var v=c.k==='other'?txt:String(rlCell_(c,r.p,o,txt));
+        var lines=Math.max(1,Math.ceil(rlDispW_(v)/Math.max(8,Math.floor(c.w*0.93))));
+        ht=Math.max(ht,lines*13.5+6);
+      });
+      return {p:r.p,o:o,txt:txt,ht:Math.max(30,ht)};
+    });
+    var chunks=[],cur=[],h=0;
+    rows.forEach(function(x){if(cur.length&&h+x.ht>PAGE_H){chunks.push(cur);cur=[];h=0}cur.push(x);h+=x.ht});
+    chunks.push(cur);
+    return {g:g,serial:gi+1,chunks:chunks};
+  });
+}
+async function rlExport_(){
+  var parcels=rlParcels_(),owners=rlOwners_(parcels),rep0=owners.length;
+  if(RL.onlyOther)owners=owners.filter(function(g){return g.rows.some(function(r){return deedBlank_(r.o.other)})});
+  if(!owners.length){toast(rep0?'沒有任何所有權人有其他登記事項,請取消「只列有其他登記事項的所有權人」。':'還沒有讀到謄本,請先選擇謄本 PDF。');return}
+  var cols=RL_COLS_.filter(function(c){return RL.cols[c.k]||c.lock});
+  var POST=[['段',7],['小段',7],['地號',8],['面積\n(平方公尺)',10],['持分比例',10],['其 他 登 記 事 項',26],['備　　註',16]];
+  var N=cols.length+(RL.post?POST.length:0),title=(RL.title||'').trim()||((PRJ[S.proj]?PRJ[S.proj].name:'')+' 重劃前土地所有權人其他登記事項清冊');
+  var nowD=new Date(),today=nowD.getFullYear()+'/'+(nowD.getMonth()+1)+'/'+nowD.getDate();
+  var startNo=parseInt(RL.serial,10);
+  try{
+    var E=await loadExcelJS(),wb=new E.Workbook(),ws=wb.addWorksheet('清冊');
+    var thin={style:'thin'},med={style:'medium'},BOX={left:thin,right:thin,top:thin,bottom:thin};
+    var FONT='標楷體';
+    cols.forEach(function(c,i){ws.getColumn(i+1).width=c.w});
+    if(RL.post)POST.forEach(function(c,i){ws.getColumn(cols.length+i+1).width=c[1]});
+    ws.pageSetup={paperSize:8,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:.4,right:.4,top:.5,bottom:.5,header:.3,footer:.3}};
+    function put(r,c1,c2,v,al,border,bold,size){
+      if(c1>N)return null;c2=Math.min(c2,N);
+      if(c2>c1)ws.mergeCells(r,c1,r,c2);
+      var cell=ws.getCell(r,c1);cell.value=v;
+      cell.alignment=al||{horizontal:'center',vertical:'middle',wrapText:true};
+      cell.font={name:FONT,size:size||10,bold:!!bold};
+      if(border!==false)for(var c=c1;c<=c2;c++)ws.getCell(r,c).border=BOX;
+      return cell;
+    }
+    var L={horizontal:'left',vertical:'middle',wrapText:true},TOP={horizontal:'left',vertical:'top',wrapText:true},RT={horizontal:'right',vertical:'middle'};
+    var row=1;
+    rlLayout_(owners).forEach(function(ol){
+      var g=ol.g,total=ol.chunks.length,noVal=isNaN(startNo)?'':startNo+ol.serial-1;
+      ol.chunks.forEach(function(ch,pi){
+        var r=row;
+        put(r,1,N,title,{horizontal:'center',vertical:'middle'},false,true,16);ws.getRow(r).height=34;
+        r+=2;
+        put(r,1,2,'分配歸戶清冊 :',L);put(r,3,3,ol.serial);r++;
+        put(r,1,2,'所有權人姓名 :',L);put(r,3,4,g.name);put(r,6,6,'統一編號:',L);put(r,7,9,g.id,L);
+        put(r,Math.max(N-1,10),N,'列印日期:'+today,RT,false);r++;
+        put(r,1,2,'編      號 :',L);put(r,3,3,noVal);put(r,6,6,'住 址:',L);put(r,7,11,g.addr,L);
+        put(r,Math.max(N-1,10),N,'頁數:'+(pi+1)+'/'+total,RT,false);r++;
+        put(r,1,cols.length,'重　　劃　　前　　原　　載　　情　　形',null,true,true);
+        if(RL.post)put(r,cols.length+1,N,'重　　劃　　後　　變　　更　　情　　形',null,true,true);
+        for(var c=1;c<=N;c++)ws.getCell(r,c).border={left:thin,right:thin,top:med,bottom:thin};
+        ws.getRow(r).height=22;r++;
+        cols.forEach(function(cd,i){put(r,i+1,i+1,cd.h,null,true,false)});
+        if(RL.post)POST.forEach(function(pc,i){put(r,cols.length+i+1,cols.length+i+1,pc[0],null,true,false)});
+        ws.getRow(r).height=32;r++;
+        ch.forEach(function(x){
+          cols.forEach(function(cd,i){put(r,i+1,i+1,rlCell_(cd,x.p,x.o,x.txt),cd.wide?TOP:null,true,false)});
+          if(RL.post)POST.forEach(function(pc,i){put(r,cols.length+i+1,cols.length+i+1,'',null,true,false)});
+          ws.getRow(r).height=x.ht;r++;
+        });
+        ws.getRow(r-1).addPageBreak();
+        row=r+1;
+      });
+    });
+    // 歸戶總表(每位所有權人 × 每個地號一列,可篩選)
+    var w2=wb.addWorksheet('歸戶總表');
+    var H2=['所有權人','統一編號','住址','鄉鎮市區','段','地號','面積(㎡)','持分比例','持分面積(㎡)','主登記次序','登記日期','登記原因','所有權部其他登記事項','土地標示部其他登記事項','相關他項權利','公告土地現值'];
+    rlAddRow_(w2,H2);
+    owners.forEach(function(g){g.rows.forEach(function(r){
+      var p=r.p,o=r.o,f=rlFrac_(o.share);
+      rlAddRow_(w2,[g.name,g.id,rlAddr_(g,o),p.town||'',p.district||'',rlNo_(p.number),p.areaM2==null?'':p.areaM2,f?(f.n+'/'+f.d):(o.share||''),(f&&p.areaM2!=null)?Math.round(p.areaM2*f.n/f.d*100)/100:'',parseInt(o.order,10)||o.order||'',o.date||'',o.reason||'',deedBlank_(o.other),p.markOther||'',rlLien_(p,o),p.value||'']);
+    })});
+    [12,14,24,9,8,11,10,9,12,9,14,10,60,40,40,14].forEach(function(w,i){w2.getColumn(i+1).width=w});
+    w2.getRow(1).font={bold:true};w2.views=[{state:'frozen',ySplit:1}];w2.autoFilter={from:{row:1,column:1},to:{row:1,column:H2.length}};
+    // 地號核對:持分加總要等於 1
+    var w3=wb.addWorksheet('地號核對');
+    rlAddRow_(w3,['段','地號','面積(㎡)','所有權人筆數','持分加總是否=1','謄本列印日','土地標示部其他登記事項']);
+    var bad=0;
+    parcels.slice().sort(rlParcelCmp_).forEach(function(p){
+      var s=0,okf=true;(p.ownership||[]).forEach(function(o){var f=rlFrac_(o.share);if(f)s+=f.n/f.d;else okf=false});
+      var ok=okf&&Math.abs(s-1)<0.0001;if(!ok)bad++;
+      rlAddRow_(w3,[p.district||'',rlNo_(p.number),p.areaM2==null?'':p.areaM2,(p.ownership||[]).length,ok?'是':'否(請對照謄本)',p.printDate||'',p.markOther||'']);
+    });
+    [8,11,10,12,16,12,60].forEach(function(w,i){w3.getColumn(i+1).width=w});
+    w3.getRow(1).font={bold:true};w3.views=[{state:'frozen',ySplit:1}];
+    var buf=await wb.xlsx.writeBuffer(),name='重劃前歸戶清冊_'+iso(TODAY)+'.xlsx';
+    downloadBlob(name,new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+    api('logExport',{label:'重劃前歸戶清冊',name:name}).catch(function(){});
+    toast('已匯出:'+name+'('+owners.length+' 位所有權人'+(bad?',有 '+bad+' 個地號持分加總不是 1,請看「地號核對」分頁':'')+')');
+    RL.result={owners:owners.length,parcels:parcels.length,bad:bad};
+  }catch(e){
+    toast('產生失敗:'+(e&&e.message?e.message:e)+'(Excel 元件要連網路載入,請確認網路後再試)');
+  }
+}
+async function rlReadFiles_(fileList){
+  var files=Array.prototype.slice.call(fileList);
+  RL.msgs=[];RL.busy=true;rlPanel_();
+  for(var i=0;i<files.length;i++){
+    var f=files[i];
+    if(RL.files.indexOf(f.name)>=0){RL.msgs.push('「'+f.name+'」已經讀過了');continue}
+    try{
+      var pages=await readPdfPages(f);
+      if(!pages.some(function(pg){return pg.length>0})){RL.msgs.push('「'+f.name+'」沒有文字內容(可能是掃描檔或照片),讀不出來。');continue}
+      var recs=parseDeedPages_(pages).filter(function(r){return r.kind==='land'});
+      if(!recs.length){RL.msgs.push('「'+f.name+'」找不到土地標示部,可能不是土地謄本。');continue}
+      RL.files.push(f.name);
+      recs.forEach(function(r){RL.recs.push({rec:r,fileName:f.name})});
+    }catch(err){RL.msgs.push('「'+f.name+'」讀取失敗:'+(err&&err.message?err.message:err))}
+  }
+  RL.busy=false;rlPanel_();
+}
+function rlPanel_(){
+  var host=document.getElementById('deeds-page');if(!host)return;
+  var old=document.getElementById('rl-panel');if(old)old.remove();
+  var parcels=rlParcels_(),owners=rlOwners_(parcels),withOther=owners.filter(function(g){return g.rows.some(function(r){return deedBlank_(r.o.other)})}).length;
+  var h='<div class="panel" id="rl-panel" style="margin-top:14px"><h2>產生重劃前歸戶清冊(其他登記事項清冊)</h2>'
+    +'<p class="small muted" style="margin:0 0 8px">選好土地謄本 PDF(可以一次選很多份),依所有權人歸戶,下載成 Excel,一位所有權人一頁。謄本只在你的瀏覽器裡讀,不會上傳。</p>'
+    +'<div class="dropzone"><input type="file" id="rl-file" accept="application/pdf" multiple aria-label="選擇謄本 PDF">'
+    +'<div class="actions" style="margin-top:8px"><button class="btn small" type="button" data-rl-clear>清除已讀的謄本</button></div></div>';
+  RL.msgs.forEach(function(m){h+='<div class="small bad" style="margin-top:6px">'+esc(m)+'</div>'});
+  if(RL.busy)h+='<p class="small muted" style="margin:8px 0 0">讀取中…</p>';
+  else if(RL.files.length)h+='<p class="small" style="margin:8px 0 0">已讀 <b>'+RL.files.length+'</b> 份謄本:<b>'+parcels.length+'</b> 個地號、<b>'+owners.length+'</b> 位所有權人(以姓名加遮蔽後的統編歸戶),其中 <b>'+withOther+'</b> 位有其他登記事項。</p>';
+  h+='<div class="field" style="margin-top:12px"><span class="lab">要出現的欄位(地號一定會有)</span><div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px">';
+  RL_COLS_.forEach(function(c){
+    h+='<label class="chip" style="cursor:pointer"><input type="checkbox" style="width:auto" data-rl-col="'+c.k+'"'+((RL.cols[c.k]||c.lock)?' checked':'')+(c.lock?' disabled':'')+'> '+esc(RL_NAMES_[c.k])+'</label>';
+  });
+  h+='<label class="chip" style="cursor:pointer"><input type="checkbox" style="width:auto" data-rl-post'+(RL.post?' checked':'')+'> 附「重劃後」空白欄位</label></div></div>';
+  h+='<div class="field"><label class="chip" style="cursor:pointer"><input type="checkbox" style="width:auto" data-rl-only'+(RL.onlyOther?' checked':'')+'> 只列有其他登記事項的所有權人</label></div>';
+  h+='<div class="row2"><div class="field"><label class="lab" for="rl-title">清冊標題</label><input type="text" id="rl-title" value="'+esc(RL.title)+'" placeholder="'+esc((PRJ[S.proj]?PRJ[S.proj].name:'')+' 重劃前土地所有權人其他登記事項清冊')+'"></div>'
+    +'<div class="field"><label class="lab" for="rl-serial">編號從幾號開始</label><input type="number" id="rl-serial" min="0" step="1" value="'+esc(RL.serial)+'" placeholder="不填就留空白"></div></div>';
+  h+='<div class="actions"><button class="btn primary" type="button" data-rl-go'+((RL.busy||!RL.files.length)?' disabled':'')+'>下載歸戶清冊(Excel)</button></div></div>';
+  host.insertAdjacentHTML('beforeend',h);
+}
+(function(){
+  rlLoad_();
+  var base=renderDeeds;
+  renderDeeds=function(){base();rlPanel_()};
+  document.addEventListener('change',function(e){
+    var t=e.target;if(!t||!t.closest)return;
+    if(t.id==='rl-file'){if(t.files&&t.files.length)rlReadFiles_(t.files);return}
+    if(t.hasAttribute&&t.hasAttribute('data-rl-col')){RL.cols[t.getAttribute('data-rl-col')]=t.checked?1:0;rlSave_();return}
+    if(t.hasAttribute&&t.hasAttribute('data-rl-post')){RL.post=t.checked;rlSave_();return}
+    if(t.hasAttribute&&t.hasAttribute('data-rl-only')){RL.onlyOther=t.checked;rlSave_();return}
+  });
+  document.addEventListener('input',function(e){
+    var t=e.target;if(!t)return;
+    if(t.id==='rl-title')RL.title=t.value;
+    if(t.id==='rl-serial')RL.serial=t.value;
+  });
+  document.addEventListener('click',function(e){
+    var t=e.target;if(!t||!t.closest)return;
+    if(t.closest('[data-rl-go]')){rlExport_();return}
+    if(t.closest('[data-rl-clear]')){RL.files=[];RL.recs=[];RL.msgs=[];rlPanel_();return}
+  });
+})();
 
 /* ---------- start ---------- */
 function pickStart(){
