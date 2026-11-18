@@ -5231,7 +5231,7 @@ function renderData(){
   if(!vis.length){el.innerHTML=h+'<div class="notice">目前沒有你可以看的專案。</div>';return}
   if(!DX.proj||!vis.some(function(p){return p.id===DX.proj}))DX.proj=vis.some(function(p){return p.id===S.proj})?S.proj:vis[0].id;
   h+='<div class="bar-tools">'+(vis.length>1?'<label class="small muted" for="dx-proj">專案</label><select id="dx-proj">'+vis.map(function(p){return '<option value="'+esc(p.id)+'"'+(p.id===DX.proj?' selected':'')+'>'+esc(p.name)+'</option>'}).join('')+'</select>':'<b>'+esc(vis[0].name)+'</b>')+'</div>';
-  h+='<div class="grid2"><div class="panel"><h2>匯出</h2>';
+  h+='<style>#data-page .grid2{align-items:stretch}#data-page .grid2>.panel{margin:0;height:100%;box-sizing:border-box}</style><div class="grid2"><div class="panel"><h2>匯出</h2>';
   if(staff)h+='<div class="notice" style="margin:0">業務人員不能匯出資料。需要資料時,請找專案負責人或管理員。</div>';
   else{
     [['parcels','地號清單','面積、使用分區、地主與持分(Excel)'],['owners','地主清單','含電話與地址,請妥善保管(Excel)'],['interviews','訪談紀錄','全部訪談,新到舊排列(Excel)'],['all','彙整總表(一張表看完)','地號、地主持分、訪談合在同一張表,含電話與地址(Excel)'],['register','重劃前土地清冊','依「重劃前土地清冊」格式排好,含身分證字號與住所(Excel)']].forEach(function(x){
@@ -7456,11 +7456,7 @@ function rlPanel_(){
   if(RLC.state!=='done')h+='<p class="small muted" style="margin:0 0 8px">讀取雲端的謄本資料中…</p>';
   else if(RLC.err)h+='<div class="small bad" style="margin:0 0 8px">'+esc(RLC.err)+'</div>';
   else if(nCloud)h+='<p class="small" style="margin:0 0 8px">雲端已有 <b>'+nCloud+'</b> 筆土地謄本資料(最後存入 '+esc(RLC.saved||'—')+'),可以直接下載。</p>';
-  else h+='<p class="small" style="margin:0 0 8px">這個專案雲端還沒有謄本資料。選好土地謄本 PDF 讀取後,會自動存到雲端,之後不用再上傳。</p>';
-  h+='<details'+((!nCloud&&RLC.state==='done')||RL.files.length||RL.msgs.length?' open':'')+'><summary class="small">'+(nCloud?'補充或更新謄本(選填)':'選擇謄本 PDF')+'</summary>'
-    +'<div class="dropzone" style="margin-top:6px"><input type="file" id="rl-file" accept="application/pdf" multiple aria-label="選擇謄本 PDF">'
-    +'<p class="small muted" style="margin:6px 0 0">可以一次選很多份。PDF 在你的瀏覽器裡讀,讀出來的資料會存到雲端,同一地號只留列印日期最新的。</p>'
-    +'<div class="actions" style="margin-top:8px"><button class="btn small" type="button" data-rl-clear>清除這次選的謄本</button></div></div></details>';
+  else h+='<p class="small" style="margin:0 0 8px">這個專案雲端還沒有謄本資料。請先到「謄本更新」頁上傳土地謄本。</p>';
   RL.msgs.forEach(function(m){h+='<div class="small bad" style="margin-top:6px">'+esc(m)+'</div>'});
   if(RL.busy)h+='<p class="small muted" style="margin:8px 0 0">讀取中…</p>';
   else if(have)h+='<p class="small" style="margin:8px 0 0">共 <b>'+parcels.length+'</b> 個地號、<b>'+owners.length+'</b> 位所有權人(以姓名加遮蔽後的統編歸戶),其中 <b>'+withOther+'</b> 位有其他登記事項。</p>';
