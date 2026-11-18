@@ -4458,8 +4458,35 @@ function sgBuild(ex,opts){
             j0=j1}while(pa[j0]!==0);
           do{var j2=way[j0];pa[j0]=pa[j2];j0=j2}while(j0)
         }
-        for(var jc=1;jc<=cols.length;jc++){if(!pa[jc])continue;var no=rows[pa[jc]-1],cand=cl[no][cols[jc-1]];if(!cand||assign[no]||lblUsed[cols[jc-1]])continue;bind(no,{i:cols[jc-1]},cand.fl)}
+        var pick={},got={};
+        for(var jc=1;jc<=cols.length;jc++){if(!pa[jc])continue;var no0=rows[pa[jc]-1],cand0=cl[no0][cols[jc-1]];if(cand0&&!assign[no0]&&!lblUsed[cols[jc-1]]){pick[no0]={i:cols[jc-1],fl:cand0.fl};got[no0]=1}}
+        // 同一格有兩筆面積差不多的地號搶、有一筆被擠掉:這一格綁得不可靠,標成「請核對」,和別份圖合併時才不會蓋掉比較準的
+        var lost=rows.filter(function(no){return !got[no]});
+        Object.keys(pick).forEach(function(no){var pk=pick[no],A=Number(areas[no])||0,fl=pk.fl;
+          if(A>0&&lost.some(function(l){var A2=Number(areas[l])||0;return A2>0&&Math.abs(A2/A-1)<0.08&&cl[l]&&cl[l][pk.i]}))fl=3;
+          bind(no,{i:pk.i},fl)});
       }
+      // 面積幾乎一樣的相鄰細長地(例如 454-7 和 454-24):字雖然壓在隔壁格,但「字的先後順序」和「格子的先後順序」一定一致,不一致就互換
+      (function(){
+        var ks=Object.keys(assign).filter(function(n){return assign[n].lbl&&/^L\d+$/.test(assign[n].key)});
+        function lab(no,pl){var best=null;labT.filter(function(t){return t.s===no}).forEach(function(t){var d=mkInPoly([t.x,t.y],pl.pts)?0:mkDistPoly([t.x,t.y],pl.pts);if(!best||d<best.d)best={d:d,x:t.x,y:t.y}});return best}
+        function axis(pts){var bl=0,v=[1,0];for(var i=0;i<pts.length;i++){var a=pts[i],c=pts[(i+1)%pts.length],dx=c[0]-a[0],dy=c[1]-a[1],L=dx*dx+dy*dy;if(L>bl){bl=L;v=[dx,dy]}}var n=Math.hypot(v[0],v[1])||1;return [v[0]/n,v[1]/n]}
+        for(var it=0;it<10;it++){var sw=false;
+          for(var x=0;x<ks.length;x++)for(var y=x+1;y<ks.length;y++){
+            var na=ks[x],nb=ks[y],a=assign[na],c=assign[nb],Aa=Number(areas[na])||0,Ab=Number(areas[nb])||0;
+            if(!(Aa>0&&Ab>0)||Math.abs(Aa/Ab-1)>0.08)continue;
+            var ca=mkCentroid(a.pts),cb=mkCentroid(c.pts);if(Math.hypot(ca[0]-cb[0],ca[1]-cb[1])>60)continue;
+            var ax=axis(a.pts),ay=axis(c.pts);if(Math.abs(ax[0]*ay[1]-ax[1]*ay[0])>0.2)continue;   // 兩格不平行就不處理
+            var nv=[-ax[1],ax[0]],la=lab(na,a),lb=lab(nb,c);if(!la||!lb)continue;
+            var pa=ca[0]*nv[0]+ca[1]*nv[1],pb=cb[0]*nv[0]+cb[1]*nv[1],qa=la.x*nv[0]+la.y*nv[1],qb=lb.x*nv[0]+lb.y*nv[1];
+            if(Math.abs(qa-qb)<0.3||Math.abs(pa-pb)<0.3)continue;
+            if((pa-pb)*(qa-qb)>=0)continue;   // 順序一致,不動
+            var e0=Math.abs(a.area/Aa-1)+Math.abs(c.area/Ab-1),e1=Math.abs(c.area/Aa-1)+Math.abs(a.area/Ab-1);
+            if(e1>e0+0.04||e1>0.16)continue;
+            var t0={pts:a.pts,area:a.area,key:a.key};a.pts=c.pts;a.area=c.area;a.key=c.key;c.pts=t0.pts;c.area=t0.area;c.key=t0.key;sw=true}
+        if(!sw)break}
+      })();
+      tg=Object.keys(assign).map(function(n){return assign[n]});
       Object.keys(released).forEach(function(no){if(!assign[no]){assign[no]=released[no];tg.push(released[no])}});
       nos=nos.filter(function(no){return !assign[no]});
       // 沒配到的:記下原因(清冊面積、圖上字旁邊最近的塊多大),方便你判斷是圖的問題還是清冊面積不對
@@ -4490,7 +4517,7 @@ function sgBuild(ex,opts){
     Object.keys(assign).forEach(function(no){(share[assign[no].key]=share[assign[no].key]||[]).push(no)});
     Object.keys(assign).forEach(function(no){
       var p=assign[no],shared=share[p.key].length>1,lab=texts.filter(function(t){return t.s===no&&mkInPoly([t.x,t.y],p.pts)})[0];
-      parcels[no]={pts:p.pts,area:Math.round(p.area*10)/10,shared:shared?share[p.key].filter(function(x){return x!==no}):null,pieces:p.n,lbl:!!p.lbl,cpos:shared&&lab?[lab.x,lab.y]:null};
+      parcels[no]={pts:p.pts,area:Math.round(p.area*10)/10,shared:shared?share[p.key].filter(function(x){return x!==no}):null,pieces:p.n,lbl:p.lbl||0,cpos:shared&&lab?[lab.x,lab.y]:null};
     });
     isl.push({pages:c.pages,parcels:parcels,ctx:ctx,ctxlab:ctxlab,rect:r,diag:diag});
   });
@@ -6272,14 +6299,23 @@ function cadGeoPts_(g,fn){
 }
 function cadBox_(g){var s=g.scale,b=[1e18,1e18,-1e18,-1e18];cadGeoPts_(g,function(p){b=[Math.min(b[0],p[0]*s),Math.min(b[1],p[1]*s),Math.max(b[2],p[0]*s),Math.max(b[3],p[1]*s)]});return b}
 function geoAlignJS_(old,add){   // 和後端 geoAlign_ 一樣:兩張都有的地號對齊
-  var so=old.scale,sn=add.scale,dxs=[],dys=[];
-  function ctr(s,q){var b=[1e18,1e18,-1e18,-1e18];q.pts.forEach(function(p){b=[Math.min(b[0],p[0]),Math.min(b[1],p[1]),Math.max(b[2],p[0]),Math.max(b[3],p[1])]});return [(b[0]+b[2])/2*s,(b[1]+b[3])/2*s]}
-  Object.keys(add.parcels||{}).forEach(function(k){var o=old.parcels&&old.parcels[k];if(!o||!o.pts||!o.pts.length||!add.parcels[k].pts||!add.parcels[k].pts.length)return;var a=ctr(so,o),n=ctr(sn,add.parcels[k]);dxs.push(a[0]-n[0]);dys.push(a[1]-n[1])});
-  if(!dxs.length)return null;
-  var med=function(v){var s=v.slice().sort(function(x,y){return x-y});return s[Math.floor(s.length/2)]};
-  var mx=med(dxs),my=med(dys),good=0;dxs.forEach(function(v,i){if(Math.abs(v-mx)<=5&&Math.abs(dys[i]-my)<=5)good++});
-  if(good<Math.max(1,Math.ceil(dxs.length/2)))return null;
-  return {dx:mx,dy:my,n:dxs.length};
+  var so=old.scale,sn=add.scale,vs=[];
+  function ctr(s,q){var bb=[1e18,1e18,-1e18,-1e18];q.pts.forEach(function(p){bb=[Math.min(bb[0],p[0]),Math.min(bb[1],p[1]),Math.max(bb[2],p[0]),Math.max(bb[3],p[1])]});return [(bb[0]+bb[2])/2*s,(bb[1]+bb[3])/2*s]}
+  Object.keys(add.parcels||{}).forEach(function(k){var o=old.parcels&&old.parcels[k],q=add.parcels[k];if(!o||!o.pts||!o.pts.length||!q.pts||!q.pts.length)return;var a=ctr(so,o),n=ctr(sn,q);vs.push({dx:a[0]-n[0],dy:a[1]-n[1],w:(o.flag==='label-check'||q.flag==='label-check')?0:1})});
+  var good=vs.filter(function(v){return v.w});if(!good.length)good=vs;
+  if(!good.length)return null;
+  var bestI=0,bestN=-1;good.forEach(function(v,i){var n=good.filter(function(u){return Math.abs(u.dx-v.dx)<=3&&Math.abs(u.dy-v.dy)<=3}).length;if(n>bestN){bestN=n;bestI=i}});
+  var c0=good[bestI],inl=good.filter(function(u){return Math.abs(u.dx-c0.dx)<=3&&Math.abs(u.dy-c0.dy)<=3});
+  if(inl.length<Math.max(1,Math.ceil(good.length/2)))return null;
+  var sx=0,sy=0;inl.forEach(function(u){sx+=u.dx;sy+=u.dy});
+  return {dx:sx/inl.length,dy:sy/inl.length,n:inl.length};
+}
+function geoRankJS_(f){return f==='manual'?9:f==='ok'?4:f==='shared'?3:f==='label-check'?1:2}
+function geoBetterJS_(ex,nw,key,areas){
+  var rx=geoRankJS_(ex.flag),rn=geoRankJS_(nw.flag);if(rn!==rx)return rn>rx;
+  var i=key.indexOf('|'),A=Number(areas&&(areas[key]||areas[key.slice(i+1)]))||0;
+  if(!(A>0)||!(ex.poly_m2>0)||!(nw.poly_m2>0))return false;
+  return Math.abs(nw.poly_m2/A-1)+0.03<Math.abs(ex.poly_m2/A-1);
 }
 function cadCalc_(old,add,P){   // 和後端 combineGeo_ 算法一致
   var ob=cadBox_(old),nb=cadBox_(add),dir=P.dir,gap=Math.max(0,Math.min(2000,Number(P.gap)||0));
@@ -6291,7 +6327,7 @@ function cadCalc_(old,add,P){   // 和後端 combineGeo_ 算法一致
 }
 /* 把新的一段併進舊圖(和後端 combineGeo_ 一樣的算法),新增專案分批上傳時在瀏覽器端先合好 */
 function geoSecsJS_(g){var o={};Object.keys(g.parcels||{}).forEach(function(k){var i=k.indexOf('|');o[g.parcels[k].sec||(i>=0?k.slice(0,i):'')]=1});return Object.keys(o)}
-function geoCombineJS_(old,add,caption,place){
+function geoCombineJS_(old,add,caption,place,areas){
   var so=old.scale,sn=add.scale,c=cadCalc_(old,add,place||{dir:'E',gap:40,east:0,north:0}),ob=c.ob,nb=c.nb,dx=c.dx,dy=c.dy;
   var ub=[Math.min(ob[0],nb[0]+dx),Math.min(ob[1],nb[1]+dy),Math.max(ob[2],nb[2]+dx),Math.max(ob[3],nb[3]+dy)];
   var W=ub[2]-ub[0],H=ub[3]-ub[1],sc=Math.min(920/W,580/H),ox=40+(920-W*sc)/2,oy=40+(580-H*sc)/2;
@@ -6309,7 +6345,7 @@ function geoCombineJS_(old,add,caption,place){
       var q=g.parcels[key],i=key.indexOf('|'),sec=q.sec||(i>=0?key.slice(0,i):''),no=i>=0?key.slice(i+1):key,o={};
       Object.keys(q).forEach(function(f){o[f]=q[f]});
       o.sec=sec;o.pts=q.pts.map(T);o.c=T(q.c);o.lf=Math.max(2.2,r1(q.lf*k));o.pc=pf(q.pc);
-      if(a[2]&&out.parcels[sec+'|'+no]){out.ctx.push(o.pts);out.ctxpc.push(o.pc);return}
+      if(a[2]&&out.parcels[sec+'|'+no]){var ex=out.parcels[sec+'|'+no];if(geoBetterJS_(ex,o,sec+'|'+no,areas)){out.ctx.push(ex.pts);out.ctxpc.push(ex.pc);out.parcels[sec+'|'+no]=o;return}out.ctx.push(o.pts);out.ctxpc.push(o.pc);return}
       out.parcels[sec+'|'+no]=o;
     });
     (g.ctx||[]).forEach(function(r,ri){out.ctx.push(r.map(T));out.ctxpc.push(pf((g.ctxpc||[])[ri]))});
@@ -6418,10 +6454,11 @@ function cbFold_(n){   // 把第 0..n-1 份依各自的擺放設定合成一張
   var g=null;
   for(var i=0;i<n&&i<CB.items.length;i++){
     var it=CB.items[i];if(!it.res||!it.res.ok)continue;
-    g=g?geoCombineJS_(g,it.res.geo,it.res.sec||it.sec,it.pl):it.res.geo;
+    g=g?geoCombineJS_(g,it.res.geo,it.res.sec||it.sec,it.pl,cbAreas_()):it.res.geo;
   }
   return g;
 }
+function cbAreas_(){var o={};((IM&&IM.res&&IM.res.parcels)||[]).forEach(function(p){if(p.area>0){o[(p.sec||'')+'|'+p.no]=p.area;if(o[String(p.no)]===undefined)o[String(p.no)]=p.area}});return o}
 function cbFinal_(){try{var g=cbFold_(CB.items.length);return {geo:g,err:''}}catch(e){return {geo:null,err:e.message}}}
 function cbCoverage_(geo){
   var res=IM.res&&IM.res.parcels||[],have={},miss=[];
@@ -6500,6 +6537,7 @@ document.addEventListener('change',function(e){
   var dup=CB.items.filter(function(x){return x!==it&&x.sec===it.sec});if(dup.length)it.warn='段別「'+it.sec+'」和「'+dup[0].name+'」重複,合不起來。';
   renderCbPanel();
 });
+function cadAreasMap_(pid){var o={};DB.parcels.forEach(function(p){if(p.proj===pid&&p.area>0){o[(p.sec||'')+'|'+p.no]=p.area;if(o[String(p.no)]===undefined)o[String(p.no)]=p.area}});return o}
 function cadApply(){
   var r=CAD&&CAD.res;if(!r||!r.ok)return;
   var pr=PRJ[CAD.pid],cur=CAD.cur||[],mode=cur.length?(($('input[name="cad-mode"]:checked')||{}).value||'merge'):'merge',replace=mode==='replace'&&cur.length>0;
@@ -6508,7 +6546,7 @@ function cadApply(){
   if(!window.confirm(msg))return;
   var btn=$('[data-cad-apply]');if(btn)btn.disabled=true;toast('處理中…');
   var pid=CAD.pid;
-  api('mergeGeo',{projectId:pid,geo:r.geo,replace:replace,place:{dir:($('#cad-dir')||{}).value||'E',gap:($('#cad-gap')||{}).value,east:($('#cad-e')||{}).value,north:($('#cad-n')||{}).value},caption:replace?'':(r.sec||'')}).then(function(x){
+  api('mergeGeo',{projectId:pid,geo:r.geo,replace:replace,areas:cadAreasMap_(pid),place:{dir:($('#cad-dir')||{}).value||'E',gap:($('#cad-gap')||{}).value,east:($('#cad-e')||{}).value,north:($('#cad-n')||{}).value},caption:replace?'':(r.sec||'')}).then(function(x){
     GEOC[pid]=undefined;geoLsDel_(pid);if(PRJ[pid])PRJ[pid]._geoLazy=true;AP.list=null;toast('完成:現在圖上有 '+x.parcels+' 筆地號('+x.sections.join('、')+')。'+(x.skipped?'其中 '+x.skipped+' 筆兩份都有,保留現有的。':''));
     var d=$('#dlg-cad');if(d&&d.open)d.close();CAD=null;return ensureGeo(pid)}).then(function(){renderAdmin()}).catch(function(er){if(btn)btn.disabled=false;if(er.auth)showLogin('登入已過期,請重新登入');else toast('失敗:'+(er.userMessage||er.message))});
 }
