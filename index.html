@@ -4874,7 +4874,7 @@ async function saveSheetsXlsx(name,sheets,label){
   try{
     var E=await loadExcelJS(),wb=new E.Workbook(),used={};
     sheets.forEach(function(s){var n=s.name,k=1;while(used[n]){n=s.name+(++k)}used[n]=1;xlsxAddSheet_(wb,n,s.rows)});
-    var buf=await wb.xlsx.writeBuffer();
+    xlFontAll_(wb);var buf=await wb.xlsx.writeBuffer();
     downloadBlob(fname,new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
     api('logExport',{label:label,name:fname}).catch(function(){});
     toast('已匯出:'+fname);
@@ -4888,6 +4888,12 @@ async function saveSheetsXlsx(name,sheets,label){
 function saveRowsXlsx(name,rows,label,sheetName){return saveSheetsXlsx(name,[{name:String(sheetName||label||'資料'),rows:rows}],label)}
 
 /* 重劃前土地清冊(附表 3 格式):每個地號可以有多位所有權人,地號相關欄位合併儲存格 */
+// 所有 Excel 匯出統一用標楷體(保留原本的粗體、大小、顏色)
+function xlFontAll_(wb){
+  try{if(!wb||typeof wb.eachSheet!=='function')return;
+    wb.eachSheet(function(ws){ws.eachRow({includeEmpty:true},function(row){row.eachCell({includeEmpty:true},function(c){var f=Object.assign({},c.font||{});f.name='標楷體';f.family=3;f.charset=136;c.font=f})})});
+  }catch(e){}   // 字體設定失敗不影響匯出
+}
 async function saveRegisterXlsx_(name,rows,label){
   try{
     var E=await loadExcelJS(),wb=new E.Workbook(),ws=wb.addWorksheet('重劃前土地清冊'),data=rows.slice(1);
@@ -4901,7 +4907,7 @@ async function saveRegisterXlsx_(name,rows,label){
       if(o.text)cell.numFmt='@';return cell;
     }
     var first=data[0]||[],cnt=first[1]||'○○縣(市)',secs=[],seen={};data.forEach(function(r){if(r[0]&&!seen[r[0]]){seen[r[0]]=1;secs.push(r[0])}});
-    ws.mergeCells('A1:O1');ws.getCell('A1').value='附表 3　重劃前土地清冊';ws.getCell('A1').font={bold:true,size:12};
+    ws.getRow(1).height=6;
     box(2,1,3,6,(cnt||'○○縣(市)')+'第○○期○○市地重劃區\n重劃前土地清冊',{bold:true,size:13});
     box(2,7,2,7,'鄉鎮市區',{bold:true});box(2,8,2,10,first[2]||'',{});box(2,11,2,11,'段',{bold:true});box(2,12,2,15,secs.join('、'),{});
     box(3,7,3,7,'小段',{bold:true});box(3,8,3,10,'',{});box(3,11,3,11,'',{});box(3,12,3,15,'',{});
@@ -4928,7 +4934,7 @@ async function saveRegisterXlsx_(name,rows,label){
     ws.views=[{state:'frozen',ySplit:6}];
     ws.pageSetup={orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.2,footer:0.2}};
     ws.pageSetup.printTitlesRow='1:6';
-    var buf=await wb.xlsx.writeBuffer();
+    xlFontAll_(wb);var buf=await wb.xlsx.writeBuffer();
     downloadBlob(name,new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
     toast('已匯出:'+name);
   }catch(e){toast('清冊匯出失敗:'+(e&&e.message?e.message:e)+'。請確認網路後再試一次。')}
@@ -5087,7 +5093,7 @@ async function saveCleanXlsx(res){
       if(i>0&&sh.flags[i]){[sh.col,r.length-1].forEach(function(c){var cell=row.getCell(c+1);cell.font={bold:true,color:{argb:'FFC00000'}};cell.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFC7CE'}}})}
     });
     ws.columns.forEach(function(c,i){c.width=i===sh.col||i===sh.rows[0].length-1?34:14});
-    var buf=await wb.xlsx.writeBuffer();
+    xlFontAll_(wb);var buf=await wb.xlsx.writeBuffer();
     downloadBlob(name+'.xlsx',new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
     api('logExport',{label:'整理後專案資料',name:name+'.xlsx'}).catch(function(){});
     toast('已匯出:'+name+'.xlsx'+(bad?'(戶籍地不確定的 '+bad+' 筆已反紅,請對照謄本確認)':''));
@@ -5234,7 +5240,7 @@ function renderData(){
   h+='<style>#data-page .grid2{align-items:stretch}#data-page .grid2>.panel{margin:0;height:100%;box-sizing:border-box}</style><div class="grid2"><div class="panel"><h2>匯出</h2>';
   if(staff)h+='<div class="notice" style="margin:0">業務人員不能匯出資料。需要資料時,請找專案負責人或管理員。</div>';
   else{
-    [['parcels','地號清單','面積、使用分區、地主與持分(Excel)'],['owners','地主清單','含電話與地址,請妥善保管(Excel)'],['interviews','訪談紀錄','全部訪談,新到舊排列(Excel)'],['all','彙整總表(一張表看完)','地號、地主持分、訪談合在同一張表,含電話與地址(Excel)'],['register','重劃前土地清冊','依「重劃前土地清冊」格式排好,含身分證字號與住所(Excel)']].forEach(function(x){
+    [['parcels','地號清單','面積、使用分區、地主與持分(Excel)'],['owners','地主清單','含電話與地址,請妥善保管(Excel)'],['interviews','訪談紀錄','全部訪談,新到舊排列(Excel)'],['all','彙整總表(一張表看完)','地號、地主持分、訪談合在同一張表,含電話與地址(Excel)'],['register','重劃前土地清冊','依「重劃前土地清冊」格式排好,含身分證字號與住所(Excel)'],['rl','重劃前歸戶清冊','依所有權人歸戶,含其他登記事項,一位所有權人一頁(Excel)']].forEach(function(x){
       h+='<div class="expcard"><div><b>'+x[1]+'</b><span class="small muted">'+x[2]+'</span></div><button class="btn" type="button" data-dx-exp="'+x[0]+'">匯出</button></div>';
     });
     h+='<div class="expcard"><div><b>完整備份</b><span class="small muted">'+(admin?'在雲端硬碟建立整份試算表的副本,含全部專案與個資':'只有管理員可以建立,因為含全部專案與個資')+'</span></div><button class="btn" type="button" data-dx-backup'+(admin?'':' disabled')+'>建立備份</button></div>';
@@ -5263,6 +5269,7 @@ document.addEventListener('click',function(e){
   var t=e.target;if(!t||!t.closest||!t.closest('#data-page'))return;var b;
   var safe=function(s){return String(s||'').replace(/[\\\/:*?"<>|]+/g,'_')};
   if((b=t.closest('[data-dx-exp]'))){
+    if(b.dataset.dxExp==='rl'){rlRun_(b);return}
     var kind=b.dataset.dxExp,label={parcels:'地號清單',owners:'地主清單',interviews:'訪談紀錄',all:'彙整總表',register:'重劃前土地清冊'}[kind];b.disabled=true;
     api('exportData',{projectId:DX.proj,kind:kind}).then(function(r){
       if(kind==='register')saveRegisterXlsx_('土地開發_'+label+'_'+safe(r.project)+'_'+iso(new Date())+'.xlsx',r.rows,label+'('+r.project+')');
@@ -7218,11 +7225,11 @@ var RL_COLS_=[
 ];
 var RL_NAMES_={qu:'鄉鎮市區',sec:'段',sub:'小段',no:'地號',area:'面積',share:'持分比例',ord:'主登記次序',other:'其他登記事項(所有權部)',sharea:'持分面積',date:'登記日期',reason:'登記原因',mark:'土地標示部其他登記事項',lien:'他項權利(抵押權等)'};
 function rlLoad_(){
-  try{var s=JSON.parse(localStorage.getItem('ldc_rl')||'null');if(s){RL.cols=s.cols||null;if(s.post!==undefined)RL.post=!!s.post;if(s.onlyOther!==undefined)RL.onlyOther=!!s.onlyOther}}catch(e){}
+  try{var s=JSON.parse(localStorage.getItem('ldc_rl')||'null');if(s){RL.cols=s.cols||null;if(s.post!==undefined)RL.post=!!s.post;if(s.onlyOther!==undefined)RL.onlyOther=!!s.onlyOther;if(s.serial!==undefined)RL.serial=String(s.serial)}}catch(e){}
   if(!RL.cols)RL.cols={};
   RL_COLS_.forEach(function(c){if(RL.cols[c.k]===undefined)RL.cols[c.k]=c.def});
 }
-function rlSave_(){try{localStorage.setItem('ldc_rl',JSON.stringify({cols:RL.cols,post:RL.post,onlyOther:RL.onlyOther}))}catch(e){}}
+function rlSave_(){try{localStorage.setItem('ldc_rl',JSON.stringify({cols:RL.cols,post:RL.post,onlyOther:RL.onlyOther,serial:RL.serial}))}catch(e){}}
 function rlNoParts_(n){var m=String(n).split('-');return [parseInt(m[0],10)||0,parseInt(m[1]||'0',10)||0]}
 function rlNo_(n){var a=rlNoParts_(n);return ('000'+a[0]).slice(-4)+'-'+('000'+a[1]).slice(-4)}
 function rlFrac_(sh){var m=String(sh||'').match(/(\d+)分之(\d+)/);return m?{n:+m[2],d:+m[1]}:null}
@@ -7406,7 +7413,7 @@ async function rlExport_(){
     });
     [8,11,10,12,16,12,60].forEach(function(w,i){w3.getColumn(i+1).width=w});
     w3.getRow(1).font={bold:true};w3.views=[{state:'frozen',ySplit:1}];
-    var buf=await wb.xlsx.writeBuffer(),name='重劃前歸戶清冊_'+iso(TODAY)+'.xlsx';
+    xlFontAll_(wb);var buf=await wb.xlsx.writeBuffer(),name='重劃前歸戶清冊_'+iso(TODAY)+'.xlsx';
     downloadBlob(name,new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
     api('logExport',{label:'重劃前歸戶清冊',name:name}).catch(function(){});
     toast('已匯出:'+name+'('+owners.length+' 位所有權人'+(bad?',有 '+bad+' 個地號持分加總不是 1,請看「地號核對」分頁':'')+')');
@@ -7435,41 +7442,32 @@ async function rlReadFiles_(fileList){
 }
 function rlSettingsHTML_(){
   rlLoad_();
-  var h='<h2>歸戶清冊欄位</h2><p class="sethint">勾起來的欄位會出現在「匯入匯出」頁產生的歸戶清冊裡。勾選後自動儲存,存在這台電腦的瀏覽器。地號欄固定會有。</p>'
+  var h='<h2>歸戶清冊欄位</h2><p class="sethint">勾起來的欄位會出現在「匯入匯出」頁匯出的重劃前歸戶清冊裡。勾選後自動儲存,存在這台電腦的瀏覽器。地號欄固定會有。</p>'
     +'<div style="display:flex;flex-wrap:wrap;gap:8px 16px">';
   RL_COLS_.forEach(function(c){
     h+='<label class="chip" style="cursor:pointer"><input type="checkbox" style="width:auto" data-rl-col="'+c.k+'"'+((RL.cols[c.k]||c.lock)?' checked':'')+(c.lock?' disabled':'')+'> '+esc(RL_NAMES_[c.k])+'</label>';
   });
   h+='</div><div style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:14px">'
     +'<label class="chip" style="cursor:pointer"><input type="checkbox" style="width:auto" data-rl-post'+(RL.post?' checked':'')+'> 附「重劃後」空白欄位</label>'
-    +'<label class="chip" style="cursor:pointer"><input type="checkbox" style="width:auto" data-rl-only'+(RL.onlyOther?' checked':'')+'> 只列有其他登記事項的所有權人</label></div>';
+    +'<label class="chip" style="cursor:pointer"><input type="checkbox" style="width:auto" data-rl-only'+(RL.onlyOther?' checked':'')+'> 只列有其他登記事項的所有權人</label></div>'
+    +'<div class="field" style="margin-top:14px;max-width:260px"><label class="lab" for="rl-serial">編號從幾號開始</label><input type="number" id="rl-serial" min="0" step="1" value="'+esc(RL.serial)+'" placeholder="不填就留空白"></div>';
   return h;
 }
-function rlPanel_(){
-  var old=document.getElementById('rl-panel');if(old)old.remove();
-  var host=document.getElementById('data-page');if(!host||S.role==='staff'||!host.firstChild)return;
-  var parcels=rlParcels_(),owners=rlOwners_(parcels),withOther=owners.filter(function(g){return g.rows.some(function(r){return deedBlank_(r.o.other)})}).length;
-  rlCloudLoad_();
-  var pj=PRJ[rlProj_()]||{name:''},nCloud=RLC.recs.filter(function(r){return r.kind==='land'}).length,have=parcels.length>0;
-  var h='<div class="panel" id="rl-panel" style="margin-top:14px"><h2>產生重劃前歸戶清冊(其他登記事項清冊)</h2>'
-    +'<p class="small muted" style="margin:0 0 8px">專案:<b>'+esc(pj.name)+'</b>。用這個專案已經讀進系統的謄本資料,依所有權人歸戶,下載成 Excel,一位所有權人一頁。要出現哪些欄位,在「後台 → 系統設定 → 歸戶清冊欄位」勾選。</p>';
-  if(RLC.state!=='done')h+='<p class="small muted" style="margin:0 0 8px">讀取雲端的謄本資料中…</p>';
-  else if(RLC.err)h+='<div class="small bad" style="margin:0 0 8px">'+esc(RLC.err)+'</div>';
-  else if(nCloud)h+='<p class="small" style="margin:0 0 8px">雲端已有 <b>'+nCloud+'</b> 筆土地謄本資料(最後存入 '+esc(RLC.saved||'—')+'),可以直接下載。</p>';
-  else h+='<p class="small" style="margin:0 0 8px">這個專案雲端還沒有謄本資料。請先到「謄本更新」頁上傳土地謄本。</p>';
-  RL.msgs.forEach(function(m){h+='<div class="small bad" style="margin-top:6px">'+esc(m)+'</div>'});
-  if(RL.busy)h+='<p class="small muted" style="margin:8px 0 0">讀取中…</p>';
-  else if(have)h+='<p class="small" style="margin:8px 0 0">共 <b>'+parcels.length+'</b> 個地號、<b>'+owners.length+'</b> 位所有權人(以姓名加遮蔽後的統編歸戶),其中 <b>'+withOther+'</b> 位有其他登記事項。</p>';
-  h+='<div class="row2"><div class="field"><label class="lab" for="rl-title">清冊標題</label><input type="text" id="rl-title" value="'+esc(RL.title)+'" placeholder="'+esc(pj.name+' 重劃前土地所有權人其他登記事項清冊')+'"></div>'
-    +'<div class="field"><label class="lab" for="rl-serial">編號從幾號開始</label><input type="number" id="rl-serial" min="0" step="1" value="'+esc(RL.serial)+'" placeholder="不填就留空白"></div></div>';
-  h+='<div class="actions"><button class="btn primary" type="button" data-rl-go'+((RL.busy||!have)?' disabled':'')+'>下載歸戶清冊(Excel)</button></div></div>';
-  host.insertAdjacentHTML('beforeend',h);
+function rlPanel_(){var old=document.getElementById('rl-panel');if(old)old.remove()}
+// 匯出清單裡的「重劃前歸戶清冊」:讀雲端這個專案的謄本資料,直接下載 Excel
+async function rlRun_(btn){
+  var pid=rlProj_();if(!pid||RL.busy)return;
+  btn.disabled=true;RL.busy=true;
+  try{
+    var r=await api('getDeeds',{projectId:pid});
+    RLC={pid:pid,recs:(r&&r.recs)||[],saved:(r&&r.saved)||'',state:'done',err:''};
+    if(!rlParcels_().length){toast('這個專案雲端還沒有謄本資料。請先到「謄本更新」頁上傳土地謄本。');return}
+    await rlExport_();
+  }catch(e){if(e&&e.auth)showLogin('登入已過期,請重新登入');else toast('歸戶清冊產生失敗:'+((e&&(e.userMessage||e.message))||'請再試一次'))}
+  finally{RL.busy=false;btn.disabled=false}
 }
-window.addEventListener('hashchange',function(){if(location.hash==='#data')rlPanel_()});
 (function(){
   rlLoad_();
-  var base=renderData;
-  renderData=function(){base();rlPanel_()};
   document.addEventListener('change',function(e){
     var t=e.target;if(!t||!t.closest)return;
     if(t.id==='rl-file'){if(t.files&&t.files.length)rlReadFiles_(t.files);return}
@@ -7479,12 +7477,10 @@ window.addEventListener('hashchange',function(){if(location.hash==='#data')rlPan
   });
   document.addEventListener('input',function(e){
     var t=e.target;if(!t)return;
-    if(t.id==='rl-title')RL.title=t.value;
-    if(t.id==='rl-serial')RL.serial=t.value;
+    if(t.id==='rl-serial'){RL.serial=t.value;rlSave_()}
   });
   document.addEventListener('click',function(e){
     var t=e.target;if(!t||!t.closest)return;
-    if(t.closest('[data-rl-go]')){rlExport_();return}
     if(t.closest('[data-rl-clear]')){RL.files=[];RL.recs=[];RL.msgs=[];rlPanel_();return}
   });
 })();
