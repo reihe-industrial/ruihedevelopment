@@ -4587,11 +4587,11 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null};
+var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
   if(!c)return;
-  CFG.stageNames=c.stageNames||null;CFG.headPct=c.headPct;CFG.sharePct=c.sharePct;CFG.expireDays=c.expireDays;CFG.tags=(c.tags||[]).slice();CFG.rolePerms=c.rolePerms||null;
+  CFG.stageNames=c.stageNames||null;CFG.headPct=c.headPct;CFG.sharePct=c.sharePct;CFG.expireDays=c.expireDays;CFG.tags=(c.tags||[]).slice();CFG.rolePerms=c.rolePerms||null;CFG.rlCols=c.rlCols||null;
   if(c.expireDays>0)DEED_EXPIRE_DAYS=c.expireDays;
   if(CFG.tags.length){CONCERNS.length=0;CFG.tags.forEach(function(t){CONCERNS.push(t)})}
 }
@@ -7236,12 +7236,21 @@ var RL_COLS_=[
   {k:'mark',h:'土地標示部\n其他登記事項',w:32,def:0,wide:1},{k:'lien',h:'他項權利\n(抵押權等)',w:32,def:0,wide:1}
 ];
 var RL_NAMES_={qu:'鄉鎮市區',sec:'段',sub:'小段',no:'地號',area:'面積',share:'持分比例',ord:'主登記次序',other:'其他登記事項(所有權部)',sharea:'持分面積',date:'登記日期',reason:'登記原因',mark:'土地標示部其他登記事項',lien:'他項權利(抵押權等)'};
-function rlLoad_(){
-  try{var s=JSON.parse(localStorage.getItem('ldc_rl')||'null');if(s){RL.cols=s.cols||null;if(s.post!==undefined)RL.post=!!s.post;if(s.onlyOther!==undefined)RL.onlyOther=!!s.onlyOther;if(s.serial!==undefined)RL.serial=String(s.serial)}}catch(e){}
-  if(!RL.cols)RL.cols={};
-  RL_COLS_.forEach(function(c){if(RL.cols[c.k]===undefined)RL.cols[c.k]=c.def});
+function rlLoad_(){   // 欄位設定存在雲端(全公司共用),沒設定過就用預設
+  var s=CFG.rlCols||{};
+  RL.cols={};
+  RL_COLS_.forEach(function(c){var v=s.cols&&s.cols[c.k];RL.cols[c.k]=(v===undefined)?c.def:(v?1:0)});
+  RL.post=(s.post===undefined)?true:!!s.post;RL.onlyOther=!!s.onlyOther;RL.serial=String(s.serial||'');
 }
-function rlSave_(){try{localStorage.setItem('ldc_rl',JSON.stringify({cols:RL.cols,post:RL.post,onlyOther:RL.onlyOther,serial:RL.serial}))}catch(e){}}
+var RLS_T=null;
+function rlSave_(){
+  CFG.rlCols={cols:Object.assign({},RL.cols),post:!!RL.post,onlyOther:!!RL.onlyOther,serial:String(RL.serial||'')};
+  var payload=CFG.rlCols;clearTimeout(RLS_T);
+  RLS_T=setTimeout(function(){
+    api('saveRlCols',{rl:payload}).then(function(){toast('已儲存歸戶清冊欄位。')})
+      .catch(function(e){if(e&&e.auth){showLogin('登入已過期,請重新登入');return}toast('歸戶清冊欄位沒有存到雲端:'+((e&&(e.userMessage||e.message))||'請再試一次'))});
+  },500);
+}
 function rlNoParts_(n){var m=String(n).split('-');return [parseInt(m[0],10)||0,parseInt(m[1]||'0',10)||0]}
 function rlNo_(n){var a=rlNoParts_(n);return ('000'+a[0]).slice(-4)+'-'+('000'+a[1]).slice(-4)}
 function rlFrac_(sh){var m=String(sh||'').match(/(\d+)分之(\d+)/);return m?{n:+m[2],d:+m[1]}:null}
@@ -7351,6 +7360,7 @@ function rlLayout_(owners){
   });
 }
 async function rlExport_(){
+  rlLoad_();
   var parcels=rlParcels_(),owners=rlOwners_(parcels),rep0=owners.length;
   if(RL.onlyOther)owners=owners.filter(function(g){return g.rows.some(function(r){return deedBlank_(r.o.other)})});
   if(!owners.length){toast(rep0?'沒有任何所有權人有其他登記事項,請取消「只列有其他登記事項的所有權人」。':'還沒有讀到謄本,請先選擇謄本 PDF。');return}
@@ -7454,7 +7464,7 @@ async function rlReadFiles_(fileList){
 }
 function rlSettingsHTML_(){
   rlLoad_();
-  var h='<h2>歸戶清冊欄位</h2><p class="sethint">勾起來的欄位會出現在「匯入匯出」頁匯出的重劃前歸戶清冊裡。勾選後自動儲存,存在這台電腦的瀏覽器。地號欄固定會有。</p>'
+  var h='<h2>歸戶清冊欄位</h2><p class="sethint">勾起來的欄位會出現在「匯入匯出」頁匯出的重劃前歸戶清冊裡。勾選後自動存到雲端,全公司共用。地號欄固定會有。</p>'
     +'<div style="display:flex;flex-wrap:wrap;gap:8px 16px">';
   RL_COLS_.forEach(function(c){
     h+='<label class="chip" style="cursor:pointer"><input type="checkbox" style="width:auto" data-rl-col="'+c.k+'"'+((RL.cols[c.k]||c.lock)?' checked':'')+(c.lock?' disabled':'')+'> '+esc(RL_NAMES_[c.k])+'</label>';
