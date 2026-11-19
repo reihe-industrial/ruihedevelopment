@@ -677,7 +677,7 @@ function indexDB(){
   DB.parcels.forEach(function(p){if(!p.goneOwners)p.goneOwners=[];if(!p.deedHistory)p.deedHistory=[];if(!p.changeNotes)p.changeNotes=[];if(p.changed===undefined)p.changed=false});
   if(!DB.deals)DB.deals={};if(!DB.tasks)DB.tasks=[];if(!DB.files)DB.files=[];if(!DB.fid)DB.fid=0;if(!DB.tid)DB.tid=DB.tasks.length;
   DB.projects.forEach(function(pr){if(!pr.rule)pr.rule={headPct:50,sharePct:50}});
-  DB.parcels.forEach(function(p){if(!p.factory)p.factory={on:false,name:''};if(!p.constraints)p.constraints=[];if(!p.checklist)p.checklist={};if(!p.surveys)p.surveys=[];if(p.prevValue===undefined)p.prevValue=0;if(!p.idx)p.idx=1});
+  DB.parcels.forEach(function(p){if(!p.factory)p.factory={on:false,name:''};if(!p.constraints)p.constraints=[];if(!p.checklist)p.checklist={};if(!p.surveys)p.surveys=[];if(p.prevValue===undefined)p.prevValue=0;if(p.declared===undefined)p.declared=0;if(p.restrict===undefined)p.restrict='';if(!p.idx)p.idx=1});
   DB.owners.forEach(function(o){if(!o.asg2)o.asg2={};if(!o.inherit)o.inherit={status:'',missing:''};if(o.family===undefined)o.family='';if(!o.win)o.win={};if(!o.rep)o.rep={name:'',canSign:''}});
   OWN={};DB.owners.forEach(function(o){OWN[o.id]=o;if(o.addr&&!o.regAddr)o.regAddr=o.addr});
   PRJ={};DB.projects.forEach(function(p){PRJ[p.id]=p;if(!p.staff)p.staff=staffIds(true)});PRJ['*']={id:'*',name:'全公司',staff:COMPANY_STAFF,rule:{headPct:50,sharePct:50},blocks:[]};
@@ -3325,9 +3325,17 @@ function deedIsNoise_(line){
   return false;
 }
 var DEED_LABELS_=['登記次序','登記日期','登記原因','原因發生日期','所有權人','統一編號','住址','權利範圍','權狀字號','相關他項權利登記次序','其他登記事項'];
+function deedYenOf_(s){var m=String(s||'').match(/\*+\s*([\d,]+(?:\.\d+)?)\s*元/)||String(s||'').match(/([\d,]+(?:\.\d+)?)\s*元/);return m?deedNum_(m[1]):0}
+/* 其他登記事項裡「(限制登記事項)」寫的是預告登記、查封、假處分…:只取類型,整理成「查封登記、預告登記」 */
+function deedRestrictOf_(txt){
+  var t=String(txt||'').replace(/\s+/g,'');if(t.indexOf('限制登記')<0)return '';
+  var seg=t.slice(t.indexOf('限制登記')),out=[];
+  [['預告登記',/預告/],['查封登記',/查封/],['假扣押',/假扣押/],['假處分',/假處分/],['禁止處分',/禁止處分/],['破產登記',/破產/],['暫時處分',/暫時處分/]].forEach(function(x){if(x[1].test(seg)&&out.indexOf(x[0])<0)out.push(x[0])});
+  return out.length?out.join('、'):'限制登記(內容請看謄本)';
+}
 function deedParseOwnership_(lines){
   var entries=[],cur=null,waiting='',cont=false,oc=false;
-  function start(){cur={date:'',reason:'',name:'',id:'',share:'',addr:'',order:'',link:'',other:''};entries.push(cur);waiting='';cont=false;oc=false}
+  function start(){cur={date:'',reason:'',name:'',id:'',share:'',addr:'',order:'',link:'',other:'',declared:0,prev:0};entries.push(cur);waiting='';cont=false;oc=false}
   function put(label,val){
     val=String(val||'').replace(/\s+/g,'');
     if(label==='登記日期')cur.date=val;
@@ -3337,14 +3345,16 @@ function deedParseOwnership_(lines){
     else if(label==='權利範圍'){var sm=val.match(/\*+\s*([^*]+?)\s*\*+/);cur.share=(sm?sm[1]:val.replace(/\*/g,'')).replace(/^全部/,'')}
     else if(label==='住址'){if(cur.manager)cur.managerAddr=val;else cur.addr=val}
     else if(label==='管理者')cur.manager=val;
+    else if(label==='當期申報地價')cur.declared=deedYenOf_(val);
+    else if(label==='前次移轉現值或原規定地價'){var pv=/元/.test(val)?deedYenOf_(val):0;if(pv)cur.prev=pv}
   }
-  var TRACK={'登記日期':1,'登記原因':1,'所有權人':1,'統一編號':1,'權利範圍':1,'住址':1,'管理者':1};
+  var TRACK={'登記日期':1,'登記原因':1,'所有權人':1,'統一編號':1,'權利範圍':1,'住址':1,'管理者':1,'當期申報地價':1,'前次移轉現值或原規定地價':1};
   lines.forEach(function(raw){
     var l=deedPn_(String(raw).trim()).replace(/住\s+址(\s*:)/,'住址$1').replace(/管\s+理\s+者(\s*:)/,'管理者$1');if(!l||deedIsNoise_(l)||/^歷次取得權利範圍/.test(l))return;l=l.replace(/歷次取得權利範圍.*$/,'');if(!l.trim())return;
-    var parts=l.split(/(?=(?:(?<!權利)登記次序|登記日期|登記原因|原因發生日期|所有權人|統一編號|住址|管理者|權利範圍|權狀字號|相關他項權利登記次序|其他登記事項)\s*:)/);
+    var parts=l.split(/(?=(?:(?<!權利)登記次序|登記日期|登記原因|原因發生日期|所有權人|統一編號|住址|管理者|權利範圍|權狀字號|當期申報地價|前次移轉現值或原規定地價|相關他項權利登記次序|其他登記事項)\s*:)/);
     parts.forEach(function(part){
       part=part.trim();if(/^\(\d{4}\)$/.test(part)){oc=false;return}if(!part)return;
-      var m=part.match(/^(登記次序|登記日期|登記原因|原因發生日期|所有權人|統一編號|住址|管理者|權利範圍|權狀字號|相關他項權利登記次序|其他登記事項)\s*:?\s*(.*)$/);
+      var m=part.match(/^(登記次序|登記日期|登記原因|原因發生日期|所有權人|統一編號|住址|管理者|權利範圍|權狀字號|當期申報地價|前次移轉現值或原規定地價|相關他項權利登記次序|其他登記事項)\s*:?\s*(.*)$/);
       if(m){
         var label=m[1],val=m[2];
         cont=(label==='住址');oc=false;
@@ -3355,7 +3365,8 @@ function deedParseOwnership_(lines){
         if(!cur)return;
         if(TRACK[label]){if(val)put(label,val),waiting='';else waiting=label}
         else waiting='';
-      }else if(waiting&&cur){var wl=waiting;put(waiting,part);waiting='';cont=(wl==='住址')}
+      }else if(waiting==='前次移轉現值或原規定地價'&&cur){if(/元/.test(part)){put(waiting,part);waiting=''}}
+      else if(waiting&&cur){var wl=waiting;put(waiting,part);waiting='';cont=(wl==='住址')}
       else if(oc&&cur&&part){var cut=part.indexOf('〈');if(cut>=0){part=part.slice(0,cut);oc=false}if(part&&!deedHdrNoise_(part))cur.other+=deedStripWm_(part).replace(/\s+/g,'')}
       else if(cont&&cur&&part)cur.addr+=part.replace(/\s+/g,'');
     });
@@ -3422,6 +3433,15 @@ function parseOneDeed_(rawPages){
       rec.value=vm?deedNum_(vm[1]):0;
       rec.ownership=deedParseOwnership_(own);
       rec.liens=deedParseLiens_(lien);rec.markOther=deedMarkOther_(content);rec.lienDetail=deedLienDetail_(lien);
+      /* 當期申報地價、前次移轉現值、限制登記:每位所有權人各有一段,整筆地號取最新登記的那一位;限制登記取全部所有權人的聯集 */
+      (function(){
+        var best=null,bd='',rs=[];
+        rec.ownership.forEach(function(e){var d=normRocDate(e.date)||'';if(!best||d>bd){best=e;bd=d}
+          var t=deedRestrictOf_(e.other);if(t)t.split('、').forEach(function(x){if(rs.indexOf(x)<0)rs.push(x)})});
+        var dec=0,pv=0;rec.ownership.forEach(function(e){if(e.declared&&!dec)dec=e.declared});
+        if(best&&best.prev)pv=best.prev;else rec.ownership.forEach(function(e){if(e.prev&&!pv)pv=e.prev});
+        rec.declared=dec;rec.prev=pv;rec.restrict=rs.join('、');
+      })();
       if(rec.areaM2===null)rec.warnings.push('找不到土地面積');
       if(!rec.ownership.length)rec.warnings.push('沒有讀到所有權部的地主資料(可能不是完整謄本)');
     }else{
@@ -3683,7 +3703,7 @@ function applySplitParcel(it,today){
     return {owner:o.id,share:sh.txt,frac:sh.f,reason:e.reason||'',rdate:normRocDate(e.date)||''};
   });
   var liens=(r.liens||[]).join('、'),note=today+' 由 '+mom.no+' 分割出來';
-  var np={id:DB.parcels.length,proj:pid,no:r.number,sec:mom.sec||secOf(mom),region:mom.region||'',block:mom.block,pts:right,cx:c2[0],cy:c2[1],area:r.areaM2||0,use:r.zoning||mom.use,cat:r.landCategory||mom.cat||'',value:r.value||mom.value||0,status:mom.status,lien:!!liens,lienTxt:liens,buildings:[],
+  var np={declared:r.declared||0,restrict:r.restrict||'',prevValue:r.prev||0,id:DB.parcels.length,proj:pid,no:r.number,sec:mom.sec||secOf(mom),region:mom.region||'',block:mom.block,pts:right,cx:c2[0],cy:c2[1],area:r.areaM2||0,use:r.zoning||mom.use,cat:r.landCategory||mom.cat||'',value:r.value||mom.value||0,status:mom.status,lien:!!liens,lienTxt:liens,buildings:[],
     deedDate:today,deedHistory:[{date:today,file:it.file||'謄本更新',summary:'由 '+mom.no+' 分割出來的新地號'}],goneOwners:[],changed:true,changeNotes:[note],owners:owners};
   DB.parcels.push(np);
   return np;
@@ -3719,6 +3739,12 @@ function buildUpdateItems(){
     if(r.value&&r.value!==p.value)add('auto','value','公告現值 '+(p.value?comma(p.value):'未填')+' → '+comma(r.value)+' 元/㎡',{val:r.value});
     if(r.zoning&&r.zoning!==p.use)add('auto','use','使用分區 '+p.use+' → '+r.zoning,{val:r.zoning});
     if(r.landCategory&&r.landCategory!==(p.cat||''))add('auto','cat','使用地類別 '+(p.cat||'未填')+' → '+r.landCategory,{val:r.landCategory});
+    if(r.declared&&r.declared!==(p.declared||0))add('auto','declared','當期申報地價 '+(p.declared?comma(p.declared):'未填')+' → '+comma(r.declared)+' 元/㎡',{val:r.declared});
+    if(r.prev&&r.prev!==(p.prevValue||0))add('auto','prev','前次移轉現值或原規定地價 '+(p.prevValue?comma(p.prevValue):'未填')+' → '+comma(r.prev)+' 元/㎡',{val:r.prev});
+    if((r.restrict||'')!==(p.restrict||'')){
+      if(r.restrict)add('alert','restrict',(p.restrict?'限制登記變更:'+p.restrict+' → ':'新增限制登記:')+r.restrict,{val:r.restrict});
+      else add('confirm','restrict','限制登記已塗銷(新謄本沒有限制登記)',{val:''});
+    }
     var liens=(r.liens||[]).join('、');
     if(liens&&!p.lien)add('alert','lien-add','新增他項權利:'+liens,{val:liens});
     else if(liens&&p.lien&&p.lienTxt&&p.lienTxt.indexOf(liens)<0)add('alert','lien-add','他項權利內容變更:'+liens,{val:liens});
@@ -3796,7 +3822,7 @@ function applyUpdateGroup(cat){
   if(S.role==='staff'){toast('只有專案負責人以上可以套用更新。');return}
   var list=UP.items.filter(function(x){return x.cat===cat&&x.on&&!x.applied});
   if(!list.length){toast('這一組沒有勾選要套用的項目。');return}
-  var order=['area','value','use','cat','lien-add','lien-clear','share','owner-add','owner-gone','parcel-add','deed-date'];
+  var order=['area','value','use','cat','declared','prev','restrict','lien-add','lien-clear','share','owner-add','owner-gone','parcel-add','deed-date'];
   list.sort(function(a,b){return order.indexOf(a.kind)-order.indexOf(b.kind)});
   var touched={},blocked=0,missingText=0,addedParcels=0,today=iso(TODAY),n=0;
   function mark(p,t,flag){var x=touched[p.id]=touched[p.id]||{p:p,t:[]};if(t)x.t.push(t);if(flag){p.changed=true;p.changeNotes.unshift(today+' '+t)}}
@@ -3806,6 +3832,9 @@ function applyUpdateGroup(cat){
     else if(it.kind==='value'){p.value=it.val;mark(p,it.text,false)}
     else if(it.kind==='use'){p.use=it.val;mark(p,it.text,false)}
     else if(it.kind==='cat'){p.cat=it.val;mark(p,it.text,false)}
+    else if(it.kind==='declared'){p.declared=it.val;mark(p,it.text,false)}
+    else if(it.kind==='prev'){p.prevValue=it.val;mark(p,it.text,false)}
+    else if(it.kind==='restrict'){p.restrict=it.val||'';mark(p,it.text,true)}
     else if(it.kind==='lien-add'){p.lien=true;p.lienTxt=it.val;mark(p,it.text,true)}
     else if(it.kind==='lien-clear'){p.lien=false;p.lienTxt='';mark(p,it.text,true)}
     else if(it.kind==='share'){
@@ -4507,6 +4536,46 @@ function sgBuild(ex,opts){
         if(!sw)break}
       })();
       tg=Object.keys(assign).map(function(n){return assign[n]});
+      // 細長的地被地籍線切成好幾小塊(例如 312 沿著河邊拉很長):單一塊的面積對不上登記面積,
+      // 就把字旁邊「相連、還沒被別的地號用掉」的小塊接起來,湊到登記面積(差 6% 內、而且只有一種接法)才放;不確定就留給使用者手動標。
+      Object.keys(only).forEach(function(no){
+        if(assign[no])return;
+        var A=Number(areas[no])||0;if(!(A>=60))return;
+        var ts=labT.filter(function(t){return t.s===no});if(!ts.length)return;
+        var pool=[];
+        polys.forEach(function(pl,i){
+          if(lblUsed[i]||pl.area<0.5||pl.area>A*1.06)return;
+          var dmin=1e9;ts.forEach(function(t){var d=mkInPoly([t.x,t.y],pl.pts)?0:mkDistPoly([t.x,t.y],pl.pts);if(d<dmin)dmin=d});
+          if(dmin>90)return;
+          pool.push({i:i,a:pl.area,d:dmin,near:dmin<=14});
+        });
+        if(pool.length<2||pool.length>40)return;
+        pool.forEach(function(q){q.nb=[];});
+        function touch(x,y){var n=0;polys[x].pts.forEach(function(p){if(polys[y].pts.some(function(q){return Math.hypot(p[0]-q[0],p[1]-q[1])<0.4}))n++});return n>=2}
+        pool.forEach(function(x,xi){pool.forEach(function(y,yi){if(xi<yi&&touch(x.i,y.i)){x.nb.push(yi);y.nb.push(xi)}})});
+        var found=[],seenSet={};
+        function grow(set,sum){
+          var key=set.slice().sort(function(a,b){return a-b}).join(',');if(seenSet[key])return;seenSet[key]=1;
+          var er=Math.abs(sum/A-1);
+          if(er<=0.06&&set.some(function(k){return pool[k].near}))found.push({set:set.slice(),er:er,sum:sum});
+          if(set.length>=7||sum>A*1.06)return;
+          var nxt={};set.forEach(function(k){pool[k].nb.forEach(function(j){if(set.indexOf(j)<0)nxt[j]=1})});
+          Object.keys(nxt).forEach(function(j){j=+j;set.push(j);grow(set,sum+pool[j].a);set.pop()});
+        }
+        pool.forEach(function(q,k){if(q.near)grow([k],q.a)});
+        if(!found.length)return;
+        found.sort(function(x,y){return x.er-y.er});
+        var best=found[0],amb=found.slice(1).some(function(f){
+          if(f.er>best.er+0.02)return false;
+          var sh=0,un=0;pool.forEach(function(q,k){var a=best.set.indexOf(k)>=0,c=f.set.indexOf(k)>=0;if(a||c)un+=q.a;if(a&&c)sh+=q.a});
+          return sh/un<0.8});
+        if(amb||best.set.length<2)return;
+        var u=sgUnionRings(best.set.map(function(k){return polys[pool[k].i].pts}));if(!u)return;
+        best.set.forEach(function(k){lblUsed[pool[k].i]=no});
+        assign[no]={pts:u.pts,area:u.area,n:best.set.length,key:'C'+best.set.map(function(k){return pool[k].i}).join('_'),lbl:2};tg.push(assign[no]);
+        var q3=sgBB(u.pts);r=[Math.min(r[0],q3[0]-MARG),Math.min(r[1],q3[1]-MARG),Math.max(r[2],q3[2]+MARG),Math.max(r[3],q3[3]+MARG)];
+        delete released[no];
+      });
       Object.keys(released).forEach(function(no){if(!assign[no]){assign[no]=released[no];tg.push(released[no])}});
       nos=nos.filter(function(no){return !assign[no]});
       // 沒配到的:記下原因(清冊面積、圖上字旁邊最近的塊多大),方便你判斷是圖的問題還是清冊面積不對
@@ -4673,7 +4742,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-19-a';
+var FRONT_VER='2026-11-19-d';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -4794,7 +4863,7 @@ async function adapt(data){
   data.buildings.forEach(function(r){(bdBy[r['地號ID']]=bdBy[r['地號ID']]||[]).push({no:r['建號'],addr:r['門牌']||'',area:num_(r['面積㎡']),use:r['主要用途']||'',done:r['完成日']||''})});
   var skipped=0;
   data.parcels.forEach(function(r){
-    var np={id:db.parcels.length,proj:r['專案ID'],no:cleanTxt_(r['地號']),sec:cleanTxt_(r['段別']||''),region:(r['縣市']||'')+(r['鄉鎮市區']||''),block:0,pts:null,cx:0,cy:0,area:num_(r['面積㎡']),use:r['使用分區']||'',cat:r['使用地類別']||'',value:num_(r['公告現值(元/㎡)']),status:'',lien:!!r['他項權利'],lienTxt:r['他項權利']||'',buildings:bdBy[r['地號ID']]||[],deedDate:r['謄本取得日期']||'',deedHistory:[],goneOwners:[],changed:r['謄本有異動']==='是',registryOnly:r['以清冊為準']==='是',changeNotes:String(r['異動說明']||'').split('\n').filter(Boolean),owners:[],factory:{on:r['特定工廠']==='是',name:r['工廠名稱']||''},constraints:[],checklist:{},surveys:[],prevValue:num_(r['前次移轉現值(元/㎡)']),idx:num_(r['物價指數倍率'])||1,_srv:r['地號ID']};
+    var np={id:db.parcels.length,proj:r['專案ID'],no:cleanTxt_(r['地號']),sec:cleanTxt_(r['段別']||''),region:(r['縣市']||'')+(r['鄉鎮市區']||''),block:0,pts:null,cx:0,cy:0,area:num_(r['面積㎡']),use:r['使用分區']||'',cat:r['使用地類別']||'',value:num_(r['公告現值(元/㎡)']),status:'',lien:!!r['他項權利'],lienTxt:r['他項權利']||'',buildings:bdBy[r['地號ID']]||[],deedDate:r['謄本取得日期']||'',deedHistory:[],goneOwners:[],changed:r['謄本有異動']==='是',registryOnly:r['以清冊為準']==='是',changeNotes:String(r['異動說明']||'').split('\n').filter(Boolean),owners:[],factory:{on:r['特定工廠']==='是',name:r['工廠名稱']||''},constraints:[],checklist:{},surveys:[],prevValue:num_(r['前次移轉現值(元/㎡)']),declared:num_(r['當期申報地價(元/㎡)']),restrict:String(r['限制登記']||''),idx:num_(r['物價指數倍率'])||1,_srv:r['地號ID']};
     (shBy[r['地號ID']]||[]).forEach(function(sr){
       var n=SRV.own[sr['地主ID']];if(!n)return;
       var sh=normShare(sr['持分分數']),st=sr['狀態']||'現有',it={owner:n,share:sh?sh.txt:(sr['持分分數']||''),frac:sh?sh.f:(num_(sr['持分比例'])||0),reason:sr['登記原因']||'',rdate:sr['登記日期']||''};
@@ -4871,6 +4940,13 @@ function parcelExtraHTML(p){
       +'<div class="field"><label for="fc-name">工廠名稱</label><input type="text" id="fc-name" maxlength="100" value="'+esc((p.factory&&p.factory.name)||'')+'" placeholder="例:○○機械"></div>'
       +'<div class="actions"><button class="btn small primary" type="button" data-factory-save="'+p.id+'">儲存</button></div></div>';
   }else if(isFactory(p))h+='<div class="small" style="margin-top:8px"><b>*</b> 特定工廠'+((p.factory&&p.factory.name)?':'+esc(p.factory.name):'')+'</div>';
+  if(S.role!=='staff'){
+    h+='<h3>地價與限制登記</h3><div class="ocard">'
+      +'<div class="field"><label for="pv-dec">當期申報地價(元/㎡)</label><input type="number" id="pv-dec" min="0" step="any" value="'+(p.declared||'')+'" placeholder="例:880"></div>'
+      +'<div class="field"><label for="pv-prev">前次移轉現值或原規定地價(元/㎡)</label><input type="number" id="pv-prev" min="0" step="any" value="'+(p.prevValue||'')+'" placeholder="例:240"></div>'
+      +'<div class="field"><label for="pv-res">限制登記</label><input type="text" id="pv-res" maxlength="200" value="'+esc(p.restrict||'')+'" placeholder="例:預告登記、查封登記;沒有就留空白"></div>'
+      +'<div class="actions"><button class="btn small primary" type="button" data-pv-save="'+p.id+'">儲存</button></div></div>';
+  }else if(p.restrict)h+='<div class="small" style="margin-top:8px"><b>限制登記</b>:'+esc(p.restrict)+'</div>';
   var svl=p.surveys||[];
   var sb=svl.length?'<ul class="tl">'+svl.map(function(x){return '<li><div class="t">'+esc(x.date)+' · '+esc(x.by)+'</div><div class="small" style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(x.note)+'</div>'+(x.photos?'<button class="btn small" type="button" data-sv-photos="'+esc(x.id)+'" data-sv-n="'+(+x.photos||0)+'" style="margin-top:4px">看照片('+x.photos+')</button><div id="svp-'+esc(x.id)+'"></div>':'')+'</li>'}).join('')+'</ul>':'<p class="small muted" style="margin:0 0 6px">還沒有踏勘紀錄。</p>';
   if(canEditParcel(p))sb+='<div class="field"><label for="sv-date">踏勘日期</label><input type="date" id="sv-date" value="'+iso(new Date())+'"></div>'
@@ -4887,6 +4963,14 @@ document.addEventListener('click',function(e){
   p.factory={on:on,name:name};
   apiSync('setFactory',{projectId:p.proj,parcelId:p._srv,on:on,name:name});
   renderAll();toast('已儲存特定工廠設定。');
+});
+document.addEventListener('click',function(e){
+  var t=e.target;if(!t||!t.closest)return;var b=t.closest('[data-pv-save]');if(!b)return;
+  var p=DB.parcels.filter(function(x){return x.id===+b.dataset.pvSave})[0];if(!p)return;
+  var dec=parseFloat($('#pv-dec').value||'0')||0,prev=parseFloat($('#pv-prev').value||'0')||0,res=($('#pv-res').value||'').trim();
+  p.declared=dec;p.prevValue=prev;p.restrict=res;
+  apiSync('setParcelVals',{projectId:p.proj,parcelId:p._srv,declared:dec,prev:prev,restrict:res});
+  renderAll();toast('已儲存地價與限制登記。');
 });
 var COMPANY_STAFF=['全體'];
 function projColor(pid){if(pid==='*')return '#6B7A74';var i=0;DB.projects.forEach(function(p,k){if(p.id===pid)i=k});return OWN_PAL[i%OWN_PAL.length]}
@@ -4985,10 +5069,47 @@ function xlFontAll_(wb){
     wb.eachSheet(function(ws){ws.eachRow({includeEmpty:true},function(row){row.eachCell({includeEmpty:true},function(c){var f=Object.assign({},c.font||{});f.name='標楷體';f.family=3;f.charset=136;c.font=f})})});
   }catch(e){}   // 字體設定失敗不影響匯出
 }
+/* Excel 不會幫合併儲存格自動加高,字被切掉:依字數估需要幾行,自己設列高(中文字算 2 格寬) */
+function xlLines_(s,w){s=String(s==null?'':s);var n=0;s.split('\n').forEach(function(p){var u=0;for(var k=0;k<p.length;k++)u+=p.charCodeAt(k)>255?2:1;n+=Math.max(1,Math.ceil(u/Math.max(1,w-1.5)))});return n}
+/* 彙整總表:排法跟重劃前土地清冊一樣——同一地號的土地資料只顯示一次(合併儲存格),地主一位一列,持分和持分面積在每位地主那一列 */
+async function saveSummaryXlsx_(name,rows,label){
+  try{
+    var E=await loadExcelJS(),wb=new E.Workbook(),ws=wb.addWorksheet('彙整總表'),data=rows.slice(1);
+    // [來源欄位, 標題, 寬度, 是否整筆地號合併, 型態]
+    var C=[[0,'段別',9,1],[1,'地號',9,1,'t'],[2,'縣市',8,1],[3,'鄉鎮市區',9,1],[4,'面積\n(㎡)',10,1,'n'],[12,'持分',8,0,'t'],[13,'持分面積\n(㎡)',10,0,'n'],[10,'地主',14,0],[11,'身分',9,0],
+      [5,'使用分區',10,1],[6,'使用地類別',10,1],[7,'當期公告現值\n(元/㎡)',12,1,'n'],[28,'當期申報地價\n(元/㎡)',12,1,'n'],[29,'原規定地價或\n前次移轉現值\n(元/㎡)',16,1,'n'],[8,'他項權利',14,1],[9,'建物',12,1],[30,'限制登記',14,1],
+      [14,'主要承辦',10,0],[15,'次要承辦',10,0],[16,'簽約階段',10,0],[17,'電話',14,0],[18,'戶籍地',28,0],[19,'居住地',24,0],[20,'最新意願',9,0],[21,'訪談次數',8,0,'n'],[22,'最近訪談日',12,0],[23,'最近方式',9,0],[24,'最近內容摘要',30,0],[25,'下次跟進日',12,0],[26,'關切事項',16,0],[27,'全部訪談紀錄(新到舊)',50,0]];
+    var G=[['土地標示',0,4],['持分',5,6],['所有權人',7,8],['土地資料',9,13],['登記',14,16],['承辦與訪談',17,C.length-1]];
+    var thin={style:'thin',color:{argb:'FF444444'}},bd={top:thin,left:thin,bottom:thin,right:thin},GR='FFEFEFEF';
+    C.forEach(function(c,i){ws.getColumn(i+1).width=c[2]});
+    function cellAt(r,c,v,o){o=o||{};var x=ws.getCell(r,c);if(!o.slave)x.value=v;x.border=bd;if(o.fill)x.fill={type:'pattern',pattern:'solid',fgColor:{argb:o.fill}};x.font={bold:!!o.bold,size:11};x.alignment={horizontal:o.h||'left',vertical:'middle',wrapText:true};if(o.text)x.numFmt='@';return x}
+    G.forEach(function(g){if(g[2]>g[1])ws.mergeCells(1,g[1]+1,1,g[2]+1);cellAt(1,g[1]+1,g[0],{bold:true,fill:GR,h:'center'});for(var c=g[1]+2;c<=g[2]+1;c++)cellAt(1,c,null,{fill:GR,slave:1})});
+    C.forEach(function(c,i){cellAt(2,i+1,c[1],{bold:true,fill:GR,h:'center'})});
+    ws.getRow(2).height=66;
+    var nz=function(v){return (v===''||v==null||isNaN(Number(v)))?'':Number(v)};
+    var i=0,r0=3;
+    while(i<data.length){
+      var d=data[i],key=d[0]+'|'+d[1],j=i;while(j+1<data.length&&data[j+1][0]+'|'+data[j+1][1]===key)j++;
+      for(var k=i;k<=j;k++){var q=data[k],rr=r0+k;
+        C.forEach(function(c,ci){if(c[3])return;var v=q[c[0]];cellAt(rr,ci+1,c[4]==='n'?nz(v):(v==null?'':String(v)),{h:c[4]==='n'?'right':'left',text:c[4]==='t'})})}
+      C.forEach(function(c,ci){if(!c[3])return;var v=d[c[0]],top=r0+i,bot=r0+j;
+        if(bot>top)ws.mergeCells(top,ci+1,bot,ci+1);
+        cellAt(top,ci+1,c[4]==='n'?nz(v):(v==null?'':String(v)),{h:c[4]==='n'?'right':(ci<5?'center':'left'),text:c[4]==='t'});
+        for(var rr2=top+1;rr2<=bot;rr2++)cellAt(rr2,ci+1,null,{slave:1})});
+      var needS=0,rowS=0;C.forEach(function(c){var L=xlLines_(c[3]?d[c[0]]:'',c[2])*17;if(c[3]&&L>needS)needS=L});
+      for(var k2=i;k2<=j;k2++){rowS=0;C.forEach(function(c){if(c[3])return;var L=xlLines_(data[k2][c[0]],c[2])*17+6;if(L>rowS)rowS=L});ws.getRow(r0+k2).height=Math.min(300,Math.max(26,Math.ceil(needS/(j-i+1)),rowS))}
+      i=j+1;
+    }
+    ws.views=[{state:'frozen',xSplit:2,ySplit:2}];
+    xlFontAll_(wb);var buf=await wb.xlsx.writeBuffer();
+    var blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){a.remove()},500);
+  }catch(e){toast('匯出失敗:'+(e&&e.message?e.message:e))}
+}
 async function saveRegisterXlsx_(name,rows,label){
   try{
     var E=await loadExcelJS(),wb=new E.Workbook(),ws=wb.addWorksheet('重劃前土地清冊'),data=rows.slice(1);
-    var W=[10,11,8,11,12,17,30,13,13,15,12,14,14,10,14];W.forEach(function(w,i){ws.getColumn(i+1).width=w});
+    var W=[10,11,8,11,12,17,30,14,14,18,14,16,16,14,16];W.forEach(function(w,i){ws.getColumn(i+1).width=w});
     var thin={style:'thin',color:{argb:'FF444444'}},bd={top:thin,left:thin,bottom:thin,right:thin};
     function box(r1,c1,r2,c2,val,o){
       o=o||{};if(r1!==r2||c1!==c2)ws.mergeCells(r1,c1,r2,c2);
@@ -5006,7 +5127,7 @@ async function saveRegisterXlsx_(name,rows,label){
     box(5,1,5,2,'土地標示',{bold:true,fill:G});box(5,3,5,4,'持分面積',{bold:true,fill:G});box(5,5,5,7,'所有權人',{bold:true,fill:G});
     [[8,'當期公告現值\n(元/㎡)'],[9,'當期申報地價\n(元/㎡)'],[10,'原規定地價或\n前次移轉現值\n(元/㎡)'],[11,'管理人\n(代表人)'],[12,'他項權利'],[13,'建物'],[14,'限制登記'],[15,'備註']].forEach(function(x){box(5,x[0],6,x[0],x[1],{bold:true,fill:G})});
     ['地號','面積\n(㎡)','持分','面積\n(㎡)','姓名','國民身分證\n統一編號','住所'].forEach(function(h,i){box(6,i+1,6,i+1,h,{bold:true,fill:G})});
-    ws.getRow(5).height=22;ws.getRow(6).height=44;
+    ws.getRow(5).height=26;ws.getRow(6).height=66;
     var r0=7,i=0;
     while(i<data.length){
       var d=data[i],key=d[0]+'|'+d[3],j=i;while(j+1<data.length&&data[j+1][0]+'|'+data[j+1][3]===key)j++;
@@ -5014,8 +5135,10 @@ async function saveRegisterXlsx_(name,rows,label){
       box(top,1,bot,1,d[3],{text:true});box(top,2,bot,2,d[4],{h:'right'});
       for(var k=i;k<=j;k++){var q=data[k],rr=r0+k;
         box(rr,3,rr,3,q[5],{text:true});box(rr,4,rr,4,q[6],{h:'right'});box(rr,5,rr,5,q[7]);box(rr,6,rr,6,q[8],{text:true});box(rr,7,rr,7,q[9],{h:'left'});box(rr,15,rr,15,q[13]||'')}
-      box(top,8,bot,8,d[10]===''?'':Number(d[10]),{h:'right'});box(top,9,bot,9,'');box(top,10,bot,10,'');box(top,11,bot,11,'');
-      box(top,12,bot,12,d[11]||'');box(top,13,bot,13,d[12]||'');box(top,14,bot,14,'');
+      box(top,8,bot,8,d[10]===''?'':Number(d[10]),{h:'right'});var nz_=function(v){return (v===''||v==null||isNaN(Number(v)))?'':Number(v)};box(top,9,bot,9,nz_(d[14]),{h:'right'});box(top,10,bot,10,nz_(d[15]),{h:'right'});box(top,11,bot,11,d[16]||'');
+      box(top,12,bot,12,d[11]||'');box(top,13,bot,13,d[12]||'');box(top,14,bot,14,d[17]||'');
+      var need_=Math.max(xlLines_(d[16],14),xlLines_(d[11],16),xlLines_(d[12],16),xlLines_(d[17],14))*17;
+      for(var kk=i;kk<=j;kk++){var qq=data[kk];ws.getRow(r0+kk).height=Math.min(300,Math.max(26,Math.ceil(need_/n),Math.max(xlLines_(qq[9],30),xlLines_(qq[7],12),xlLines_(qq[13],16))*17+6))}
       i=j+1;
     }
     var end=r0+data.length+1;
@@ -5364,6 +5487,7 @@ document.addEventListener('click',function(e){
     var kind=b.dataset.dxExp,label={parcels:'地號清單',owners:'地主清單',interviews:'訪談紀錄',all:'彙整總表',register:'重劃前土地清冊'}[kind];b.disabled=true;
     api('exportData',{projectId:DX.proj,kind:kind}).then(function(r){
       if(kind==='register')saveRegisterXlsx_('土地開發_'+label+'_'+safe(r.project)+'_'+iso(new Date())+'.xlsx',r.rows,label+'('+r.project+')');
+      else if(kind==='all')saveSummaryXlsx_('土地開發_'+label+'_'+safe(r.project)+'_'+iso(new Date())+'.xlsx',r.rows,label+'('+r.project+')');
       else saveRowsXlsx('土地開發_'+label+'_'+safe(r.project)+'_'+iso(new Date())+'.xlsx',r.rows,label+'('+r.project+')',label);
       toast('已匯出:'+label+'('+(r.rows.length-1)+' 筆)。');
     }).catch(function(er){if(er.auth)showLogin('登入已過期,請重新登入');else toast('匯出失敗:'+(er.userMessage||er.message))}).then(function(){b.disabled=false});
@@ -5541,12 +5665,12 @@ async function applyUpdateGroup(cat){
   var ops=[];
   list.forEach(function(it){
     var p=(it.parcel!==null&&it.parcel!==undefined)?DB.parcels[it.parcel]:null,b={kind:it.kind,text:it.text,parcelId:p?p._srv:undefined};
-    if(it.kind==='area'||it.kind==='value'||it.kind==='use'||it.kind==='cat'||it.kind==='lien-add')b.val=it.val;
+    if(it.kind==='area'||it.kind==='value'||it.kind==='use'||it.kind==='cat'||it.kind==='declared'||it.kind==='prev'||it.kind==='restrict'||it.kind==='lien-add')b.val=it.val;
     else if(it.kind==='share'){b.ownerId=OWN[it.ownerId]._srv;b.share=it.share.txt;b.frac=it.share.f}
     else if(it.kind==='owner-add'){var sh=it.share||approxShare(1/((p?p.owners.length:0)+1));b.owner={key:it.key,name:it.e.name,id:it.e.id||'',addr:it.e.addr||'',ownerId:existingOwnerId_(it.e,it.key)};b.share=sh.txt;b.frac=sh.f;b.reason=it.e.reason||'';b.rdate=normRocDate(it.e.date)||''}
     else if(it.kind==='owner-rename'){b.ownerId=OWN[it.ownerId]._srv;b.newName=it.newName}
     else if(it.kind==='owner-gone'){b.ownerId=OWN[it.ownerId]._srv;b.gone=it.gone;b.other=(it.otherText||'').trim();b.gdate=normRocDate(it.gdate)||'';b.reason=it.reason||''}
-    else if(it.kind==='parcel-add'){var r=it.rec;b.rec={number:r.number,area:r.areaM2||0,zoning:r.zoning||'',cat:r.landCategory||'',value:r.value||0,liens:(r.liens||[]).join('、'),ownership:r.ownership.map(function(e){var sh=normShare(e.share)||approxShare(1/r.ownership.length);return {key:deedDisp(e),name:e.name,id:e.id||'',addr:e.addr||'',ownerId:existingOwnerId_(e,deedDisp(e)),share:sh.txt,frac:sh.f,reason:e.reason||'',rdate:normRocDate(e.date)||''}})}}
+    else if(it.kind==='parcel-add'){var r=it.rec;b.rec={number:r.number,area:r.areaM2||0,zoning:r.zoning||'',cat:r.landCategory||'',value:r.value||0,declared:r.declared||0,prev:r.prev||0,restrict:r.restrict||'',liens:(r.liens||[]).join('、'),ownership:r.ownership.map(function(e){var sh=normShare(e.share)||approxShare(1/r.ownership.length);return {key:deedDisp(e),name:e.name,id:e.id||'',addr:e.addr||'',ownerId:existingOwnerId_(e,deedDisp(e)),share:sh.txt,frac:sh.f,reason:e.reason||'',rdate:normRocDate(e.date)||''}})}}
     else if(it.kind==='deed-date'){b.parcelIds=it.ids.map(function(id){return DB.parcels[id]._srv});b.dates=it.ids.map(function(id){return {parcelId:DB.parcels[id]._srv,date:(it.dates&&it.dates[id])||''}})}
     ops.push(b);
   });
@@ -5951,14 +6075,17 @@ function logHTML(){
   h+='<div class="orow" style="margin-top:8px"><span class="small muted">共 '+LG.total+' 筆'+(LG.total?',目前顯示第 '+from+' 到 '+to+' 筆':'')+(LG.busy?'(更新中…)':'')+'</span><span style="display:flex;gap:6px"><button class="btn small" type="button" data-lg-page="-1"'+(LG.offset<=0?' disabled':'')+'>上一頁</button><button class="btn small" type="button" data-lg-page="1"'+(to>=LG.total?' disabled':'')+'>下一頁</button></span></div>';
   return h;
 }
+/* 檔案選擇框固定放在 body(不放在會重畫的後台畫面裡):不然選檔案的時候後台剛好重畫,選到的檔案就送到被換掉的舊框,第一次點會沒反應 */
+function fileIn_(id,accept){var e=document.getElementById(id);if(!e){e=document.createElement('input');e.type='file';e.id=id;e.accept=accept;e.style.display='none';e.setAttribute('aria-hidden','true');e.tabIndex=-1;document.body.appendChild(e)}return e}
 function renderAdmin(){
+  fileIn_('ad-geofile','.json,application/json');fileIn_('ad-cadfile','application/pdf,.pdf');
   var el=$('#admin-page');if(!el)return;
   if(S.role!=='admin'){el.innerHTML='';return}
   var tabs='<div class="seg" role="group" aria-label="後台功能" style="grid-template-columns:repeat(4,1fr);max-width:600px;margin-top:10px">'+[['users','使用者'],['log','異動紀錄'],['proj','專案'],['set','系統設定']].map(function(x){return '<button type="button" data-ad-tab="'+x[0]+'" aria-pressed="'+(AD.tab===x[0])+'">'+x[1]+'</button>'}).join('')+'</div>';
   if(AD.tab==='proj'){
     if(AP.list===null&&!AP.busy&&location.hash==='#admin'){loadAP();}
     var ph='<h1>後台</h1>'+tabs+'<p class="muted" style="margin:12px 0 0">封存:專案從所有人的畫面隱藏,資料全部保留,可以還原。刪除:只有還沒開始使用的專案(沒有訪談、待辦、附件、踏勘、階段變動)可以直接刪除,用來復原匯入錯誤;測試專案已有紀錄時,確認後可連同紀錄一起刪。</p>';
-    ph+='<style>.projtab{width:100%}.projtab th,.projtab td{white-space:normal;vertical-align:top}.projtab td:last-child{min-width:240px}.projtab td:last-child .btn{margin:0 4px 6px 0}</style><div class="tablewrap" style="margin-top:10px;overflow:visible"><table class="projtab"><thead><tr><th>專案</th><th>開發類型</th><th>同意門檻(人數 / 持分)</th><th>狀態</th><th>地號</th><th>地主</th><th></th></tr></thead><tbody>'+DB.projects.map(function(p){return '<tr><td>'+esc(p.name)+'</td><td>'+esc(p.type||'')+'</td><td>'+p.rule.headPct+'% / '+p.rule.sharePct+'%</td><td>'+esc(p.status||'')+'</td><td>'+DB.parcels.filter(function(x){return x.proj===p.id}).length+'</td><td>'+projOwners(p.id).length+'</td><td><button class="btn small" type="button" data-ad-editproj="'+esc(p.id)+'">編輯</button> <button class="btn small" type="button" data-ad-members="'+esc(p.id)+'">承辦人</button> <button class="btn small" type="button" data-ad-resetdates="'+esc(p.id)+'">重設謄本日期</button> <button class="btn small" type="button" data-ad-cad="'+esc(p.id)+'">上傳地籍圖</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'">合併圖資</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'" data-replace="1">取代圖資</button> <button class="btn small" type="button" data-ad-parcels="'+esc(p.id)+'">調整地號</button> <button class="btn small" type="button" data-ad-assign="'+esc(p.id)+'">業務分配</button> <button class="btn small" type="button" data-ad-geoedit="'+esc(p.id)+'">調整圖資位置</button> <button class="btn small" type="button" data-ad-cleardeeds="'+esc(p.id)+'">清除謄本資料</button> <button class="btn small" type="button" data-ad-archive="'+esc(p.id)+'">封存</button> <button class="btn small" type="button" data-ad-delproj="'+esc(p.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div><input type="file" id="ad-geofile" accept=".json,application/json" style="display:none"><input type="file" id="ad-cadfile" accept="application/pdf,.pdf" style="display:none"><div class="panel" style="margin-top:8px;display:none"><p class="small muted" style="margin:0 0 6px">合併圖資:選一個新的圖資檔(.json)加到現有地圖。地籍圖謄本沒有座標,系統不知道兩段實際的相對位置,請照真實位置選方位;排得不準可以用微調,或用「取代圖資」整張重來。同一段已經在圖上的話要用「取代圖資」。</p><div class="row2"><div class="field" style="margin-top:0"><label for="ad-geodir">新的一段放在現有地圖的</label><select id="ad-geodir"><option value="E">東邊(右)</option><option value="W">西邊(左)</option><option value="N">北邊(上)</option><option value="S">南邊(下)</option><option value="NE">東北</option><option value="NW">西北</option><option value="SE">東南</option><option value="SW">西南</option></select></div><div class="field" style="margin-top:0"><label for="ad-geogap">與現有地圖的間隔(公尺)</label><input type="number" id="ad-geogap" min="0" max="2000" value="40"></div></div><div class="row2"><div class="field"><label for="ad-geoe">微調:再往東移(公尺,負數往西)</label><input type="number" id="ad-geoe" value="0"></div><div class="field"><label for="ad-geon">微調:再往北移(公尺,負數往南)</label><input type="number" id="ad-geon" value="0"></div></div></div>';
+    ph+='<style>.projtab{width:100%}.projtab th,.projtab td{white-space:normal;vertical-align:top}.projtab td:last-child{min-width:240px}.projtab td:last-child .btn{margin:0 4px 6px 0}</style><div class="tablewrap" style="margin-top:10px;overflow:visible"><table class="projtab"><thead><tr><th>專案</th><th>開發類型</th><th>同意門檻(人數 / 持分)</th><th>狀態</th><th>地號</th><th>地主</th><th></th></tr></thead><tbody>'+DB.projects.map(function(p){return '<tr><td>'+esc(p.name)+'</td><td>'+esc(p.type||'')+'</td><td>'+p.rule.headPct+'% / '+p.rule.sharePct+'%</td><td>'+esc(p.status||'')+'</td><td>'+DB.parcels.filter(function(x){return x.proj===p.id}).length+'</td><td>'+projOwners(p.id).length+'</td><td><button class="btn small" type="button" data-ad-editproj="'+esc(p.id)+'">編輯</button> <button class="btn small" type="button" data-ad-members="'+esc(p.id)+'">承辦人</button> <button class="btn small" type="button" data-ad-resetdates="'+esc(p.id)+'">重設謄本日期</button> <button class="btn small" type="button" data-ad-cad="'+esc(p.id)+'">上傳地籍圖</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'">合併圖資</button> <button class="btn small" type="button" data-ad-geo="'+esc(p.id)+'" data-replace="1">取代圖資</button> <button class="btn small" type="button" data-ad-parcels="'+esc(p.id)+'">調整地號</button> <button class="btn small" type="button" data-ad-assign="'+esc(p.id)+'">業務分配</button> <button class="btn small" type="button" data-ad-geoedit="'+esc(p.id)+'">調整圖資位置</button> <button class="btn small" type="button" data-ad-cleardeeds="'+esc(p.id)+'">清除謄本資料</button> <button class="btn small" type="button" data-ad-archive="'+esc(p.id)+'">封存</button> <button class="btn small" type="button" data-ad-delproj="'+esc(p.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div><div class="panel" style="margin-top:8px;display:none"><p class="small muted" style="margin:0 0 6px">合併圖資:選一個新的圖資檔(.json)加到現有地圖。地籍圖謄本沒有座標,系統不知道兩段實際的相對位置,請照真實位置選方位;排得不準可以用微調,或用「取代圖資」整張重來。同一段已經在圖上的話要用「取代圖資」。</p><div class="row2"><div class="field" style="margin-top:0"><label for="ad-geodir">新的一段放在現有地圖的</label><select id="ad-geodir"><option value="E">東邊(右)</option><option value="W">西邊(左)</option><option value="N">北邊(上)</option><option value="S">南邊(下)</option><option value="NE">東北</option><option value="NW">西北</option><option value="SE">東南</option><option value="SW">西南</option></select></div><div class="field" style="margin-top:0"><label for="ad-geogap">與現有地圖的間隔(公尺)</label><input type="number" id="ad-geogap" min="0" max="2000" value="40"></div></div><div class="row2"><div class="field"><label for="ad-geoe">微調:再往東移(公尺,負數往西)</label><input type="number" id="ad-geoe" value="0"></div><div class="field"><label for="ad-geon">微調:再往北移(公尺,負數往南)</label><input type="number" id="ad-geon" value="0"></div></div></div>';
     var arch=(AP.list||[]).filter(function(x){return x.archived});
     ph+='<div class="panel" style="margin-top:14px"><h2>已封存的專案</h2>'+(AP.err?'<div class="notice">'+esc(AP.err)+'</div>':'')+(arch.length?'<div class="tablewrap" style="margin-top:0"><table><thead><tr><th>專案</th><th>狀態</th><th></th></tr></thead><tbody>'+arch.map(function(x){return '<tr><td>'+esc(x.name)+'</td><td>'+esc(x.status||'')+'</td><td><button class="btn small" type="button" data-ad-restore="'+esc(x.id)+'">還原</button> <button class="btn small" type="button" data-ad-delproj="'+esc(x.id)+'">刪除</button></td></tr>'}).join('')+'</tbody></table></div>':'<p class="small muted" style="margin:0">'+(AP.list===null?'載入中…':'沒有封存的專案。')+'</p>')+'</div>';
     el.innerHTML=ph;return;
