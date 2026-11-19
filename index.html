@@ -4742,7 +4742,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-19-d';
+var FRONT_VER='2026-11-19-e';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -5076,10 +5076,10 @@ async function saveSummaryXlsx_(name,rows,label){
   try{
     var E=await loadExcelJS(),wb=new E.Workbook(),ws=wb.addWorksheet('彙整總表'),data=rows.slice(1);
     // [來源欄位, 標題, 寬度, 是否整筆地號合併, 型態]
-    var C=[[0,'段別',9,1],[1,'地號',9,1,'t'],[2,'縣市',8,1],[3,'鄉鎮市區',9,1],[4,'面積\n(㎡)',10,1,'n'],[12,'持分',8,0,'t'],[13,'持分面積\n(㎡)',10,0,'n'],[10,'地主',14,0],[11,'身分',9,0],
+    var C=[[0,'段別',9,1],[1,'地號',9,1,'t'],[2,'縣市',8,1],[3,'鄉鎮市區',9,1],[4,'面積\n(㎡)',10,1,'n'],[12,'持分',8,0,'t'],[13,'持分面積\n(㎡)',10,0,'n'],[10,'地主',14,0],[11,'身分',9,0],[31,'登記原因',11,0],
       [5,'使用分區',10,1],[6,'使用地類別',10,1],[7,'當期公告現值\n(元/㎡)',12,1,'n'],[28,'當期申報地價\n(元/㎡)',12,1,'n'],[29,'原規定地價或\n前次移轉現值\n(元/㎡)',16,1,'n'],[8,'他項權利',14,1],[9,'建物',12,1],[30,'限制登記',14,1],
       [14,'主要承辦',10,0],[15,'次要承辦',10,0],[16,'簽約階段',10,0],[17,'電話',14,0],[18,'戶籍地',28,0],[19,'居住地',24,0],[20,'最新意願',9,0],[21,'訪談次數',8,0,'n'],[22,'最近訪談日',12,0],[23,'最近方式',9,0],[24,'最近內容摘要',30,0],[25,'下次跟進日',12,0],[26,'關切事項',16,0],[27,'全部訪談紀錄(新到舊)',50,0]];
-    var G=[['土地標示',0,4],['持分',5,6],['所有權人',7,8],['土地資料',9,13],['登記',14,16],['承辦與訪談',17,C.length-1]];
+    var G=[['土地標示',0,4],['持分',5,6],['所有權人',7,9],['土地資料',10,14],['登記',15,17],['承辦與訪談',18,C.length-1]];
     var thin={style:'thin',color:{argb:'FF444444'}},bd={top:thin,left:thin,bottom:thin,right:thin},GR='FFEFEFEF';
     C.forEach(function(c,i){ws.getColumn(i+1).width=c[2]});
     function cellAt(r,c,v,o){o=o||{};var x=ws.getCell(r,c);if(!o.slave)x.value=v;x.border=bd;if(o.fill)x.fill={type:'pattern',pattern:'solid',fgColor:{argb:o.fill}};x.font={bold:!!o.bold,size:11};x.alignment={horizontal:o.h||'left',vertical:'middle',wrapText:true};if(o.text)x.numFmt='@';return x}
@@ -5109,7 +5109,7 @@ async function saveSummaryXlsx_(name,rows,label){
 async function saveRegisterXlsx_(name,rows,label){
   try{
     var E=await loadExcelJS(),wb=new E.Workbook(),ws=wb.addWorksheet('重劃前土地清冊'),data=rows.slice(1);
-    var W=[10,11,8,11,12,17,30,14,14,18,14,16,16,14,16];W.forEach(function(w,i){ws.getColumn(i+1).width=w});
+    var W=[10,11,8,11,12,17,30,12,14,14,18,14,16,16,14,16];W.forEach(function(w,i){ws.getColumn(i+1).width=w});
     var thin={style:'thin',color:{argb:'FF444444'}},bd={top:thin,left:thin,bottom:thin,right:thin};
     function box(r1,c1,r2,c2,val,o){
       o=o||{};if(r1!==r2||c1!==c2)ws.mergeCells(r1,c1,r2,c2);
@@ -5121,12 +5121,12 @@ async function saveRegisterXlsx_(name,rows,label){
     var first=data[0]||[],cnt=first[1]||'○○縣(市)',secs=[],seen={};data.forEach(function(r){if(r[0]&&!seen[r[0]]){seen[r[0]]=1;secs.push(r[0])}});
     ws.getRow(1).height=6;
     box(2,1,3,6,(cnt||'○○縣(市)')+'第○○期○○市地重劃區\n重劃前土地清冊',{bold:true,size:13});
-    box(2,7,2,7,'鄉鎮市區',{bold:true});box(2,8,2,10,first[2]||'',{});box(2,11,2,11,'段',{bold:true});box(2,12,2,15,secs.join('、'),{});
-    box(3,7,3,7,'小段',{bold:true});box(3,8,3,10,'',{});box(3,11,3,11,'',{});box(3,12,3,15,'',{});
+    box(2,7,2,7,'鄉鎮市區',{bold:true});box(2,8,2,10,first[2]||'',{});box(2,11,2,11,'段',{bold:true});box(2,12,2,16,secs.join('、'),{});
+    box(3,7,3,7,'小段',{bold:true});box(3,8,3,10,'',{});box(3,11,3,11,'',{});box(3,12,3,16,'',{});
     var G='FFEFEFEF';
-    box(5,1,5,2,'土地標示',{bold:true,fill:G});box(5,3,5,4,'持分面積',{bold:true,fill:G});box(5,5,5,7,'所有權人',{bold:true,fill:G});
-    [[8,'當期公告現值\n(元/㎡)'],[9,'當期申報地價\n(元/㎡)'],[10,'原規定地價或\n前次移轉現值\n(元/㎡)'],[11,'管理人\n(代表人)'],[12,'他項權利'],[13,'建物'],[14,'限制登記'],[15,'備註']].forEach(function(x){box(5,x[0],6,x[0],x[1],{bold:true,fill:G})});
-    ['地號','面積\n(㎡)','持分','面積\n(㎡)','姓名','國民身分證\n統一編號','住所'].forEach(function(h,i){box(6,i+1,6,i+1,h,{bold:true,fill:G})});
+    box(5,1,5,2,'土地標示',{bold:true,fill:G});box(5,3,5,4,'持分面積',{bold:true,fill:G});box(5,5,5,8,'所有權人',{bold:true,fill:G});
+    [[9,'當期公告現值\n(元/㎡)'],[10,'當期申報地價\n(元/㎡)'],[11,'原規定地價或\n前次移轉現值\n(元/㎡)'],[12,'管理人\n(代表人)'],[13,'他項權利'],[14,'建物'],[15,'限制登記'],[16,'備註']].forEach(function(x){box(5,x[0],6,x[0],x[1],{bold:true,fill:G})});
+    ['地號','面積\n(㎡)','持分','面積\n(㎡)','姓名','國民身分證\n統一編號','住所','登記原因'].forEach(function(h,i){box(6,i+1,6,i+1,h,{bold:true,fill:G})});
     ws.getRow(5).height=26;ws.getRow(6).height=66;
     var r0=7,i=0;
     while(i<data.length){
@@ -5134,16 +5134,16 @@ async function saveRegisterXlsx_(name,rows,label){
       var n=j-i+1,top=r0+i,bot=r0+j;
       box(top,1,bot,1,d[3],{text:true});box(top,2,bot,2,d[4],{h:'right'});
       for(var k=i;k<=j;k++){var q=data[k],rr=r0+k;
-        box(rr,3,rr,3,q[5],{text:true});box(rr,4,rr,4,q[6],{h:'right'});box(rr,5,rr,5,q[7]);box(rr,6,rr,6,q[8],{text:true});box(rr,7,rr,7,q[9],{h:'left'});box(rr,15,rr,15,q[13]||'')}
-      box(top,8,bot,8,d[10]===''?'':Number(d[10]),{h:'right'});var nz_=function(v){return (v===''||v==null||isNaN(Number(v)))?'':Number(v)};box(top,9,bot,9,nz_(d[14]),{h:'right'});box(top,10,bot,10,nz_(d[15]),{h:'right'});box(top,11,bot,11,d[16]||'');
-      box(top,12,bot,12,d[11]||'');box(top,13,bot,13,d[12]||'');box(top,14,bot,14,d[17]||'');
+        box(rr,3,rr,3,q[5],{text:true});box(rr,4,rr,4,q[6],{h:'right'});box(rr,5,rr,5,q[7]);box(rr,6,rr,6,q[8],{text:true});box(rr,7,rr,7,q[9],{h:'left'});box(rr,8,rr,8,q[18]||'');box(rr,16,rr,16,q[13]||'')}
+      box(top,9,bot,9,d[10]===''?'':Number(d[10]),{h:'right'});var nz_=function(v){return (v===''||v==null||isNaN(Number(v)))?'':Number(v)};box(top,10,bot,10,nz_(d[14]),{h:'right'});box(top,11,bot,11,nz_(d[15]),{h:'right'});box(top,12,bot,12,d[16]||'');
+      box(top,13,bot,13,d[11]||'');box(top,14,bot,14,d[12]||'');box(top,15,bot,15,d[17]||'');
       var need_=Math.max(xlLines_(d[16],14),xlLines_(d[11],16),xlLines_(d[12],16),xlLines_(d[17],14))*17;
-      for(var kk=i;kk<=j;kk++){var qq=data[kk];ws.getRow(r0+kk).height=Math.min(300,Math.max(26,Math.ceil(need_/n),Math.max(xlLines_(qq[9],30),xlLines_(qq[7],12),xlLines_(qq[13],16))*17+6))}
+      for(var kk=i;kk<=j;kk++){var qq=data[kk];ws.getRow(r0+kk).height=Math.min(300,Math.max(26,Math.ceil(need_/n),Math.max(xlLines_(qq[9],30),xlLines_(qq[7],12),xlLines_(qq[13],16),xlLines_(qq[18],12))*17+6))}
       i=j+1;
     }
     var end=r0+data.length+1;
-    ws.mergeCells(end,1,end,15);ws.getCell(end,1).value='編造：　　　　　　　校對：　　　　　　　承辦人：　　　　　　　科長：　　　　　　　日期：';
-    ws.mergeCells(end+2,1,end+2,15);ws.getCell(end+2,1).value='說明：1、土地所有權屬為共有者,應依權利人資料分行填寫。　2、土地所有權如載有管理人(代表人)、土地上有建築物或登記簿載有他項權利或限制登記等事項,應於對應欄位內填入「∨」。　3、當期申報地價、原規定地價或前次移轉現值、管理人、限制登記系統內沒有資料,請自行補填。';
+    ws.mergeCells(end,1,end,16);ws.getCell(end,1).value='編造：　　　　　　　校對：　　　　　　　承辦人：　　　　　　　科長：　　　　　　　日期：';
+    ws.mergeCells(end+2,1,end+2,16);ws.getCell(end+2,1).value='說明：1、土地所有權屬為共有者,應依權利人資料分行填寫。　2、土地所有權如載有管理人(代表人)、土地上有建築物或登記簿載有他項權利或限制登記等事項,應於對應欄位內填入「∨」。　3、當期申報地價、原規定地價或前次移轉現值、管理人、限制登記系統內沒有資料,請自行補填。';
     ws.getCell(end+2,1).alignment={wrapText:true,vertical:'top'};ws.getRow(end+2).height=48;
     ws.views=[{state:'frozen',ySplit:6}];
     ws.pageSetup={orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.2,footer:0.2}};
@@ -7484,7 +7484,7 @@ var RL_COLS_=[
   {k:'qu',h:'鄉鎮市區',w:9,def:1},{k:'sec',h:'段',w:8,def:1},{k:'sub',h:'小段',w:7,def:1},
   {k:'no',h:'地號',w:11,def:1,lock:1},{k:'area',h:'面積\n(平方公尺)',w:11,def:1},{k:'share',h:'持分比例',w:11,def:1},
   {k:'ord',h:'主登記\n次序',w:8,def:1},{k:'other',h:'其 他 登 記 事 項',w:58,def:1,wide:1},
-  {k:'sharea',h:'持分面積\n(平方公尺)',w:12,def:0},{k:'date',h:'登記日期',w:12,def:0},{k:'reason',h:'登記原因',w:10,def:0},
+  {k:'sharea',h:'持分面積\n(平方公尺)',w:12,def:0},{k:'date',h:'登記日期',w:12,def:0},{k:'reason',h:'登記原因',w:10,def:1,lock:1},
   {k:'mark',h:'土地標示部\n其他登記事項',w:32,def:0,wide:1},{k:'lien',h:'他項權利\n(抵押權等)',w:32,def:0,wide:1}
 ];
 var RL_NAMES_={qu:'鄉鎮市區',sec:'段',sub:'小段',no:'地號',area:'面積',share:'持分比例',ord:'主登記次序',other:'其他登記事項(所有權部)',sharea:'持分面積',date:'登記日期',reason:'登記原因',mark:'土地標示部其他登記事項',lien:'他項權利(抵押權等)'};
@@ -7648,7 +7648,7 @@ async function rlExport_(){
         put(r,1,2,'分配歸戶清冊 :',L);put(r,3,3,ol.serial);r++;
         put(r,1,2,'所有權人姓名 :',L);put(r,3,4,g.name);put(r,6,6,'統一編號:',L);put(r,7,9,g.id,L);
         put(r,Math.max(N-1,10),N,'列印日期:'+today,RT,false);r++;
-        put(r,1,2,'編      號 :',L);put(r,3,3,noVal);put(r,6,6,'住 址:',L);put(r,7,11,g.addr,L);
+        put(r,1,2,'編      號 :',L);put(r,3,3,noVal);put(r,6,6,'住 址:',L);put(r,7,Math.min(11,Math.max(N-1,10)-1),g.addr,L);   /* 住址的合併範圍不能蓋到右邊的頁數 */
         put(r,Math.max(N-1,10),N,'頁數:'+(pi+1)+'/'+total,RT,false);r++;
         put(r,1,cols.length,'重　　劃　　前　　原　　載　　情　　形',null,true,true);
         if(RL.post)put(r,cols.length+1,N,'重　　劃　　後　　變　　更　　情　　形',null,true,true);
