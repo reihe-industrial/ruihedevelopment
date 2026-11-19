@@ -3333,6 +3333,22 @@ function deedRestrictOf_(txt){
   [['預告登記',/預告/],['查封登記',/查封/],['假扣押',/假扣押/],['假處分',/假處分/],['禁止處分',/禁止處分/],['破產登記',/破產/],['暫時處分',/暫時處分/]].forEach(function(x){if(x[1].test(seg)&&out.indexOf(x[0])<0)out.push(x[0])});
   return out.length?out.join('、'):'限制登記(內容請看謄本)';
 }
+/* 限制登記寫清楚:誰的持分、哪一種(查封…)、機關函號、債權人、債務人、限制範圍、登記日期 */
+function deedRestrictDetail_(e){
+  var ty=deedRestrictOf_(e.other);if(!ty)return '';
+  var fw=function(x){return String(x||'').replace(/[０-９]/g,function(c){return String.fromCharCode(c.charCodeAt(0)-65248)}).replace(/＊/g,'*').replace(/[（(]限制登記事項[）)]/,'')};
+  var t=fw(String(e.other||'').replace(/\s+/g,'')),m,d=[];
+  var who=(e.name?fw(e.name):'')+(e.id?'('+fw(e.id)+')':'');
+  var sh=e.share?'持分'+fw(e.share):'';
+  if(ty.indexOf('內容請看謄本')>=0)return (who?who+' ':'')+ty;
+  if((m=t.match(/依(.{2,12}法院[^，,]{0,8}處|[^，,]{2,14}(?:署|局|所|院))/)))d.push(m[1]);
+  if((m=t.match(/(?:中華民國)?(\d+年\d+月\d+日)([^，,日]{2,30}字第\d+號)函/)))d.push(m[1]+m[2]+'函');
+  if((m=t.match(/債權人[:：]([^，,。]+)/)))d.push('債權人:'+m[1]);
+  if((m=t.match(/債務人[:：](.+?)[，,](?:限制範圍|\d+年)/)))d.push('債務人:'+m[1]);
+  if((m=t.match(/限制範圍[:：]([^，,。]+)/)))d.push('限制範圍:'+m[1]);
+  if((m=t.match(/[，,](\d+年\d+月\d+日)登記[。]?$/)))d.push(m[1]+'登記');
+  return (who?who+(sh?' '+sh:'')+':':'')+ty+(d.length?'('+d.join(';')+')':'');
+}
 function deedParseOwnership_(lines){
   var entries=[],cur=null,waiting='',cont=false,oc=false;
   function start(){cur={date:'',reason:'',name:'',id:'',share:'',addr:'',order:'',link:'',other:'',declared:0,prev:0};entries.push(cur);waiting='';cont=false;oc=false}
@@ -3432,15 +3448,16 @@ function parseOneDeed_(rawPages){
       var vm=content.join('\n').match(/公告土地現值\s*:?\s*\**\s*([\d,]+(?:\.\d+)?)\s*元/);
       rec.value=vm?deedNum_(vm[1]):0;
       rec.ownership=deedParseOwnership_(own);
+      rec.ownership.forEach(function(e){if(e.name==='中華民國')e.id=''});   /* 中華民國的「統一編號」是政府機關代號(例如 0000000158),不是身分證字號 */
       rec.liens=deedParseLiens_(lien);rec.markOther=deedMarkOther_(content);rec.lienDetail=deedLienDetail_(lien);
       /* 當期申報地價、前次移轉現值、限制登記:每位所有權人各有一段,整筆地號取最新登記的那一位;限制登記取全部所有權人的聯集 */
       (function(){
         var best=null,bd='',rs=[];
         rec.ownership.forEach(function(e){var d=normRocDate(e.date)||'';if(!best||d>bd){best=e;bd=d}
-          var t=deedRestrictOf_(e.other);if(t)t.split('、').forEach(function(x){if(rs.indexOf(x)<0)rs.push(x)})});
+          var t=deedRestrictDetail_(e);if(t&&rs.indexOf(t)<0)rs.push(t)});
         var dec=0,pv=0;rec.ownership.forEach(function(e){if(e.declared&&!dec)dec=e.declared});
         if(best&&best.prev)pv=best.prev;else rec.ownership.forEach(function(e){if(e.prev&&!pv)pv=e.prev});
-        rec.declared=dec;rec.prev=pv;rec.restrict=rs.join('、');
+        rec.declared=dec;rec.prev=pv;rec.restrict=rs.join('\n');
       })();
       if(rec.areaM2===null)rec.warnings.push('找不到土地面積');
       if(!rec.ownership.length)rec.warnings.push('沒有讀到所有權部的地主資料(可能不是完整謄本)');
@@ -4550,27 +4567,46 @@ function sgBuild(ex,opts){
           pool.push({i:i,a:pl.area,d:dmin,near:dmin<=14});
         });
         if(pool.length<2||pool.length>40)return;
-        pool.forEach(function(q){q.nb=[];});
-        function touch(x,y){var n=0;polys[x].pts.forEach(function(p){if(polys[y].pts.some(function(q){return Math.hypot(p[0]-q[0],p[1]-q[1])<0.4}))n++});return n>=2}
-        pool.forEach(function(x,xi){pool.forEach(function(y,yi){if(xi<yi&&touch(x.i,y.i)){x.nb.push(yi);y.nb.push(xi)}})});
-        var found=[],seenSet={};
-        function grow(set,sum){
-          var key=set.slice().sort(function(a,b){return a-b}).join(',');if(seenSet[key])return;seenSet[key]=1;
-          var er=Math.abs(sum/A-1);
-          if(er<=0.06&&set.some(function(k){return pool[k].near}))found.push({set:set.slice(),er:er,sum:sum});
-          if(set.length>=7||sum>A*1.06)return;
-          var nxt={};set.forEach(function(k){pool[k].nb.forEach(function(j){if(set.indexOf(j)<0)nxt[j]=1})});
-          Object.keys(nxt).forEach(function(j){j=+j;set.push(j);grow(set,sum+pool[j].a);set.pop()});
+        var best=null;
+        // 細長地沿河邊被線切開,碎塊常常只有一個角碰在一起:先找「兩塊、一個角相連、面積差 3% 內、只有一種接法」;
+        // 找不到再照「共用一條邊」一塊一塊接(差 6% 內、只有一種接法)
+        [[1,0.03,2],[2,0.06,7]].some(function(mode){
+          var minT=mode[0],tol=mode[1],maxN=mode[2];
+          pool.forEach(function(q){q.nb=[];});
+          function touch(x,y){var n=0;polys[x].pts.forEach(function(p){if(polys[y].pts.some(function(q){return Math.hypot(p[0]-q[0],p[1]-q[1])<0.4}))n++});return n>=minT}
+          pool.forEach(function(x,xi){pool.forEach(function(y,yi){if(xi<yi&&touch(x.i,y.i)){x.nb.push(yi);y.nb.push(xi)}})});
+          var found=[],seenSet={};
+          function grow(set,sum){
+            var key=set.slice().sort(function(a,b){return a-b}).join(',');if(seenSet[key])return;seenSet[key]=1;
+            var er=Math.abs(sum/A-1);
+            if(er<=tol&&set.some(function(k){return pool[k].near}))found.push({set:set.slice(),er:er,sum:sum});
+            if(set.length>=maxN||sum>A*1.06)return;
+            var nxt={};set.forEach(function(k){pool[k].nb.forEach(function(j){if(set.indexOf(j)<0)nxt[j]=1})});
+            Object.keys(nxt).forEach(function(j){j=+j;set.push(j);grow(set,sum+pool[j].a);set.pop()});
+          }
+          pool.forEach(function(q,k){if(q.near)grow([k],q.a)});
+          if(!found.length)return false;
+          found.sort(function(x,y){return x.er-y.er});
+          var bst=found[0],amb=found.slice(1).some(function(f){
+            if(f.er>bst.er+0.02)return false;
+            var sh=0,un=0;pool.forEach(function(q,k){var a=bst.set.indexOf(k)>=0,c=f.set.indexOf(k)>=0;if(a||c)un+=q.a;if(a&&c)sh+=q.a});
+            return sh/un<0.8});
+          if(amb||bst.set.length<2)return false;
+          best=bst;return true;
+        });
+        if(!best)return;
+        var u=sgUnionRings(best.set.map(function(k){return polys[pool[k].i].pts}));
+        // 兩塊只有一個角相連時,算不出一塊完整的外框:把兩塊在碰角那點串成一圈(面積用兩塊相加)
+        var sumA=0;best.set.forEach(function(k){sumA+=pool[k].a});
+        if((!u||u.area<sumA*0.9)&&best.set.length===2){
+          var r1=polys[pool[best.set[0]].i].pts,r2=polys[pool[best.set[1]].i].pts,i1=-1,j2=-1;
+          r1.forEach(function(p,i){if(i1>=0)return;r2.forEach(function(q,j){if(i1<0&&Math.hypot(p[0]-q[0],p[1]-q[1])<0.4){i1=i;j2=j}})});
+          if(i1>=0){
+            var A1=r1.slice(i1).concat(r1.slice(0,i1)),B1=r2.slice(j2).concat(r2.slice(0,j2));
+            u={pts:A1.concat([A1[0]]).concat(B1.slice(1)),area:sumA};
+          }
         }
-        pool.forEach(function(q,k){if(q.near)grow([k],q.a)});
-        if(!found.length)return;
-        found.sort(function(x,y){return x.er-y.er});
-        var best=found[0],amb=found.slice(1).some(function(f){
-          if(f.er>best.er+0.02)return false;
-          var sh=0,un=0;pool.forEach(function(q,k){var a=best.set.indexOf(k)>=0,c=f.set.indexOf(k)>=0;if(a||c)un+=q.a;if(a&&c)sh+=q.a});
-          return sh/un<0.8});
-        if(amb||best.set.length<2)return;
-        var u=sgUnionRings(best.set.map(function(k){return polys[pool[k].i].pts}));if(!u)return;
+        if(!u)return;
         best.set.forEach(function(k){lblUsed[pool[k].i]=no});
         assign[no]={pts:u.pts,area:u.area,n:best.set.length,key:'C'+best.set.map(function(k){return pool[k].i}).join('_'),lbl:2};tg.push(assign[no]);
         var q3=sgBB(u.pts);r=[Math.min(r[0],q3[0]-MARG),Math.min(r[1],q3[1]-MARG),Math.max(r[2],q3[2]+MARG),Math.max(r[3],q3[3]+MARG)];
@@ -4742,7 +4778,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-19-g';
+var FRONT_VER='2026-11-19-j';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -4917,7 +4953,7 @@ function openOwner(id){
   openOwner0(id);
   if(!o||o._priv||!canSeeOwner(o))return;
   api('getOwnerPrivate',{projectId:S.proj,ownerId:o._srv}).then(function(p){
-    o.phone=p['電話']||'(未填)';o.idno=p['身分證字號/統編']||'';o.regAddr=p['戶籍地']||'';o.resAddr=p['居住地']||'';o.resSame=p['居住地同戶籍']==='是';o.note=p['備註']||'';o.contact=p['聯絡方式(原文)']||'';o._priv=true;
+    o.phone=p['電話']||'(未填)';o.idno=(o.name==='中華民國')?'':(p['身分證字號/統編']||'');o.regAddr=p['戶籍地']||'';o.resAddr=p['居住地']||'';o.resSame=p['居住地同戶籍']==='是';o.note=p['備註']||'';o.contact=p['聯絡方式(原文)']||'';o._priv=true;
     if($('#dlg-owner').open&&curOwner===id)openOwner0(id);
   }).catch(function(e){if(e.auth)showLogin('登入已過期,請重新登入');else toast('讀不到個資:'+(e.userMessage||e.message))});
 }
@@ -4944,9 +4980,9 @@ function parcelExtraHTML(p){
     h+='<h3>地價與限制登記</h3><div class="ocard">'
       +'<div class="field"><label for="pv-dec">當期申報地價(元/㎡)</label><input type="number" id="pv-dec" min="0" step="any" value="'+(p.declared||'')+'" placeholder="例:880"></div>'
       +'<div class="field"><label for="pv-prev">前次移轉現值或原規定地價(元/㎡)</label><input type="number" id="pv-prev" min="0" step="any" value="'+(p.prevValue||'')+'" placeholder="例:240"></div>'
-      +'<div class="field"><label for="pv-res">限制登記</label><input type="text" id="pv-res" maxlength="200" value="'+esc(p.restrict||'')+'" placeholder="例:預告登記、查封登記;沒有就留空白"></div>'
+      +'<div class="field"><label for="pv-res">限制登記</label><textarea id="pv-res" rows="4" maxlength="1000" placeholder="例:張某某 持分5分之1:查封登記(債權人…);沒有就留空白">'+esc(p.restrict||'')+'</textarea></div>'
       +'<div class="actions"><button class="btn small primary" type="button" data-pv-save="'+p.id+'">儲存</button></div></div>';
-  }else if(p.restrict)h+='<div class="small" style="margin-top:8px"><b>限制登記</b>:'+esc(p.restrict)+'</div>';
+  }else if(p.restrict)h+='<div class="small" style="margin-top:8px"><b>限制登記</b>:'+esc(p.restrict).replace(/\n/g,'<br>')+'</div>';
   var svl=p.surveys||[];
   var sb=svl.length?'<ul class="tl">'+svl.map(function(x){return '<li><div class="t">'+esc(x.date)+' · '+esc(x.by)+'</div><div class="small" style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(x.note)+'</div>'+(x.photos?'<button class="btn small" type="button" data-sv-photos="'+esc(x.id)+'" data-sv-n="'+(+x.photos||0)+'" style="margin-top:4px">看照片('+x.photos+')</button><div id="svp-'+esc(x.id)+'"></div>':'')+'</li>'}).join('')+'</ul>':'<p class="small muted" style="margin:0 0 6px">還沒有踏勘紀錄。</p>';
   if(canEditParcel(p))sb+='<div class="field"><label for="sv-date">踏勘日期</label><input type="date" id="sv-date" value="'+iso(new Date())+'"></div>'
@@ -5077,7 +5113,7 @@ async function saveSummaryXlsx_(name,rows,label){
     var E=await loadExcelJS(),wb=new E.Workbook(),ws=wb.addWorksheet('彙整總表'),data=rows.slice(1);
     // [來源欄位, 標題, 寬度, 是否整筆地號合併, 型態]
     var C=[[0,'段別',9,1],[1,'地號',9,1,'t'],[2,'縣市',8,1],[3,'鄉鎮市區',9,1],[4,'面積\n(㎡)',10,1,'n'],[12,'持分',8,0,'t'],[13,'持分面積\n(㎡)',10,0,'n'],[10,'地主',14,0],[11,'身分',9,0],[31,'登記原因',11,0],
-      [5,'使用分區',10,1],[6,'使用地類別',10,1],[7,'當期公告現值\n(元/㎡)',12,1,'n'],[28,'當期申報地價\n(元/㎡)',12,1,'n'],[29,'原規定地價或\n前次移轉現值\n(元/㎡)',16,1,'n'],[8,'他項權利',14,1],[9,'建物',12,1],[30,'限制登記',14,1],
+      [5,'使用分區',10,1],[6,'使用地類別',10,1],[7,'當期公告現值\n(元/㎡)',12,1,'n'],[28,'當期申報地價\n(元/㎡)',12,1,'n'],[29,'原規定地價或\n前次移轉現值\n(元/㎡)',16,1,'n'],[8,'他項權利',14,1],[9,'建物',12,1],[30,'限制登記',34,1],
       [14,'主要承辦',10,0],[15,'次要承辦',10,0],[16,'簽約階段',10,0],[17,'電話',14,0],[18,'戶籍地',28,0],[19,'居住地',24,0],[20,'最新意願',9,0],[21,'訪談次數',8,0,'n'],[22,'最近訪談日',12,0],[23,'最近方式',9,0],[24,'最近內容摘要',30,0],[25,'下次跟進日',12,0],[26,'關切事項',16,0],[27,'全部訪談紀錄(新到舊)',50,0]];
     var G=[['土地標示',0,4],['持分',5,6],['所有權人',7,9],['土地資料',10,14],['登記',15,17],['承辦與訪談',18,C.length-1]];
     var thin={style:'thin',color:{argb:'FF444444'}},bd={top:thin,left:thin,bottom:thin,right:thin},GR='FFEFEFEF';
@@ -5109,7 +5145,7 @@ async function saveSummaryXlsx_(name,rows,label){
 async function saveRegisterXlsx_(name,rows,label){
   try{
     var E=await loadExcelJS(),wb=new E.Workbook(),ws=wb.addWorksheet('重劃前土地清冊'),data=rows.slice(1);
-    var W=[10,11,8,11,12,17,30,12,14,14,18,14,16,16,14,16];W.forEach(function(w,i){ws.getColumn(i+1).width=w});
+    var W=[10,11,8,11,12,17,30,12,14,14,18,14,16,16,34,16];W.forEach(function(w,i){ws.getColumn(i+1).width=w});
     var thin={style:'thin',color:{argb:'FF444444'}},bd={top:thin,left:thin,bottom:thin,right:thin};
     function box(r1,c1,r2,c2,val,o){
       o=o||{};if(r1!==r2||c1!==c2)ws.mergeCells(r1,c1,r2,c2);
@@ -5137,7 +5173,7 @@ async function saveRegisterXlsx_(name,rows,label){
         box(rr,3,rr,3,q[5],{text:true});box(rr,4,rr,4,q[6],{h:'right'});box(rr,5,rr,5,q[7]);box(rr,6,rr,6,q[8],{text:true});box(rr,7,rr,7,q[9],{h:'left'});box(rr,8,rr,8,q[18]||'');box(rr,16,rr,16,q[13]||'')}
       box(top,9,bot,9,d[10]===''?'':Number(d[10]),{h:'right'});var nz_=function(v){return (v===''||v==null||isNaN(Number(v)))?'':Number(v)};box(top,10,bot,10,nz_(d[14]),{h:'right'});box(top,11,bot,11,nz_(d[15]),{h:'right'});box(top,12,bot,12,d[16]||'');
       box(top,13,bot,13,d[11]||'');box(top,14,bot,14,d[12]||'');box(top,15,bot,15,d[17]||'');
-      var need_=Math.max(xlLines_(d[16],14),xlLines_(d[11],16),xlLines_(d[12],16),xlLines_(d[17],14))*17;
+      var need_=Math.max(xlLines_(d[16],34),xlLines_(d[11],16),xlLines_(d[12],16),xlLines_(d[17],14))*17;
       for(var kk=i;kk<=j;kk++){var qq=data[kk];ws.getRow(r0+kk).height=Math.min(300,Math.max(26,Math.ceil(need_/n),Math.max(xlLines_(qq[9],30),xlLines_(qq[7],12),xlLines_(qq[13],16),xlLines_(qq[18],12))*17+6))}
       i=j+1;
     }
