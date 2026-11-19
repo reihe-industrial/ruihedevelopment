@@ -4742,7 +4742,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-19-e';
+var FRONT_VER='2026-11-19-f';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -7522,12 +7522,16 @@ function rlCloudLoad_(){
   });
 }
 // 謄本讀完就存到雲端(每個專案一份,同一地號只留列印日期最新的)
-function deedCloudSave_(pid,recs){
+function deedCloudSave_(pid,recs,tries){
+  tries=tries||0;
   if(!pid||!recs||!recs.length||S.role==='staff')return Promise.resolve(null);
   return api('saveDeeds',{projectId:pid,recs:recs}).then(function(r){
     if(RLC.pid===pid&&RLC.state==='done'){var by={};RLC.recs.concat(recs).forEach(function(x){by[[x.kind,x.county,x.town,x.district,x.number,x.bno||''].join('|')]=x});RLC.recs=Object.keys(by).map(function(k){return by[k]});RLC.saved=iso(new Date())}
     return r;
-  }).catch(function(e){if(e&&e.auth){showLogin('登入已過期,請重新登入');return null}toast('謄本資料沒有存到雲端:'+((e&&(e.userMessage||e.message))||'請再試一次'));return null});
+  }).catch(function(e){if(e&&e.auth){showLogin('登入已過期,請重新登入');return null}
+    /* 另一個動作(例如「套用」)正在寫試算表,這次要等一下:自動重試,不用你再按 */
+    if(tries<4&&/正忙|鎖定逾時/.test((e&&(e.userMessage||e.message))||'')){return new Promise(function(ok){setTimeout(ok,5000)}).then(function(){return deedCloudSave_(pid,recs,tries+1)})}
+    toast('謄本資料沒有存到雲端:'+((e&&(e.userMessage||e.message))||'請再試一次'));return null});
 }
 function rlParcels_(){   // 同一地號有好幾份謄本:取列印日期最新的
   var best={};
