@@ -412,6 +412,100 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
 })();
 </script>
 <!-- MOBILE-NAV:END -->
+<style id="theme-v2">
+/* 視覺改版 v2:圓角更大、按鈕輸入框至少 44px 好點、表格與分頁按鈕更清楚 */
+:root{--r:14px;--r-s:10px}
+/* 格子要整齊:同一排一樣高、欄寬一樣、按鈕固定在卡片底部 */
+.kpis,.metrics,.pcards,.grid2,.setgrid,.setstages{align-items:stretch;grid-auto-rows:1fr}
+.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+.kpi,.metric,.pcards>*{height:100%;box-sizing:border-box}
+.pcards>*{display:flex;flex-direction:column}
+.pcards>*>:last-child{margin-top:auto}
+.grid2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid2>.panel{margin:0;height:100%}
+.row2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.setgrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.setstages{grid-template-columns:repeat(4,minmax(0,1fr))}
+td .btn.small{margin:0 4px 4px 0}
+@media (max-width:1180px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:minmax(0,1fr)}.setgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.setstages{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.setgrid{grid-template-columns:minmax(0,1fr)}.row2{grid-template-columns:minmax(0,1fr)}}
+
+.top{min-height:56px;padding:6px 20px}
+.tabs a{min-height:40px;display:inline-flex;align-items:center;border-radius:var(--r-s)}
+.btn{min-height:44px;padding:0 18px;border-radius:var(--r-s);display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:14px}
+.btn.small{min-height:36px;padding:0 12px;font-size:13px}
+.btn.primary{font-weight:700}
+select,input[type=text],input[type=search],input[type=date],input[type=number],input[type=email],textarea{border-radius:var(--r-s)}
+select,input[type=text],input[type=search],input[type=date],input[type=number],input[type=email]{min-height:44px}
+.panel,.card,.ocard{border-radius:var(--r)}
+.panel{padding:18px}
+.card{padding:14px}
+.metric{border-radius:var(--r);padding:12px 14px;background:var(--surface);min-height:64px}
+.metric .v{font-size:24px}
+.kpi{border-radius:var(--r)}
+.tablewrap{border-radius:var(--r)}
+th{font-size:12px;font-weight:700;letter-spacing:.02em;padding:10px 12px}
+td{padding:12px}
+tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--surface-2) 55%,var(--surface))}
+tbody tr:hover td{background:var(--surface-2)}
+.seg{display:flex;gap:4px;padding:4px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-s);overflow:hidden}
+.seg button{flex:1 1 0;min-height:40px;border:0!important;border-radius:8px;background:transparent;font-weight:500;padding:0 14px}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.18)}
+.chip{min-height:36px;padding:0 12px 0 10px}
+.pill{padding:3px 12px 3px 10px}
+.expcard{padding:14px 0}
+.dlg{padding:20px 22px}
+dialog{border-radius:var(--r)}
+.zoom .btn{width:44px;height:44px;min-height:44px;border-radius:12px;font-size:20px}
+.maplegend,.maphint{border-radius:12px}
+h1{font-size:26px;margin:0 0 4px}
+.field>label,.lab{font-size:13px}
+a.btn{text-decoration:none}
+@media (max-width:1180px){
+  .tabs a{min-height:44px}
+  .btn.small{min-height:44px;padding:0 14px}
+  .chip{min-height:44px}
+  .page{padding:14px}
+  td{padding:12px 10px}
+}
+@media (max-width:760px){
+  h1{font-size:22px}
+  .metric .v{font-size:22px}
+  .panel{padding:14px}
+  #mnav{border-radius:0}
+  #mnav a,#mnav button{min-height:62px;font-size:11px}
+  /* 地圖頁:選了地號,詳細資料從下面滑出(蓋在底部列上面) */
+  #view-map.on .detail[data-has="1"]{position:fixed;left:0;right:0;bottom:calc(62px + env(safe-area-inset-bottom,0px));z-index:30;max-height:50vh;border:0;border-radius:20px 20px 0 0;box-shadow:0 -6px 20px rgba(0,0,0,.22);padding:26px 16px 16px;overflow:auto}
+  #view-map.on .detail[data-has="1"]::before{content:"";position:absolute;top:9px;left:50%;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:var(--line)}
+  #view-map.on .detail[data-has="1"].min{max-height:52px;overflow:hidden}
+  #view-map.on .detail[data-has="1"] .btn{min-height:48px}
+  #view-map.on{padding-bottom:0}
+  .pcards{grid-template-columns:1fr}
+}
+@media (min-width:761px) and (max-width:1180px){
+  /* 平板:上方分頁收掉,底部列保留;地圖頁拉高 */
+  .mapwrap{height:68vh}
+}
+</style>
+<script>
+(function(){
+  function sync(){
+    var d=document.querySelector('#view-map .detail');if(!d)return;
+    var has=!!d.querySelector('.d-head');
+    if(has){if(d.getAttribute('data-has')!=='1'){d.setAttribute('data-has','1');d.classList.remove('min')}}
+    else{d.removeAttribute('data-has');d.classList.remove('min')}
+  }
+  function init(){
+    var d=document.querySelector('#view-map .detail');if(!d)return;
+    sync();
+    new MutationObserver(sync).observe(d,{childList:true,subtree:true});
+    d.addEventListener('click',function(e){
+      if(e.target===d&&d.getAttribute('data-has')==='1'&&e.offsetY<26)d.classList.toggle('min');
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
+</script>
 <script>
 (function(){
 'use strict';
@@ -4813,7 +4907,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-19-n';
+var FRONT_VER='2026-11-19-o';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -5572,8 +5666,6 @@ function renderData(){
     [['parcels','地號清單','面積、使用分區、地主與持分(Excel)'],['owners','地主清單','含電話與地址,請妥善保管(Excel)'],['interviews','訪談紀錄','全部訪談,新到舊排列(Excel)'],['all','彙整總表(一張表看完)','地號、地主持分、訪談合在同一張表,含電話與地址(Excel)'],['register','重劃前土地清冊','依「重劃前土地清冊」格式排好,含身分證字號與住所(Excel)'],['rl','重劃前歸戶清冊','依所有權人歸戶,含其他登記事項,一位所有權人一頁(Excel)']].forEach(function(x){
       h+='<div class="expcard"><div><b>'+x[1]+'</b><span class="small muted">'+x[2]+'</span></div><button class="btn" type="button" data-dx-exp="'+x[0]+'">匯出</button></div>';
     });
-    h+='<div class="expcard"><div><b>完整備份</b><span class="small muted">'+(admin?'在雲端硬碟建立整份試算表的副本,含全部專案與個資':'只有管理員可以建立,因為含全部專案與個資')+'</span></div><button class="btn" type="button" data-dx-backup'+(admin?'':' disabled')+'>建立備份</button></div>';
-    if(DX.bk)h+='<div class="notice">已建立備份:'+esc(DX.bk.name)+(/^https:\/\//.test(DX.bk.url)?' <a href="'+esc(DX.bk.url)+'" target="_blank" rel="noopener">開啟</a>':'')+'</div>';
   }
   h+='</div><div class="panel"><h2>匯入訪談紀錄</h2>';
   h+='<p class="small muted" style="margin:0">標題列要有:日期、地主、內容摘要、意願;方式、記錄人、下次跟進日、關切標籤可省略。地主姓名要和系統內一致。可直接上傳 Excel 檔(.xlsx),也可以貼上內容。'+(staff?'只能匯入自己負責的地主的紀錄。':'')+'</p>';
@@ -5606,13 +5698,6 @@ document.addEventListener('click',function(e){
       else saveRowsXlsx('土地開發_'+label+'_'+safe(r.project)+'_'+iso(new Date())+'.xlsx',r.rows,label+'('+r.project+')',label);
       toast('已匯出:'+label+'('+(r.rows.length-1)+' 筆)。');
     }).catch(function(er){if(er.auth)showLogin('登入已過期,請重新登入');else toast('匯出失敗:'+(er.userMessage||er.message))}).then(function(){b.disabled=false});
-    return;
-  }
-  if((b=t.closest('[data-dx-backup]'))){
-    if(!window.confirm('在雲端硬碟建立整份試算表的備份?\n備份含全部專案與個資。'))return;
-    b.disabled=true;
-    api('backupSpreadsheet',{}).then(function(r){DX.bk={name:r.name,url:r.url};toast('已建立備份。');renderData()})
-      .catch(function(er){b.disabled=false;if(er.auth)showLogin('登入已過期,請重新登入');else toast('備份失敗:'+(er.userMessage||er.message))});
     return;
   }
   if(t.closest('[data-dx-tpl]')){
@@ -6103,6 +6188,42 @@ function applyPermTabs_(){
     else if(v!=='import'&&v!=='reports')a.style.display=(S.viewer&&v!=='projects')?'none':'';   // 新增專案、報表的顯示另有規則,這裡只負責「隱藏」
   });
 }
+var BK={cfg:{on:false,hour:2,keep:30},list:null,busy:false,err:''};
+function bkHTML_(){
+  var c=BK.cfg,hrs='';for(var i=0;i<24;i++)hrs+='<option value="'+i+'"'+(i===c.hour?' selected':'')+'>'+(i<10?'0':'')+i+':00</option>';
+  var h='<h2>自動備份</h2><p class="sethint">開啟後,每天在選的時間,到雲端硬碟「備份」資料夾建立整份試算表的副本(含全部專案與個資)。</p>'
+    +'<div class="setgrid"><div class="field"><label for="bk-on">自動備份</label><label style="display:flex;align-items:center;gap:8px;min-height:44px"><input type="checkbox" id="bk-on" style="width:20px;height:20px"'+(c.on?' checked':'')+'>啟用</label></div>'
+    +'<div class="field"><label for="bk-hour">每天備份時間</label><select id="bk-hour">'+hrs+'</select></div>'
+    +'<div class="field"><label for="bk-keep">保留份數</label><div class="setunit"><input type="number" id="bk-keep" min="1" max="90" step="1" value="'+esc(String(c.keep))+'"><span>份</span></div></div></div>'
+    +'<div class="actions" style="justify-content:flex-start"><button class="btn primary" type="button" data-bk-save>儲存</button><button class="btn" type="button" data-bk-now>立即備份一次</button></div>'
+    +'<h3 style="margin-top:18px">最近備份</h3>';
+  if(BK.err)h+='<p class="small" style="color:var(--danger)">'+esc(BK.err)+'</p>';
+  else if(BK.list===null)h+='<p class="small muted">讀取中…</p>';
+  else if(!BK.list.length)h+='<p class="small muted">還沒有備份。</p>';
+  else h+='<div class="tablewrap"><table><thead><tr><th>備份時間</th><th>檔名</th><th></th></tr></thead><tbody>'+BK.list.map(function(x){return '<tr><td>'+esc(x.time)+'</td><td>'+esc(x.name)+'</td><td>'+(/^https:\/\//.test(x.url)?'<a href="'+esc(x.url)+'" target="_blank" rel="noopener">開啟</a>':'')+'</td></tr>'}).join('')+'</tbody></table></div>';
+  return h;
+}
+function loadBk_(){
+  BK.busy=true;BK.err='';
+  api('listBackups').then(function(r){BK.busy=false;BK.cfg=r.cfg;BK.list=r.list;var b=document.getElementById('bk-box');if(b)b.innerHTML=bkHTML_()}).catch(function(er){BK.busy=false;if(er.auth){showLogin('登入已過期,請重新登入');return}BK.list=[];BK.err=er.userMessage||er.message;var b=document.getElementById('bk-box');if(b)b.innerHTML=bkHTML_()});
+}
+document.addEventListener('click',function(e){
+  var t=e.target;if(!t||!t.closest||!t.closest('#bk-box'))return;var b;
+  if((b=t.closest('[data-bk-now]'))){
+    if(!window.confirm('現在就在雲端硬碟建立整份試算表的備份?\n備份含全部專案與個資。'))return;
+    b.disabled=true;
+    api('backupSpreadsheet',{}).then(function(r){toast('已建立備份。');BK.list=null;loadBk_()})
+      .catch(function(er){b.disabled=false;if(er.auth)showLogin('登入已過期,請重新登入');else toast('備份失敗:'+(er.userMessage||er.message))});
+    return;
+  }
+  if((b=t.closest('[data-bk-save]'))){
+    var bq={on:$('#bk-on').checked,hour:$('#bk-hour').value,keep:$('#bk-keep').value};
+    b.disabled=true;
+    api('setBackupSettings',bq).then(function(r){b.disabled=false;BK.cfg=r.cfg;toast(r.cfg.on?'已設定每天 '+r.cfg.hour+':00 自動備份。':'已關閉自動備份。');loadBk_()})
+      .catch(function(er){b.disabled=false;if(er.auth)showLogin('登入已過期,請重新登入');else toast('儲存失敗:'+(er.userMessage||er.message))});
+    return;
+  }
+});
 var SETTAB='base';
 function setPermHTML(){
   var rp=CFG.rolePerms||{};
@@ -6122,7 +6243,7 @@ function setHTML(){
     +'.setchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.setchips span{background:var(--soft,#eef3ef);border:1px solid var(--line);border-radius:999px;padding:3px 12px;font-size:13px}'
     +'.setstages{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.setstages .field{margin:0}.setstages .stno{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--brand,#1f5c46);color:#fff;font-size:12px;margin-right:6px}.setstages input{width:100%;text-align:center}'
     +'@media(max-width:900px){.setwrap{grid-template-columns:1fr}}@media(max-width:640px){.setgrid{grid-template-columns:1fr}.setstages{grid-template-columns:repeat(2,minmax(0,1fr))}}</style>';
-  var tabs=[['base','謄本與同意門檻'],['tags','關注原因標籤'],['stages','簽約階段名稱'],['perm','各角色功能'],['rl','歸戶清冊欄位']];
+  var tabs=[['base','謄本與同意門檻'],['tags','關注原因標籤'],['stages','簽約階段名稱'],['perm','各角色功能'],['rl','歸戶清冊欄位'],['bk','自動備份']];
   var bar='<div class="orow" id="set-tabs" style="gap:8px;flex-wrap:wrap;justify-content:flex-start;margin-top:12px">'+tabs.map(function(t){return '<button class="btn small'+(SETTAB===t[0]?' primary':'')+'" type="button" data-set-tab="'+t[0]+'">'+t[1]+'</button>'}).join('')+'</div>';
   var vok=CFG.ver===FRONT_VER;
   bar+='<p class="small" id="ver-line" style="margin:8px 0 0;'+(vok?'color:var(--muted)':'color:#B03020;font-weight:700')+'">網頁版本 '+esc(FRONT_VER)+' · 後端版本 '+esc(CFG.ver||'舊版(沒有版本)')+(vok?' · 兩邊一致':' · ⚠ 兩邊版本不一致:請把最新的 Code.gs 貼進 Apps Script 並重新部署新版本,再按 Ctrl+F5')+'</p>';
@@ -6139,6 +6260,7 @@ function setHTML(){
     +'<div class="actions"><button class="btn small" type="button" data-set-resetstage>還原預設名稱</button></div></div>'
     +'<div data-set-pane="perm" class="span2">'+setPermHTML()+'</div>'
     +'<div class="panel span2" data-set-pane="rl">'+rlSettingsHTML_()+'</div>'
+    +'<div class="panel span2" data-set-pane="bk" id="bk-box">'+bkHTML_()+'</div>'
     +'<div class="actions span2" id="set-savebar" style="margin-top:0;justify-content:flex-start"><button class="btn primary" type="button" data-set-save>儲存設定</button></div></div>';
 }
 document.addEventListener('input',function(e){
@@ -6154,7 +6276,8 @@ function setPermRead_(){
 function setTabShow_(){
   $$('[data-set-pane]').forEach(function(x){x.style.display=x.dataset.setPane===SETTAB?'':'none'});
   $$('[data-set-tab]').forEach(function(b){b.classList.toggle('primary',b.dataset.setTab===SETTAB)});
-  var sb=document.getElementById('set-savebar');if(sb)sb.style.display=SETTAB==='rl'?'none':'';
+  var sb=document.getElementById('set-savebar');if(sb)sb.style.display=(SETTAB==='rl'||SETTAB==='bk')?'none':'';
+  if(SETTAB==='bk'&&BK.list===null&&!BK.busy)loadBk_();
 }
 function saveSettingsUI(){
   var req={expireDays:$('#set-days').value,headPct:$('#set-head').value,sharePct:$('#set-share').value,tags:$('#set-tags').value.split(/\n/).map(function(x){return x.trim()}).filter(Boolean),rolePerms:setPermRead_(),stageNames:$$('[data-set-stage]').map(function(i){return i.value.trim()})};
