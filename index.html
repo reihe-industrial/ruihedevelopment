@@ -4712,7 +4712,9 @@ var API_URL='https://script.google.com/macros/s/AKfycbwhelUD2Yi2ZI-TomN72vjnTMO8
 /* pages removed from the production build */
 
 var TOKEN='';
-try{TOKEN=sessionStorage.getItem('ldt')||''}catch(e){}
+try{TOKEN=localStorage.getItem('ldt')||sessionStorage.getItem('ldt')||''}catch(e){}
+function tokSave_(t){try{localStorage.setItem('ldt',t)}catch(e){try{sessionStorage.setItem('ldt',t)}catch(e2){}}}
+function tokClear_(){try{localStorage.removeItem('ldt')}catch(e){}try{sessionStorage.removeItem('ldt')}catch(e){}}
 var SRV={own:{},par:{}},GEOC={},USERS=[];
 function emptyDB(){return {hidden:[],projects:[],parcels:[],owners:[],interviews:[],log:[],seq:0,staff:[],users:[],deals:{},tasks:[],files:[],fid:0,tid:0}}
 async function api(action,payload){
@@ -4752,7 +4754,7 @@ function ownerFieldsFor(o,changed){
 var CFG=null,GCID='';
 function cfgLoad(){try{return JSON.parse(localStorage.getItem('ldcfg')||'null')}catch(e){return null}}
 function cfgSave(c){try{localStorage.setItem('ldcfg',JSON.stringify({googleClientId:c.googleClientId||'',emailCode:c.emailCode}))}catch(e){}}
-function showLogin(msg){$('#login').style.display='flex';$('#lg-msg').textContent=msg||'';$('#login-step1').style.display=(CFG&&CFG.emailCode!==false)?'':'none';$('#login-step2').style.display='none'}
+function showLogin(msg){tokClear_();TOKEN='';$('#login').style.display='flex';$('#lg-msg').textContent=msg||'';$('#login-step1').style.display=(CFG&&CFG.emailCode!==false)?'':'none';$('#login-step2').style.display='none'}
 function applyLoginConfig(c){
   CFG=c||{};
   var googleOnly=!!CFG.googleClientId&&CFG.emailCode===false;
@@ -4773,7 +4775,7 @@ function initLogin(){
     $('#lg-msg').textContent='驗證中…';
     try{
       var d=await api('verifyCode',{email:email,code:code});
-      TOKEN=d.token;try{sessionStorage.setItem('ldt',TOKEN)}catch(e){}
+      TOKEN=d.token;tokSave_(TOKEN);
       $('#login').style.display='none';$('#lg-code').value='';
       await bootstrap();
     }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
@@ -4781,7 +4783,7 @@ function initLogin(){
   $('#lg-back').onclick=function(){showLogin('')};
   $('#lg-email').addEventListener('keydown',function(e){if(e.key==='Enter')$('#lg-send').click()});
   $('#lg-code').addEventListener('keydown',function(e){if(e.key==='Enter')$('#lg-verify').click()});
-  $('#logout').onclick=function(){TOKEN='';try{sessionStorage.removeItem('ldt')}catch(e){}cacheClear_();location.reload()};
+  $('#logout').onclick=function(){TOKEN='';tokClear_();cacheClear_();location.reload()};
   var cc=cfgLoad();if(cc){applyLoginConfig(cc);if(cc.googleClientId)initGoogle(cc.googleClientId)}
   api('getConfig').then(function(c){c=c||{};cfgSave(c);applyLoginConfig(c);if(c.googleClientId)initGoogle(c.googleClientId)}).catch(function(){if(!cc)applyLoginConfig({emailCode:true})});
   if(TOKEN){
@@ -4806,12 +4808,12 @@ async function onGoogle(resp){
   $('#lg-msg').textContent='驗證中…';
   try{
     var d=await api('googleLogin',{credential:resp.credential,withData:true});
-    TOKEN=d.token;try{sessionStorage.setItem('ldt',TOKEN)}catch(e){}
+    TOKEN=d.token;tokSave_(TOKEN);
     $('#login').style.display='none';await bootstrap(d.boot);
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-19-m';
+var FRONT_VER='2026-11-19-n';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
