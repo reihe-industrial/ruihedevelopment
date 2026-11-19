@@ -4811,7 +4811,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-19-k';
+var FRONT_VER='2026-11-19-l';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -6956,6 +6956,19 @@ function mapOverlay_(){
       if(!p0){toast('請先在地圖上點選一個地號,再按「指定圖塊」。');return}
       MAPASG=p0;document.getElementById('map').style.cursor='crosshair';mapAsgBar_();
     });
+    var ub=document.createElement('button');ub.id='mapunman';ub.type='button';ub.className='btn small';ub.textContent='改回自動判斷';ub.setAttribute('aria-label','清除這個地號手動指定的形狀,改回依地籍線自動判斷');ub.style.cssText='position:absolute;right:12px;top:248px';wrap.appendChild(ub);
+    ub.addEventListener('click',function(){
+      if(S.role!=='admin'){toast('只有管理員可以改。');return}
+      var p0=S.sel!==null?DB.parcels[S.sel]:null;
+      if(!p0){toast('請先在地圖上點選一個地號,再按「改回自動判斷」。');return}
+      var g0=GEOC[p0.proj],k0=g0&&g0.parcels&&g0.parcels[(secOf(p0)||'')+'|'+p0.no];
+      if(!k0||k0.flag!=='manual'){toast('「'+p0.no+'」不是手動指定的,不需要改。');return}
+      if(!window.confirm('要清除「'+p0.no+'」手動指定的形狀嗎?\n清除後,請到後台重新上傳一次地籍圖,系統會依地籍線自動判斷它的形狀。')){return}
+      api('clearParcelShape',{projectId:p0.proj,parcelId:p0._srv}).then(function(){
+        GEOC[p0.proj]=undefined;geoLsDel_(p0.proj);if(PRJ[p0.proj])PRJ[p0.proj]._geoLazy=true;ensureGeo(p0.proj);
+        toast('已清除。請到後台重新上傳一次地籍圖,「'+p0.no+'」就會自動判斷形狀。');
+      }).catch(function(er){if(er.auth){showLogin('登入已過期,請重新登入');return}toast('失敗:'+(er.userMessage||er.message))});
+    });
     rb.addEventListener('click',function(){
       var g=PRJ[S.proj]&&PRJ[S.proj].geo;if(!g||!(g.scale>0))return;
       var sv=$('#map'),rr=sv.getBoundingClientRect(),cw2=rr.width||1000,ch2=rr.height||660,ppu2=g.scale/(1000*0.000264583),cx=vb.x+vb.w/2,cy=vb.y+vb.h/2;
@@ -6963,7 +6976,7 @@ function mapOverlay_(){
     });
   }
   var show=!!geo&&geo.scale>0;
-  n.style.display=sc.style.display=show?'':'none';ex.style.display=pr?'':'none';var rb2=$('#mapratio');if(rb2)rb2.style.display=show?'':'none';var ab2=$('#mapassign');if(ab2)ab2.style.display=(show&&S.role==='admin')?'':'none';var lb2=$('#maplab');if(lb2)lb2.style.display=show?'':'none';var cb2=$('#mapcheck');if(cb2)cb2.style.display=(show&&S.role==='admin')?'':'none';
+  n.style.display=sc.style.display=show?'':'none';ex.style.display=pr?'':'none';var rb2=$('#mapratio');if(rb2)rb2.style.display=show?'':'none';var ab2=$('#mapassign');if(ab2)ab2.style.display=(show&&S.role==='admin')?'':'none';var ub2=$('#mapunman');if(ub2)ub2.style.display=(show&&S.role==='admin')?'':'none';var lb2=$('#maplab');if(lb2)lb2.style.display=show?'':'none';var cb2=$('#mapcheck');if(cb2)cb2.style.display=(show&&S.role==='admin')?'':'none';mapToolsLayout_();
   if(!show)return;
   var g=document.getElementById('mapnorth-g');if(g)g.setAttribute('transform','rotate('+(Number(geo.north)||0)+')');
   n.setAttribute('aria-label','指北針:北方在畫面'+(Number(geo.north)?'順時針 '+geo.north+' 度':'正上方'));
@@ -6971,6 +6984,32 @@ function mapOverlay_(){
   var m=niceM_(mpp*110),px=m/mpp;
   var ratio=Math.round(mpp/0.000264583/10)*10;   // 以螢幕 96dpi 換算的比例尺分母
   $('#mapscale-t').textContent=mLabel_(m)+'  ·  約 1:'+ratio.toLocaleString('en-US');$('#mapscale-b').style.width=Math.max(10,Math.round(px))+'px';
+}
+/* ---- 地圖右側功能按鈕:收進同一個工具列,寬度一致、有圖示、分組 ---- */
+function mapToolsLayout_(){
+  var wrap=document.querySelector('.mapwrap');if(!wrap)return;
+  var box=document.getElementById('maptools');
+  if(!box){
+    if(!document.getElementById('maptools-css')){
+      var st=document.createElement('style');st.id='maptools-css';
+      st.textContent='#maptools{position:absolute;right:12px;top:78px;z-index:5;display:flex;flex-direction:column;gap:6px;width:150px}'
+        +'#maptools .btn{position:static!important;width:100%;min-height:36px;display:inline-flex;align-items:center;justify-content:flex-start;gap:9px;padding:0 12px;margin:0;border-radius:10px;background:#fff;border:1px solid var(--line);box-shadow:0 1px 3px rgba(21,37,31,.14);font-size:14px;font-weight:600;color:var(--ink);text-align:left;white-space:nowrap}'
+        +'#maptools .btn:hover{background:#F1F6F3;border-color:#9DB3A8}'
+        +'#maptools .btn::before{display:inline-block;width:18px;text-align:center;font-size:15px;line-height:1;color:var(--ink-2);flex:none}'
+        +'#maptools #mapexp::before{content:"\\2B07"}#maptools #mapratio::before{content:"\\2922"}#maptools #mapassign::before{content:"\\25A7"}#maptools #mapcheck::before{content:"\\2611"}#maptools #maplab::before{content:"\\1F3F7"}#maptools #mapunman::before{content:"\\21BA"}'
+        +'#maptools .tsep{height:1px;background:var(--line);margin:2px 4px}';
+      document.head.appendChild(st);
+    }
+    box=document.createElement('div');box.id='maptools';wrap.appendChild(box);
+  }
+  var order=['mapexp','mapratio','mapsep1','maplab','mapsep2','mapassign','mapunman','mapcheck'];
+  order.forEach(function(id){
+    var el=document.getElementById(id);
+    if(!el&&/^mapsep/.test(id)){el=document.createElement('div');el.id=id;el.className='tsep';}
+    if(el&&el.parentNode!==box)box.appendChild(el);else if(el)box.appendChild(el);
+  });
+  var seps=['mapsep1','mapsep2'];
+  seps.forEach(function(id){var el=document.getElementById(id);if(el)el.style.display=S.role==='admin'||id==='mapsep1'?'':'none'});
 }
 window.addEventListener('resize',function(){if(location.hash==='#map')mapOverlay_()});
 function expMapPng_(){
