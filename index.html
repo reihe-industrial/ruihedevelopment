@@ -4451,8 +4451,8 @@ function sgBuild(ex,opts){
               var rt=pl.area/A,er=Math.abs(rt-1);
               ok1=(d<=14&&er<=(A>=60?0.15:0.6))||(d<=14&&inside&&er<=(A>=60?0.15:0.6))||(d<=30&&er<=0.08);
               if(!ok1)return;
-              fl=(inside||d<=8)&&er<=(A>=60?0.15:0.6)?(inside?1:2):3;if(er>0.15&&A>=60)fl=3;
-              cost=er*150+d*0.15+(inside?0:0.5)+(d>14?20:0)+0.002*dc;   // 離字太遠的(跨到馬路對面那種)寧可不綁
+              fl=(inside||d<=8)&&er<=(A>=60?0.15:0.6)?(inside?1:2):(er<=0.03?2:3);if(er>0.15&&A>=60)fl=3;   // 字離得稍遠,但面積幾乎一模一樣(差 3% 內)也算有把握
+              cost=er*150+d*0.15+(inside?0:0.5)+(d>14?(er<=0.03?8:20):0)+0.002*dc;   // 離字太遠的(跨到馬路對面那種)寧可不綁
             }else{
               if(!inside&&!(d<=3&&pl.area<=3000))return;
               fl=inside?1:2;cost=(inside?0:4)+d*0.3+pl.area/1000;
@@ -4673,7 +4673,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-18-g';
+var FRONT_VER='2026-11-19-a';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
