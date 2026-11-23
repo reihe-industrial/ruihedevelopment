@@ -633,7 +633,7 @@ a.btn{text-decoration:none}
     });
   }
   document.addEventListener('mouseover',function(e){var b=e.target.closest&&e.target.closest('#maptools .btn');if(b&&!b.title)b.title=b.textContent.trim()});
-  labels();new MutationObserver(labels).observe(document.body,{childList:true,subtree:true});
+  labels();var lt=0;['visits-page','admin-page'].forEach(function(id){var el=document.getElementById(id);if(el)new MutationObserver(function(){clearTimeout(lt);lt=setTimeout(labels,60)}).observe(el,{childList:true,subtree:true})});
 }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init2);else init2();
 })();
@@ -7399,6 +7399,10 @@ function expMapMenu_(){
   if(g&&g.scale>0)[500,1000,2000,3000,4000,5000].forEach(function(n){items.push([String(n),'1:'+n.toLocaleString('en-US')])});
   m.innerHTML='<div class="small muted" style="padding:4px 8px">匯出圖片的比例尺</div>'+items.map(function(it){return '<button type="button" class="btn small" role="menuitem" data-expr="'+it[0]+'" style="display:block;width:100%;text-align:left;margin:2px 0;border:0;background:transparent">'+it[1]+'</button>'}).join('');
   document.body.appendChild(m);
+  var mh=m.offsetHeight,mw=m.offsetWidth,vh=window.innerHeight,vw=window.innerWidth;
+  if(r.bottom+mh+8>vh)m.style.top=Math.max(8,r.top-mh-8)+'px';else m.style.top=(r.bottom+8)+'px';
+  m.style.left=Math.min(Math.max(8,r.left+r.width/2-mw/2),vw-mw-8)+'px';
+  m.style.maxHeight=(vh-16)+'px';m.style.overflowY='auto';
   setTimeout(function(){document.addEventListener('click',function cl(ev){if(!m.contains(ev.target)&&ev.target!==btn&&!btn.contains(ev.target)){m.remove();document.removeEventListener('click',cl)}if(!document.body.contains(m))document.removeEventListener('click',cl)})},0);
 }
 document.addEventListener('click',function(e){
@@ -7510,14 +7514,16 @@ function geoEdRender_(){
     var pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;var p0=pt.matrixTransform(ctm.inverse());
     dg={g:g,svg:svg,inv:ctm.inverse(),x:p0.x,y:p0.y,bx:Number(g.dataset.bx),by:Number(g.dataset.by),ddx:0,ddy:0,id:q.id};
     try{svg.setPointerCapture(e.pointerId)}catch(x){}
-    g.style.cursor='grabbing';e.preventDefault();
+    g.style.cursor='grabbing';svg.style.shapeRendering='optimizeSpeed';e.preventDefault();
   });
   document.addEventListener('pointermove',function(e){
     if(!dg)return;var pt=dg.svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;var p=pt.matrixTransform(dg.inv);
-    dg.ddx=p.x-dg.x;dg.ddy=p.y-dg.y;dg.g.setAttribute('transform','translate('+(dg.bx+dg.ddx).toFixed(1)+' '+(dg.by+dg.ddy).toFixed(1)+')');
+    dg.ddx=p.x-dg.x;dg.ddy=p.y-dg.y;
+    if(dg.raf)return;var d0=dg;
+    d0.raf=requestAnimationFrame(function(){d0.raf=0;d0.g.setAttribute('transform','translate('+(d0.bx+d0.ddx).toFixed(1)+' '+(d0.by+d0.ddy).toFixed(1)+')')});
   });
   function end(){
-    if(!dg)return;var d=dg;dg=null;
+    if(!dg)return;var d=dg;dg=null;if(d.raf)cancelAnimationFrame(d.raf);d.svg.style.shapeRendering='';
     if(GE){var q=pcOf(d.id);if(q&&(d.ddx||d.ddy)){var sc=GE.g.scale||1;q.east+=d.ddx*sc;q.north-=d.ddy*sc}geoEdRender_()}
   }
   document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);
