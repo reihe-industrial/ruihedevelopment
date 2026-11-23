@@ -5086,7 +5086,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-23-n';
+var FRONT_VER='2026-11-23-o';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -5572,8 +5572,14 @@ async function saveRegisterXlsx_(name,rows,label){
       var d=data[i],key=d[0]+'|'+d[3],j=i;while(j+1<data.length&&data[j+1][0]+'|'+data[j+1][3]===key)j++;
       var n=j-i+1,top=r0+i,bot=r0+j;
       box(top,1,bot,1,d[3],{text:true});box(top,2,bot,2,d[4],{h:'right'});
+      // 公同共有:同一組(連續、持分文字相同)的「持分面積」合併成一格,填這組合計(整組人一起持有,不是每人各有)
+      var jg={};(function(){var s0=i;while(s0<=j){var m0=String(data[s0][5]||'').match(/^(\d+)\s*\/\s*(\d+)\s*\(公同共有\s*(\d+)\s*人\)/);var e0=s0;if(m0){while(e0+1<=j&&String(data[e0+1][5]||'')===String(data[s0][5]))e0++;
+        if(e0>s0){var tot=Number(d[4])>0?Math.round(Number(d[4])*(+m0[1])/(+m0[2])*100)/100:null;if(tot===null){tot=0;for(var z=s0;z<=e0;z++)tot+=Number(data[z][6])||0;tot=Math.round(tot*100)/100}jg[s0]={end:e0,tot:tot}}}
+        s0=e0+1}})();
       for(var k=i;k<=j;k++){var q=data[k],rr=r0+k;
-        box(rr,3,rr,3,q[5],{text:true});box(rr,4,rr,4,q[6],{h:'right'});box(rr,5,rr,5,q[7]);box(rr,6,rr,6,q[8],{text:true});box(rr,7,rr,7,q[9],{h:'left'});box(rr,8,rr,8,q[18]||'');box(rr,16,rr,16,q[13]||'')}
+        box(rr,3,rr,3,q[5],{text:true});
+        var jgi=null;for(var gk in jg){if(k>=+gk&&k<=jg[gk].end)jgi=+gk}
+        if(jgi===null)box(rr,4,rr,4,q[6],{h:'right'});else if(k===jgi){box(rr,4,r0+jg[jgi].end,4,jg[jgi].tot,{h:'right'})}box(rr,5,rr,5,q[7]);box(rr,6,rr,6,q[8],{text:true});box(rr,7,rr,7,q[9],{h:'left'});box(rr,8,rr,8,q[18]||'');box(rr,16,rr,16,q[13]||'')}
       box(top,9,bot,9,d[10]===''?'':Number(d[10]),{h:'right'});var nz_=function(v){return (v===''||v==null||isNaN(Number(v)))?'':Number(v)};box(top,10,bot,10,nz_(d[14]),{h:'right'});box(top,11,bot,11,nz_(d[15]),{h:'right'});box(top,12,bot,12,d[16]||'');
       box(top,13,bot,13,d[11]||'');box(top,14,bot,14,d[12]||'');box(top,15,bot,15,d[17]||'');
       var need_=Math.max(xlLines_(d[16],34),xlLines_(d[11],16),xlLines_(d[12],16),xlLines_(d[17],14))*17;
@@ -5582,7 +5588,7 @@ async function saveRegisterXlsx_(name,rows,label){
     }
     var end=r0+data.length+1;
     ws.mergeCells(end,1,end,16);ws.getCell(end,1).value='編造：　　　　　　　校對：　　　　　　　承辦人：　　　　　　　科長：　　　　　　　日期：';
-    ws.mergeCells(end+2,1,end+2,16);ws.getCell(end+2,1).value='說明：1、土地所有權屬為共有者,應依權利人資料分行填寫。　2、土地所有權如載有管理人(代表人)、土地上有建築物或登記簿載有他項權利或限制登記等事項,應於對應欄位內填入「∨」。　3、當期申報地價、原規定地價或前次移轉現值、管理人、限制登記系統內沒有資料,請自行補填。';
+    ws.mergeCells(end+2,1,end+2,16);ws.getCell(end+2,1).value='說明：1、土地所有權屬為共有者,應依權利人資料分行填寫。　2、土地所有權如載有管理人(代表人)、土地上有建築物或登記簿載有他項權利或限制登記等事項,應於對應欄位內填入「∨」。　3、當期申報地價、原規定地價或前次移轉現值、管理人、限制登記系統內沒有資料,請自行補填。　4、公同共有者,「持分面積」欄合併為一格,填這一組合計(整組人一起持有)。';
     ws.getCell(end+2,1).alignment={wrapText:true,vertical:'top'};ws.getRow(end+2).height=48;
     ws.views=[{state:'frozen',ySplit:6}];
     ws.pageSetup={orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.2,footer:0.2}};
