@@ -507,6 +507,45 @@ a.btn{text-decoration:none}
   /* 平板:上方分頁收掉,底部列保留;地圖頁拉高 */
   .mapwrap{height:68vh}
 }
+
+/* 地圖頁(桌機):照設計稿——地圖滿版,左右面板浮在地圖上,工具列在底部中間 */
+@media (min-width:1181px){
+  #view-map.on{display:block;position:relative}
+  #view-map.on .mapwrap{position:absolute;inset:0}
+  #view-map.on .side{position:absolute;left:16px;top:16px;bottom:16px;width:300px;z-index:6;border:0;border-radius:18px;box-shadow:0 6px 24px rgba(21,37,31,.16)}
+  #view-map.on .detail{position:absolute;right:16px;top:16px;bottom:16px;width:340px;z-index:6;border:0;border-radius:18px;box-shadow:0 6px 24px rgba(21,37,31,.16)}
+  #view-map.on .detail:not([data-has="1"]){display:none}
+  #view-map.on .zoom{left:332px;top:auto;bottom:16px;z-index:6}
+  #view-map.on .maplegend,#view-map.on .maphint{display:none}
+  #view-map.on #mapscale{right:16px!important;bottom:16px!important;left:auto!important;top:auto!important}
+  #view-map.on:has(.detail[data-has="1"]) #mapscale{right:372px!important}
+  #view-map.on #mapnorth{top:16px!important;left:332px!important;right:auto!important}
+  #view-map.on #maptools{left:50%!important;right:auto!important;top:auto!important;bottom:16px!important;transform:translateX(-50%);flex-direction:row!important;align-items:center;width:auto!important;padding:6px;gap:4px;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 6px 24px rgba(21,37,31,.18)}
+  #view-map.on #maptools .btn{width:44px!important;min-height:44px!important;padding:0!important;justify-content:center!important;font-size:0!important;gap:0!important;border:0!important;box-shadow:none!important;background:transparent}
+  #view-map.on #maptools .btn:hover{background:var(--surface-2)}
+  #view-map.on #maptools .btn::before{font-size:19px!important;width:auto!important}
+  #view-map.on #maptools .tsep{width:1px;height:26px;margin:0 4px}
+  #view-map.on #maptools #maptoggle{display:none!important}
+  #view-map.on #maptools.collapsed>*:not(#maptoggle){display:inline-flex!important}
+  #view-map.on #maptools.collapsed>.tsep{display:block!important}
+}
+
+.seg button{white-space:nowrap}
+@media (max-width:760px){.seg button{padding:0 4px;font-size:14px}}
+.expcard .btn,.expcard button{white-space:nowrap;flex:none}
+@media (max-width:760px){
+  .cardtbl{border:0;background:transparent;overflow:visible}
+  .cardtbl table,.cardtbl tbody{display:block}
+  .cardtbl thead{display:none}
+  .cardtbl tr{display:flex;flex-direction:column;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;margin:0 0 10px}
+  .cardtbl td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:0;border:0;white-space:normal;background:transparent!important;text-align:right}
+  .cardtbl td::before{content:attr(data-label);flex:none;font-size:12px;color:var(--ink-2);text-align:left}
+  .cardtbl td:first-child{font-weight:700;word-break:break-all}
+  .cardtbl td:last-child:not([data-label])::before,.cardtbl td[data-label=""]::before{content:none}
+  .cardtbl td:last-child .btn{width:100%}
+  .tabs,.settabs{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+  .tabs a,.tabs button,.settabs a,.settabs button{white-space:nowrap;flex:none}
+}
 @media (max-width:760px){
   /* 手機:拜訪頁的表格改成一列一張卡片 */
   #visits-page .tablewrap{border:0;background:transparent;overflow:visible}
@@ -588,13 +627,13 @@ a.btn{text-decoration:none}
   }
   function init2(){init();
   function labels(){
-    [].forEach.call(document.querySelectorAll('#visits-page table'),function(t){
+    [].forEach.call(document.querySelectorAll('#visits-page table,.cardtbl table'),function(t){
       var hs=[].map.call(t.querySelectorAll('thead th'),function(h){return h.textContent.trim()});
       [].forEach.call(t.querySelectorAll('tbody tr'),function(r){[].forEach.call(r.children,function(c,i){if(hs[i]&&c.getAttribute('data-label')!==hs[i])c.setAttribute('data-label',hs[i])})});
     });
   }
-  var vp=document.getElementById('visits-page');
-  if(vp){labels();new MutationObserver(labels).observe(vp,{childList:true,subtree:true})}
+  document.addEventListener('mouseover',function(e){var b=e.target.closest&&e.target.closest('#maptools .btn');if(b&&!b.title)b.title=b.textContent.trim()});
+  labels();new MutationObserver(labels).observe(document.body,{childList:true,subtree:true});
 }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init2);else init2();
 })();
@@ -6441,7 +6480,7 @@ function renderAdmin(){
   }
   if(!UL.done&&!UL.busy&&location.hash==='#admin')loadUsers();
   var h='<h1>後台</h1>'+tabs+'<p class="muted" style="margin:12px 0 0">管理誰可以登入。信箱要填對方用來登入 Google 的信箱。專案負責人和業主請勾選可看的專案,業務由專案成員決定能看到哪些專案。業主只看得到地圖與進度,看不到地主姓名與個資。</p>';
-  h+='<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>信箱</th><th>姓名</th><th>角色</th><th>啟用</th><th>負責專案</th><th>最後登入</th><th></th></tr></thead><tbody>';
+  h+='<div class="tablewrap cardtbl" style="margin-top:12px"><table><thead><tr><th>信箱</th><th>姓名</th><th>角色</th><th>啟用</th><th>負責專案</th><th>最後登入</th><th></th></tr></thead><tbody>';
   USERS.forEach(function(u,i){h+='<tr><td>'+esc(u['信箱'])+'</td><td>'+esc(u['姓名'])+'</td><td><span class="flag role-'+(u['角色']==='管理員'?'adm':'oth')+'">'+esc(u['角色'])+'</span></td><td><span class="udot '+(u['啟用']==='否'?'off':'on')+'"></span>'+(u['啟用']==='否'?'停用':'啟用')+'</td><td>'+esc(usProjText(u))+'</td><td class="small muted" style="white-space:nowrap">'+esc(u['最後登入']||'—')+'</td><td><button class="btn small" type="button" data-user-edit="'+i+'">編輯</button> <button class="btn small" type="button" data-user-toggle="'+i+'">'+(u['啟用']==='否'?'啟用':'停用')+'</button></td></tr>'});
   h+='</tbody></table></div>'+(UL.done?'':'<p class="small muted">載入中…</p>');
   h+='<div class="panel" style="margin-top:14px"><h2>新增或修改使用者</h2><div class="row2"><div class="field" style="margin-top:0"><label for="us-email">信箱</label><input type="email" id="us-email"></div><div class="field" style="margin-top:0"><label for="us-name">姓名</label><input type="text" id="us-name"></div></div>'
