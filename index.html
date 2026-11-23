@@ -4667,6 +4667,7 @@ function sgBuild(ex,opts){
         var ring=assign[nos[0]].pts,RA=assign[nos[0]].area,bb=sgBB(ring),all=[];
         var locS=segs.filter(function(q){return Math.max(q[0],q[2])>=bb[0]-15&&Math.min(q[0],q[2])<=bb[2]+15&&Math.max(q[1],q[3])>=bb[1]-15&&Math.min(q[1],q[3])<=bb[3]+15});
         var fl=mkPolygonize(sgNode(locS,0.3),0.15).filter(function(p){return p.area>0.3});
+        (function(){var ok=[];fl.forEach(function(f){var cc=mkCentroid(f.pts);if(!ok.some(function(o){return Math.abs(o.f.area-f.area)<0.3&&Math.hypot(o.c[0]-cc[0],o.c[1]-cc[1])<0.6}))ok.push({f:f,c:cc})});fl=ok.map(function(o){return o.f})})();   // 同一個格子被算出兩次(重疊的線)時只留一個,不然兩個地號會各拿一份相同的格子
         if(typeof SG_DEBUG!=='undefined'&&SG_DEBUG&&SG_DEBUG.on){(SG_DEBUG.grp=SG_DEBUG.grp||[]).push({nos:nos,RA:RA,bb:bb,locN:locS.length,nodN:sgNode(locS,0.3).length,fl:fl.map(function(f){return [Math.round(f.area*10)/10,f.pts.length,nos.map(function(n){return labT.filter(function(t){return t.s===n&&mkInPoly([t.x,t.y],f.pts)}).length?n:''}).join('')]})})}
         fl.forEach(function(pl,i){
           if(pl.area<0.3||pl.area>RA*1.5)return;
@@ -4689,6 +4690,7 @@ function sgBuild(ex,opts){
         if(Object.keys(pn).length<2){
           // 灰底其實只有其中一筆的大小(其他筆的字只是剛好落在灰底裡):灰底留給面積對得上的那一筆,其他筆改用「字附近+面積」去找自己的圖形
           if(opts.only){var hit=nos.filter(function(n){var A=Number(areasG[n])||0;return A>0&&Math.abs(RA/A-1)<0.1});
+            if(hit.length>1){hit.sort(function(x,y){return Math.abs(RA/Number(areasG[x])-1)-Math.abs(RA/Number(areasG[y])-1)});hit=hit.slice(0,1)}   // 面積都像時,只留最像的那一筆,不要兩筆共用一塊
             if(hit.length===1)nos.forEach(function(n){if(n!==hit[0])delete assign[n]})}
           return;
         }
@@ -4899,6 +4901,31 @@ function sgBuild(ex,opts){
         diag[no]={A:A,hasLabel:ts.length>0,best:best};
       });
     }
+    // 一塊地只能有一個地號:兩個以上的地號拿到同一個圖形時(細長地的字常落在隔壁那塊裡),
+    // 面積最像的留著,其他的改找「字附近、面積對得上」的另一個格子,找不到就不配(留給使用者自己指定)
+    (function(){
+      if(!opts.only)return;
+      var areasD=opts.areas||{},byG={},usedK={};
+      function kOf(pts,area){var q=sgBB(pts);return [q[0],q[1],q[2],q[3]].map(function(v){return Math.round(v*5)}).join(',')+'|'+Math.round(area)}
+      Object.keys(assign).forEach(function(n){var a=assign[n],k=kOf(a.pts,a.area);(byG[k]=byG[k]||[]).push(n)});
+      Object.keys(byG).forEach(function(k){if(byG[k].length===1)usedK[k]=1});
+      Object.keys(byG).forEach(function(k){
+        var g=byG[k];if(g.length<2||g.some(function(n){return assign[n].n>1}))return;
+        g.sort(function(x,y){var Ax=Number(areasD[x])||0,Ay=Number(areasD[y])||0,ex=Ax>0?Math.abs(assign[x].area/Ax-1):9,ey=Ay>0?Math.abs(assign[y].area/Ay-1):9;return ex-ey});
+        usedK[k]=1;
+        g.slice(1).forEach(function(n){
+          var A=Number(areasD[n])||0,ts=labT.filter(function(t){return t.s===n}),bestP=null;
+          if(A>0&&ts.length)polys.forEach(function(pl){
+            var kk=kOf(pl.pts,pl.area);if(usedK[kk]||Math.abs(pl.area/A-1)>0.35)return;
+            var d=1e9;ts.forEach(function(t){var dd=mkInPoly([t.x,t.y],pl.pts)?0:mkDistPoly([t.x,t.y],pl.pts);if(dd<d)d=dd});
+            if(d>12)return;var sc=Math.abs(pl.area/A-1)*40+d;if(!bestP||sc<bestP.sc)bestP={sc:sc,pl:pl,kk:kk};
+          });
+          if(bestP){usedK[bestP.kk]=1;assign[n]={pts:bestP.pl.pts,area:bestP.pl.area,n:1,key:'D'+bestP.kk,lbl:1}}
+          else delete assign[n];
+        });
+      });
+      tg=Object.keys(assign).map(function(n){return assign[n]});
+    })();
     polys.forEach(function(p){
       var nested=false;
       if(tg.some(function(t){return mkInPoly(mkCentroid(p.pts),t.pts)||mkInPoly(sgInnerPt(p.pts),t.pts)})){
@@ -5059,7 +5086,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-23-k';
+var FRONT_VER='2026-11-23-m';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -5144,6 +5171,11 @@ function labSpread_(list){
     for(var k=1;k*step<=Math.max(tmax,-tmin)&&k<80;k++){[1,-1].forEach(function(sg){var x=mx+ux*k*step*sg,y=my+uy*k*step*sg;if(inside(pts,x,y))cands.push([x,y])})}
     var best=null,bc=1e18;
     for(var i=0;i<cands.length;i++){var c=cost(box(p,cands[i][0],cands[i][1]));if(c<bc){bc=c;best=cands[i]}if(c===0)break}
+    if(bc>0){   // 地太小放不下:改放到旁邊最近的空位(離自己那塊最近、不壓到別人)
+      var sb=null,sc=1e18;
+      for(var r=1;r<=14&&sc>0;r++){for(var d=0;d<16;d++){var an=d*Math.PI/8,x=p.cx+Math.cos(an)*r*lf*0.8,y=p.cy+Math.sin(an)*r*lf*0.8,c2=cost(box(p,x,y))+r*0.001;if(c2<sc){sc=c2;sb=[x,y]}}if(sc<0.5)break}
+      if(sb&&sc<bc){best=sb}
+    }
     if(best){p.cx=best[0];p.cy=best[1]}
     placed.push(box(p,p.cx,p.cy));
   });
@@ -5161,6 +5193,15 @@ function applyGeo(pr,plist,geo){
       if(gq){p.pts=gq.pts;p.cx=gq.c[0];p.cy=gq.c[1];p.lf=gq.lf;p.mix=gq.mix;p.polyArea=gq.poly_m2;p.planZone=domZone(gq)}
       else miss.push(p);
       p.noPos=!gq;
+    });
+    // 一塊地只能有一個地號:如果兩個以上的地號被配到同一個圖形,只留面積最吻合的那一個,
+    // 其他的當作「還沒配位置」,列在清單裡讓使用者自己指定(不要硬疊在一起)
+    var shape={};
+    plist.forEach(function(p){if(miss.indexOf(p)>=0||!p.pts||!p.pts.length)return;var ky=p.pts.map(function(q){return Math.round(q[0]*10)+','+Math.round(q[1]*10)}).sort().join(';');(shape[ky]=shape[ky]||[]).push(p)});
+    Object.keys(shape).forEach(function(ky){
+      var g=shape[ky];if(g.length<2)return;
+      g.sort(function(x,y){var ax=Number(x.area)||0,ay=Number(y.area)||0,px=Number(x.polyArea)||0,py=Number(y.polyArea)||0,ex=(ax>0&&px>0)?Math.abs(px/ax-1):9,ey=(ay>0&&py>0)?Math.abs(py/ay-1):9;return ex-ey});
+      g.slice(1).forEach(function(p){miss.push(p);p.noPos=true;p.polyArea=undefined;p.mix=undefined;p.planZone=undefined});
     });
     // 地號字體大小統一:取全部有圖形地號的中間值,大塊地不再出現超大的字
     var lfs=[];plist.forEach(function(p){if(miss.indexOf(p)<0&&p.lf>0)lfs.push(p.lf)});
@@ -6944,7 +6985,7 @@ function geoCombineJS_(old,add,caption,place,areas){
       var q=g.parcels[key],i=key.indexOf('|'),sec=q.sec||(i>=0?key.slice(0,i):''),no=i>=0?key.slice(i+1):key,o={};
       Object.keys(q).forEach(function(f){o[f]=q[f]});
       o.sec=sec;o.pts=q.pts.map(T);o.c=T(q.c);o.lf=Math.max(2.2,r1(q.lf*k));o.pc=pf(q.pc);
-      if(a[2]&&out.parcels[sec+'|'+no]){var ex=out.parcels[sec+'|'+no];if((c.aligned>0&&o.flag==='ok')||geoBetterJS_(ex,o,sec+'|'+no,areas)){out.ctx.push(ex.pts);out.ctxpc.push(ex.pc);out.parcels[sec+'|'+no]=o;return}out.ctx.push(o.pts);out.ctxpc.push(o.pc);return}
+      if(a[2]&&out.parcels[sec+'|'+no]){var ex=out.parcels[sec+'|'+no];if((c.aligned>0&&(o.flag==='ok'||o.flag==='label'||o.flag==='label-near'))||geoBetterJS_(ex,o,sec+'|'+no,areas)){out.ctx.push(ex.pts);out.ctxpc.push(ex.pc);out.parcels[sec+'|'+no]=o;return}out.ctx.push(o.pts);out.ctxpc.push(o.pc);return}
       out.parcels[sec+'|'+no]=o;
     });
     (g.ctx||[]).forEach(function(r,ri){out.ctx.push(r.map(T));out.ctxpc.push(pf((g.ctxpc||[])[ri]))});
