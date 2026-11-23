@@ -415,6 +415,11 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
 <style id="theme-v2">
 /* 視覺改版 v2:圓角更大、按鈕輸入框至少 44px 好點、表格與分頁按鈕更清楚 */
 :root{--r:14px;--r-s:10px}
+.kpi.warn{background:#FFF6E5;border-color:#F0D9A8}.kpi.warn .k,.kpi.warn .v{color:#7A4B00}
+.flag{display:inline-flex;align-items:center;font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.flag.bad{background:#FDE3E1;color:#8A1F17}.flag.ok{background:#E1F1E8;color:#14573A}
+.pfoot{display:flex;justify-content:flex-end}
+.pkpis{margin-top:10px}
 /* 格子要整齊:同一排一樣高、欄寬一樣、按鈕固定在卡片底部 */
 .kpis,.metrics,.pcards,.grid2,.setgrid,.setstages{align-items:stretch;grid-auto-rows:1fr}
 .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
@@ -4969,7 +4974,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-19-p';
+var FRONT_VER='2026-11-23-a';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -8214,11 +8219,45 @@ var PF={q:'',status:'all',type:'all',region:'all'};
 function projHead_(){
   return '<div class="orow" style="margin-bottom:4px"><h1 style="margin:0">專案總覽</h1>'+(S.role==='admin'?'<button class="btn primary" type="button" data-pj-new>＋ 新增專案</button>':'')+'</div>';
 }
+/* 專案總覽(改版):上面四格總數、需要處理的專案排最前面、卡片右上角直接標出逾期 */
+function renderProjects(){
+  var el=$('#projects-page');if(!el)return;
+  var vis=visibleProjects(),hidden=DB.projects.length-vis.length,manage=S.role==='admin'||S.role==='lead';
+  var info={},totN=0,totOver=0,totExp=0;
+  vis.forEach(function(pr){
+    var over=0,exp=0;
+    projOwners(pr.id).forEach(function(o){var s=oState(o,pr.id);if(s.next&&diffDays(s.next)<0)over++});
+    PP(pr.id).forEach(function(p){if(p.registryOnly)return;var a=deedAge(p);if(a===null||a>DEED_EXPIRE_DAYS)exp++});
+    info[pr.id]={over:over,exp:exp,st:stats(pr.id)};
+    totN+=info[pr.id].st.n;totOver+=over;totExp+=exp;
+  });
+  var h=projHead_()+'<p class="muted" style="margin:0 0 4px">需要處理的專案排在最前面。點卡片進入專案'+(manage?';可在卡片上設定承辦業務'+(S.role==='admin'?'、修改專案狀態':''):'')+'。</p>';
+  h+='<div class="kpis pkpis">'+kpi('專案數',vis.length+' 個')+kpi('地號總數',totN+' 筆')+'<div class="kpi'+(totOver?' warn':'')+'"><div class="k">逾期未跟進</div><div class="v">'+totOver+' 位</div></div><div class="kpi'+(totExp?' warn':'')+'"><div class="k">謄本過期</div><div class="v">'+totExp+' 筆</div></div></div>';
+  h+=projFilterBar_(vis)+'<div class="pcards">';
+  var shownP=projFilter_(vis).slice().sort(function(a,b){return (info[b.id].over-info[a.id].over)||(info[b.id].exp-info[a.id].exp)});
+  if(!shownP.length)h+='<div class="notice" style="grid-column:1/-1">沒有符合條件的專案。</div>';
+  shownP.forEach(function(pr){
+    var I=info[pr.id],st=I.st,allBy={};
+    LEVELS.forEach(function(l){allBy[l.k]=st.by[l.k].a});
+    h+='<article class="pcard'+(pr.id===S.proj?' cur':'')+'"><div class="orow"><h2>'+esc(pr.name)+'</h2>'+statusControl(pr)+'</div>'
+      +'<div class="orow"><div class="muted small">'+esc(pr.type)+(pr.region?' · '+esc(pr.region):'')+' · '+pr.blocks.length+' 個區塊</div>'
+      +(I.over?'<span class="flag bad">逾期跟進 '+I.over+' 位</span>':'<span class="flag ok">進度正常</span>')+'</div>'
+      +levelBar(allBy,st.total)
+      +'<div class="pstats"><div><div class="k">地號數</div><div class="v">'+st.n+'</div></div><div><div class="k">總面積</div><div class="v">'+(st.total/1e4).toFixed(2)+' 公頃</div></div><div><div class="k">A+B 面積占比</div><div class="v">'+Math.round(st.ab/st.total*100)+'%</div></div></div>'
+      +'<div class="small muted">已接觸 '+Math.round(st.contact/st.total*100)+'%'+(I.exp?' · 謄本過期 <span class="over">'+I.exp+' 筆</span>':'')+'</div>';
+    if(manage)h+='<div><div class="small muted" style="margin:4px 0">承辦業務</div>'+staffPickerHTML(pr)+'</div>';
+    else h+='<div class="small muted">承辦業務:'+pr.staff.map(function(x){return '承辦人'+x}).join('、')+'</div>';
+    h+='<div class="pfoot"><button class="btn primary" type="button" data-proj="'+pr.id+'">進入專案</button></div></article>';
+  });
+  h+='</div>';
+  if(hidden>0)h+='<div class="notice">另有 '+hidden+' 個專案不在這個角色的可看範圍內,不會出現在這裡,也不會出現在切換選單。</div>';
+  el.innerHTML=h;
+}
 function projFilterBar_(vis){
   var uniq=function(k){var m={};vis.forEach(function(p){if(p[k])m[p[k]]=1});return Object.keys(m)};
   var sel=function(id,label,k,val,items){return items.length>0?'<label class="small muted" for="'+id+'">'+label+'</label><select id="'+id+'"><option value="all">全部</option>'+items.map(function(x){return '<option value="'+esc(x)+'"'+(val===x?' selected':'')+'>'+esc(x)+'</option>'}).join('')+'</select>':''};
   var n=projFilter_(vis).length,on=PF.q.trim()||PF.status!=='all'||PF.type!=='all'||PF.region!=='all';
-  return '<style>.pfbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px}.pfbar input[type=search]{flex:1 1 260px;min-width:200px;font-size:15px;padding:8px 10px}</style>'
+  return '<style>.pfbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin-top:12px;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px}.pfbar input[type=search]{flex:1 1 260px;min-width:200px;font-size:15px;padding:0 12px}.pfbar select{width:auto;min-width:120px;flex:0 0 auto}.pfbar label{white-space:nowrap}</style>'
     +'<div class="pfbar" role="search" aria-label="篩選專案"><input type="search" id="pf-q" placeholder="搜尋專案名稱、區域、類型" value="'+esc(PF.q)+'" aria-label="搜尋專案">'
     +sel('pf-status','狀態','status',PF.status,uniq('status'))+sel('pf-type','類型','type',PF.type,uniq('type'))+sel('pf-region','區域','region',PF.region,uniq('region'))
     +(on?'<button class="btn small" type="button" data-pf-clear>清除篩選</button>':'')
