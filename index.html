@@ -420,6 +420,9 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
 .flag.bad{background:#FDE3E1;color:#8A1F17}.flag.ok{background:#E1F1E8;color:#14573A}
 .pfoot{display:flex;justify-content:flex-end}
 .pkpis{margin-top:10px}
+.flag.role-adm{background:#E8E5F5;color:#4A3F8A}.flag.role-oth{background:#DCE9F7;color:#1B4F8A}
+.udot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}.udot.on{background:#2E8B6A}.udot.off{background:#B3362A}
+.gedzoom{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 8px}.gedzoom .small.muted{flex:1 1 100%}
 .field input[type=email],.field input[type=number],.field input[type=password],.field input[type=tel],.field input[type=url]{width:100%;min-height:44px;border:1px solid var(--line);background:var(--surface);border-radius:var(--r-s);padding:0 12px}
 input[type=file]{max-width:100%;font-size:14px}
 input[type=file]::file-selector-button{min-height:40px;margin-right:12px;padding:0 16px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--surface);color:var(--ink);font:inherit;cursor:pointer}
@@ -4997,7 +5000,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-23-d';
+var FRONT_VER='2026-11-23-f';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -6439,7 +6442,7 @@ function renderAdmin(){
   if(!UL.done&&!UL.busy&&location.hash==='#admin')loadUsers();
   var h='<h1>後台</h1>'+tabs+'<p class="muted" style="margin:12px 0 0">管理誰可以登入。信箱要填對方用來登入 Google 的信箱。專案負責人和業主請勾選可看的專案,業務由專案成員決定能看到哪些專案。業主只看得到地圖與進度,看不到地主姓名與個資。</p>';
   h+='<div class="tablewrap" style="margin-top:12px"><table><thead><tr><th>信箱</th><th>姓名</th><th>角色</th><th>啟用</th><th>負責專案</th><th>最後登入</th><th></th></tr></thead><tbody>';
-  USERS.forEach(function(u,i){h+='<tr><td>'+esc(u['信箱'])+'</td><td>'+esc(u['姓名'])+'</td><td>'+esc(u['角色'])+'</td><td>'+esc(u['啟用'])+'</td><td>'+esc(usProjText(u))+'</td><td class="small muted" style="white-space:nowrap">'+esc(u['最後登入']||'—')+'</td><td><button class="btn small" type="button" data-user-edit="'+i+'">編輯</button> <button class="btn small" type="button" data-user-toggle="'+i+'">'+(u['啟用']==='否'?'啟用':'停用')+'</button></td></tr>'});
+  USERS.forEach(function(u,i){h+='<tr><td>'+esc(u['信箱'])+'</td><td>'+esc(u['姓名'])+'</td><td><span class="flag role-'+(u['角色']==='管理員'?'adm':'oth')+'">'+esc(u['角色'])+'</span></td><td><span class="udot '+(u['啟用']==='否'?'off':'on')+'"></span>'+(u['啟用']==='否'?'停用':'啟用')+'</td><td>'+esc(usProjText(u))+'</td><td class="small muted" style="white-space:nowrap">'+esc(u['最後登入']||'—')+'</td><td><button class="btn small" type="button" data-user-edit="'+i+'">編輯</button> <button class="btn small" type="button" data-user-toggle="'+i+'">'+(u['啟用']==='否'?'啟用':'停用')+'</button></td></tr>'});
   h+='</tbody></table></div>'+(UL.done?'':'<p class="small muted">載入中…</p>');
   h+='<div class="panel" style="margin-top:14px"><h2>新增或修改使用者</h2><div class="row2"><div class="field" style="margin-top:0"><label for="us-email">信箱</label><input type="email" id="us-email"></div><div class="field" style="margin-top:0"><label for="us-name">姓名</label><input type="text" id="us-name"></div></div>'
     +'<div class="field"><label for="us-role">角色</label><select id="us-role"><option>業務人員</option><option>專案負責人</option><option>業主</option><option>管理員</option></select></div>'
@@ -7313,9 +7316,12 @@ function expMapPng_(){
         x.font='bold '+(13*k)+'px '+F;x.textAlign='center';x.fillStyle=ink;x.fillText('北',nx,pad+57*k);x.textAlign='left';
         // 比例尺
         var mpp=geo.scale/(ppu*k),m=niceM_(mpp*130*k),bw=m/mpp,lab=mLabel_(m);
-        x.font=(13*k)+'px '+F;var lw=x.measureText(lab).width,bx=W-pad-Math.max(bw,lw)-20*k,by=H-pad-46*k;
-        x.fillStyle=sur;x.beginPath();if(x.roundRect)x.roundRect(bx,by,Math.max(bw,lw)+20*k,46*k,8*k);else x.rect(bx,by,Math.max(bw,lw)+20*k,46*k);x.fill();x.stroke();
-        x.fillStyle=ink;x.fillText(lab,bx+10*k,by+18*k);
+        var ratio=window.__expRatio||Math.round(geo.scale/ppu/0.000264583/10)*10,rtxt='比例尺 約 1:'+ratio.toLocaleString('en-US')+(window.__expRatio?'':'(以螢幕 96dpi 換算)');if(window.__expRatio)rtxt='比例尺 1:'+ratio.toLocaleString('en-US');
+        x.font='bold '+(14*k)+'px '+F;var rw=x.measureText(rtxt).width;x.font=(13*k)+'px '+F;
+        var lw=Math.max(x.measureText(lab).width,rw),bx=W-pad-Math.max(bw,lw)-20*k,by=H-pad-68*k;
+        x.fillStyle=sur;x.beginPath();if(x.roundRect)x.roundRect(bx,by,Math.max(bw,lw)+20*k,68*k,8*k);else x.rect(bx,by,Math.max(bw,lw)+20*k,68*k,8*k);x.fill();x.stroke();
+        x.fillStyle=ink;x.font='bold '+(14*k)+'px '+F;x.fillText(rtxt,bx+10*k,by+20*k);x.font=(13*k)+'px '+F;x.fillText(lab,bx+10*k,by+40*k);
+        by+=22*k;
         x.strokeStyle=ink;x.lineWidth=2*k;x.beginPath();x.moveTo(bx+10*k,by+26*k);x.lineTo(bx+10*k,by+36*k);x.lineTo(bx+10*k+bw,by+36*k);x.lineTo(bx+10*k+bw,by+26*k);x.stroke();
       }
       // 圖例
@@ -7343,7 +7349,7 @@ function expMapPng_(){
   };
   img.src=url;
 }
-/* ---- 匯出圖片:先選比例尺(目前畫面 / 1:500 / 1:1000 / 1:2000 / 1:5000),以目前畫面中心為準 ---- */
+/* ---- 匯出圖片:先選比例尺(目前畫面 / 1:500 / 1:1000 / 1:2000 / 1:3000 / 1:4000 / 1:5000),以目前畫面中心為準 ---- */
 function expMapMenu_(){
   var old=document.getElementById('expmenu');if(old){old.remove();return}
   var btn=document.getElementById('mapexp'),pr=PRJ[S.proj],g=pr&&pr.geo;if(!btn)return;
@@ -7351,7 +7357,7 @@ function expMapMenu_(){
   m.style.cssText='position:fixed;z-index:50;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 4px 14px rgba(21,37,31,.2);padding:6px;min-width:170px';
   var r=btn.getBoundingClientRect();m.style.top=r.top+'px';m.style.left=Math.max(8,r.left-182)+'px';
   var items=[['cur','目前畫面的比例尺']];
-  if(g&&g.scale>0)[500,1000,2000,5000].forEach(function(n){items.push([String(n),'1:'+n.toLocaleString('en-US')])});
+  if(g&&g.scale>0)[500,1000,2000,3000,4000,5000].forEach(function(n){items.push([String(n),'1:'+n.toLocaleString('en-US')])});
   m.innerHTML='<div class="small muted" style="padding:4px 8px">匯出圖片的比例尺</div>'+items.map(function(it){return '<button type="button" class="btn small" role="menuitem" data-expr="'+it[0]+'" style="display:block;width:100%;text-align:left;margin:2px 0;border:0;background:transparent">'+it[1]+'</button>'}).join('');
   document.body.appendChild(m);
   setTimeout(function(){document.addEventListener('click',function cl(ev){if(!m.contains(ev.target)&&ev.target!==btn&&!btn.contains(ev.target)){m.remove();document.removeEventListener('click',cl)}if(!document.body.contains(m))document.removeEventListener('click',cl)})},0);
@@ -7366,7 +7372,8 @@ document.addEventListener('click',function(e){
   var keep={x:vb.x,y:vb.y,w:vb.w,h:vb.h},sv=$('#map'),rr=sv.getBoundingClientRect(),cw=rr.width||1000,ch=rr.height||660,
       ppu=g.scale/(+v*0.000264583),cx=vb.x+vb.w/2,cy=vb.y+vb.h/2;
   vb.w=cw/ppu;vb.h=ch/ppu;vb.x=cx-vb.w/2;vb.y=cy-vb.h/2;applyVB();
-  try{expMapPng_()}finally{vb.x=keep.x;vb.y=keep.y;vb.w=keep.w;vb.h=keep.h;applyVB()}
+  window.__expRatio=+v;
+  try{expMapPng_()}finally{window.__expRatio=null;vb.x=keep.x;vb.y=keep.y;vb.w=keep.w;vb.h=keep.h;applyVB()}
 });
 
 /* ===== 圖資分段編輯:合併之後再調整每一段的位置、改名、刪除,設定北方向 ===== */
@@ -7404,8 +7411,12 @@ function geoEdRender_(){
   var g=GE.g,sc=g.scale||1,P=GE.pieces,multi=P.length>1,x0=1e18,y0=1e18,x1=-1e18,y1=-1e18;
   P.forEach(function(q){var dx=q.east/sc,dy=-q.north/sc;x0=Math.min(x0,q.bb[0]+dx);y0=Math.min(y0,q.bb[1]+dy);x1=Math.max(x1,q.bb[2]+dx);y1=Math.max(y1,q.bb[3]+dy)});
   var pad=Math.max(x1-x0,y1-y0)*0.06,vbx=[x0-pad,y0-pad,x1-x0+pad*2,y1-y0+pad*2],fs=Math.max(vbx[2],vbx[3])/30;
+  GE.fit=vbx.slice();var z=GE.zoom||1;
+  if(z>1){var zw=vbx[2]/z,zh=vbx[3]/z,zcx=GE.cx==null?vbx[0]+vbx[2]/2:GE.cx,zcy=GE.cy==null?vbx[1]+vbx[3]/2:GE.cy;vbx=[zcx-zw/2,zcy-zh/2,zw,zh];fs=fs/z}
+  GE.vb=vbx.slice();
   h+='<p class="small muted" style="margin:0 0 8px">'+(multi?'這張圖是由 '+P.length+' 段合起來的。在圖上直接拖動某一段,或用下面的方向鍵微調,排好再按「儲存」。':'目前圖上只有一段。之後再合併新的地籍圖,每一段都能單獨移動。')+' 距離是實際公尺。</p>';
-  h+='<svg id="ged-svg" viewBox="'+vbx.map(function(v){return v.toFixed(1)}).join(' ')+'" style="width:100%;height:320px;touch-action:none;background:#f4f7f5;border:1px solid var(--line);border-radius:10px" role="img" aria-label="各段圖資位置預覽">';
+  h+='<div class="gedzoom" role="group" aria-label="預覽縮放"><button class="btn small" type="button" data-ged-zoom="out" aria-label="縮小">－</button><button class="btn small" type="button" data-ged-zoom="in" aria-label="放大">＋</button><button class="btn small" type="button" data-ged-zoom="in4">放大 4 倍</button><button class="btn small" type="button" data-ged-zoom="sel">放大到選取的這段</button><button class="btn small" type="button" data-ged-zoom="fit">全部</button><span class="small muted">目前 '+(z>=10||z%1===0?Math.round(z):z.toFixed(1))+' 倍。滾輪或兩指也能縮放,拖空白處可平移。</span></div>';
+  h+='<svg id="ged-svg" viewBox="'+vbx.map(function(v){return v.toFixed(1)}).join(' ')+'" style="width:100%;height:min(60vh,460px);min-height:320px;touch-action:none;background:#f4f7f5;border:1px solid var(--line);border-radius:10px" role="img" aria-label="各段圖資位置預覽">';
   P.forEach(function(q){
     var dx=q.east/sc,dy=-q.north/sc,on=q.id===GE.sel;
     h+='<g data-gepc="'+esc(q.id)+'" data-bx="'+dx+'" data-by="'+dy+'" transform="translate('+dx.toFixed(1)+' '+dy.toFixed(1)+')" style="cursor:'+(multi?'grab':'default')+';opacity:'+(q.del?0.25:1)+'">'
@@ -7414,7 +7425,7 @@ function geoEdRender_(){
       +'<text x="'+((q.bb[0]+q.bb[2])/2)+'" y="'+(q.bb[1]-fs*0.35)+'" text-anchor="middle" font-size="'+fs+'" font-weight="700" fill="'+q.col+'">'+esc(q.name)+(q.del?'(將刪除)':'')+'</text></g>';
   });
   h+='</svg>';
-  h+='<div class="field" style="margin-top:10px"><label for="ged-step">方向鍵每按一次移動</label><select id="ged-step">'+[5,10,20,50,100,200].map(function(v){return '<option value="'+v+'"'+(GE.step===v?' selected':'')+'>'+v+' 公尺</option>'}).join('')+'</select></div>';
+  h+='<div class="field" style="margin-top:10px"><label for="ged-step">方向鍵每按一次移動</label><select id="ged-step">'+[1,2,5,10,20,50,100,200].map(function(v){return '<option value="'+v+'"'+(GE.step===v?' selected':'')+'>'+v+' 公尺</option>'}).join('')+'</select><div class="small muted" style="margin-top:4px">也可以直接按鍵盤的方向鍵移動「已選這段」;按住 Shift 一次移 5 倍,按住 Alt 一次移 1 公尺。</div></div>';
   h+='<div class="tablewrap" style="margin-top:8px"><table><thead><tr><th>圖資</th><th>名稱</th><th>已移動</th><th>調整</th></tr></thead><tbody>';
   P.forEach(function(q){
     var on=q.id===GE.sel,e=Math.round(q.east),n=Math.round(q.north),mv=(e||n)?((e?(e>0?'東 ':'西 ')+Math.abs(e)+' 公尺':'')+(e&&n?'、':'')+(n?(n>0?'北 ':'南 ')+Math.abs(n)+' 公尺':'')):'沒有移動';
@@ -7442,6 +7453,7 @@ function geoEdRender_(){
     if((b=t.closest('[data-ged-sel]'))){GE.sel=b.dataset.gedSel;geoEdRender_();return}
     if((b=t.closest('[data-ged-nudge]'))){var a=b.dataset.gedNudge.split('|'),q=pcOf(a[0]);if(!q)return;GE.sel=q.id;var s=GE.step;
       if(a[1]==='E')q.east+=s;else if(a[1]==='W')q.east-=s;else if(a[1]==='N')q.north+=s;else q.north-=s;geoEdRender_();return}
+    if((b=t.closest('[data-ged-zoom]'))){geoEdZoomBtn_(b.dataset.gedZoom);return}
     if((b=t.closest('[data-ged-reset]'))){var q2=pcOf(b.dataset.gedReset);if(q2){q2.east=0;q2.north=0;geoEdRender_()}return}
     if((b=t.closest('[data-ged-del]'))){var q3=pcOf(b.dataset.gedDel);if(q3){q3.del=!q3.del;if(GE.pieces.every(function(x){return x.del})){q3.del=false;toast('不能把所有圖都刪掉。要整張重來請用「取代圖資」。')}geoEdRender_()}return}
     if(t.closest('[data-ged-save]')){geoEdSave_();return}
@@ -7470,6 +7482,67 @@ function geoEdRender_(){
     if(GE){var q=pcOf(d.id);if(q&&(d.ddx||d.ddy)){var sc=GE.g.scale||1;q.east+=d.ddx*sc;q.north-=d.ddy*sc}geoEdRender_()}
   }
   document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);
+})();
+function geoEdZoomAt_(f,px,py){
+  if(!GE||!GE.fit||!GE.vb)return;
+  var fit=GE.fit,vb=GE.vb,z=GE.zoom||1,nz=Math.max(1,Math.min(200,z*f));if(nz===z&&f<1)return;
+  var nw=fit[2]/nz,nh=fit[3]/nz,r=nw/vb[2];
+  if(px==null){px=vb[0]+vb[2]/2;py=vb[1]+vb[3]/2}
+  var nx=px-(px-vb[0])*r,ny=py-(py-vb[1])*r;
+  GE.zoom=nz;GE.cx=nx+nw/2;GE.cy=ny+nh/2;
+  if(nz<=1){GE.zoom=1;GE.cx=null;GE.cy=null}
+  geoEdRender_();
+}
+function geoEdZoomBtn_(k){
+  if(!GE)return;
+  if(k==='in')geoEdZoomAt_(1.6);else if(k==='out')geoEdZoomAt_(1/1.6);else if(k==='in4')geoEdZoomAt_(4);
+  else if(k==='fit'){GE.zoom=1;GE.cx=null;GE.cy=null;geoEdRender_()}
+  else if(k==='sel'){
+    var q=GE.pieces.filter(function(x){return x.id===GE.sel})[0]||GE.pieces[0];if(!q)return;
+    var sc=GE.g.scale||1,dx=q.east/sc,dy=-q.north/sc,w=q.bb[2]-q.bb[0],h=q.bb[3]-q.bb[1],fit=GE.fit;
+    var z=Math.max(1,Math.min(200,Math.min(fit[2]/(w*1.2),fit[3]/(h*1.2))));
+    GE.zoom=z;GE.cx=(q.bb[0]+q.bb[2])/2+dx;GE.cy=(q.bb[1]+q.bb[3])/2+dy;geoEdRender_();
+  }
+}
+(function(){
+  /* 滾輪縮放、空白處拖移平移、兩指縮放、鍵盤方向鍵 */
+  var pan=null,ptrs={},pin=null;
+  function svgPt_(svg,x,y){var m=svg.getScreenCTM();if(!m)return null;var pt=svg.createSVGPoint();pt.x=x;pt.y=y;return pt.matrixTransform(m.inverse())}
+  document.addEventListener('wheel',function(e){
+    var t=e.target;if(!GE||!t||!t.closest||!t.closest('#ged-svg'))return;
+    e.preventDefault();var p=svgPt_($('#ged-svg'),e.clientX,e.clientY);if(!p)return;
+    geoEdZoomAt_(e.deltaY<0?1.25:1/1.25,p.x,p.y);
+  },{passive:false});
+  document.addEventListener('pointerdown',function(e){
+    var t=e.target;if(!GE||!t||!t.closest)return;var svg=t.closest('#ged-svg');if(!svg)return;
+    ptrs[e.pointerId]={x:e.clientX,y:e.clientY};
+    var k=Object.keys(ptrs);
+    if(k.length>=2){pan=null;pin={d:Math.hypot(ptrs[k[0]].x-ptrs[k[1]].x,ptrs[k[0]].y-ptrs[k[1]].y)};return}
+    var onPiece=t.closest('[data-gepc]')&&GE.pieces.length>=2;
+    if(!onPiece&&GE.vb){pan={x:e.clientX,y:e.clientY,vb:GE.vb.slice(),svg:svg,dx:0,dy:0};try{svg.setPointerCapture(e.pointerId)}catch(x){}}
+  });
+  document.addEventListener('pointermove',function(e){
+    if(ptrs[e.pointerId])ptrs[e.pointerId]={x:e.clientX,y:e.clientY};
+    if(pin&&GE){var k=Object.keys(ptrs);if(k.length>=2){var d=Math.hypot(ptrs[k[0]].x-ptrs[k[1]].x,ptrs[k[0]].y-ptrs[k[1]].y);if(d>10&&pin.d>10){var f=d/pin.d;if(Math.abs(f-1)>0.04){var svg=$('#ged-svg'),p=svg&&svgPt_(svg,(ptrs[k[0]].x+ptrs[k[1]].x)/2,(ptrs[k[0]].y+ptrs[k[1]].y)/2);if(p){pin.d=d;geoEdZoomAt_(f,p.x,p.y)}}}}return}
+    if(!pan||!GE)return;
+    var m=pan.svg.getScreenCTM(),sc=m?m.a:1,dx=(e.clientX-pan.x)/sc,dy=(e.clientY-pan.y)/sc;pan.dx=dx;pan.dy=dy;
+    pan.svg.setAttribute('viewBox',[pan.vb[0]-dx,pan.vb[1]-dy,pan.vb[2],pan.vb[3]].map(function(v){return v.toFixed(1)}).join(' '));
+  });
+  function up(e){
+    delete ptrs[e.pointerId];if(Object.keys(ptrs).length<2)pin=null;
+    if(pan&&GE){var p=pan;pan=null;if(Math.abs(p.dx)+Math.abs(p.dy)>0){GE.zoom=GE.zoom||1;GE.cx=p.vb[0]-p.dx+p.vb[2]/2;GE.cy=p.vb[1]-p.dy+p.vb[3]/2;if(GE.zoom<=1){GE.zoom=1;GE.cx=null;GE.cy=null}else geoEdRender_()}}
+  }
+  document.addEventListener('pointerup',up);document.addEventListener('pointercancel',up);
+  document.addEventListener('keydown',function(e){
+    if(!GE||GE.busy)return;var d=$('#dlg-geoed');if(!d||!d.open)return;
+    var a=document.activeElement,tag=a&&a.tagName;if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT')return;
+    var k=e.key,dir={ArrowUp:'N',ArrowDown:'S',ArrowLeft:'W',ArrowRight:'E'}[k];if(!dir)return;
+    var q=GE.pieces.filter(function(x){return x.id===GE.sel})[0]||GE.pieces[0];if(!q||q.del)return;
+    e.preventDefault();GE.sel=q.id;
+    var st=e.altKey?1:(GE.step||20)*(e.shiftKey?5:1);
+    if(dir==='E')q.east+=st;else if(dir==='W')q.east-=st;else if(dir==='N')q.north+=st;else q.north-=st;
+    geoEdRender_();
+  });
 })();
 function geoEdSave_(){
   if(!GE||GE.busy)return;
