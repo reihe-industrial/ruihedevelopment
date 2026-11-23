@@ -5086,7 +5086,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-23-m';
+var FRONT_VER='2026-11-23-n';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -5167,15 +5167,14 @@ function labSpread_(list){
     var sxx=0,sxy=0,syy=0;pts.forEach(function(q){var dx=q[0]-mx,dy=q[1]-my;sxx+=dx*dx;sxy+=dx*dy;syy+=dy*dy});
     var th=0.5*Math.atan2(2*sxy,sxx-syy),ux=Math.cos(th),uy=Math.sin(th),tmin=1e18,tmax=-1e18;
     pts.forEach(function(q){var s=(q[0]-mx)*ux+(q[1]-my)*uy;if(s<tmin)tmin=s;if(s>tmax)tmax=s});
+    // 格子太窄或太短放不下字:把這一筆的字縮小到放得進去(字永遠留在自己那一格裡,不挪到隔壁)
+    var pmin=1e18,pmax=-1e18;pts.forEach(function(q){var s2=-(q[0]-mx)*uy+(q[1]-my)*ux;if(s2<pmin)pmin=s2;if(s2>pmax)pmax=s2});
+    var nch=String(p.no).length+1,fitW=0.9*(pmax-pmin)/(nch*0.6),fitL=0.9*(tmax-tmin)/2.9,fit=Math.max(2.2,Math.min(fitW,fitL));
+    if(lf>fit){lf=fit;p.lf=fit}
     var cands=[[p.cx,p.cy]],step=lf*0.9;
     for(var k=1;k*step<=Math.max(tmax,-tmin)&&k<80;k++){[1,-1].forEach(function(sg){var x=mx+ux*k*step*sg,y=my+uy*k*step*sg;if(inside(pts,x,y))cands.push([x,y])})}
     var best=null,bc=1e18;
     for(var i=0;i<cands.length;i++){var c=cost(box(p,cands[i][0],cands[i][1]));if(c<bc){bc=c;best=cands[i]}if(c===0)break}
-    if(bc>0){   // 地太小放不下:改放到旁邊最近的空位(離自己那塊最近、不壓到別人)
-      var sb=null,sc=1e18;
-      for(var r=1;r<=14&&sc>0;r++){for(var d=0;d<16;d++){var an=d*Math.PI/8,x=p.cx+Math.cos(an)*r*lf*0.8,y=p.cy+Math.sin(an)*r*lf*0.8,c2=cost(box(p,x,y))+r*0.001;if(c2<sc){sc=c2;sb=[x,y]}}if(sc<0.5)break}
-      if(sb&&sc<bc){best=sb}
-    }
     if(best){p.cx=best[0];p.cy=best[1]}
     placed.push(box(p,p.cx,p.cy));
   });
