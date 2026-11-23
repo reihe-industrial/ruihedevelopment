@@ -1250,7 +1250,7 @@ function renderSide(){
   LEVELS.forEach(function(l){h+='<button type="button" class="chip" data-lv="'+l.k+'" aria-pressed="'+(!!S.levels[l.k])+'"><i class="dot" style="background:'+l.c+';border-radius:50%;width:10px;height:10px"></i>'+lvl(l)+'</button>'});
   h+='</div></div>';
   h+='<div class="field"><label for="f-q">搜尋地號或地主</label><input type="search" id="f-q" placeholder="例:124 或 陳" value="'+esc(S.q)+'"><div id="q-results" style="margin-top:6px"></div><p class="small muted" style="margin:6px 0 0">小地號的字會自動縮小,放大地圖就看得清楚;也可以在這裡搜尋,點結果會自動放大並選取。</p></div>';
-  $('#side').innerHTML=h;
+  $('#side').innerHTML=h+(typeof sideUnplaced_==='function'?sideUnplaced_():'');
   $('#f-block-s').value=S.block;
   renderQResults();
 }
@@ -2702,11 +2702,8 @@ function mkAssign(polys,texts,parcels){
       }
       if(!best||d<best.d)best={d:d,i:i};
     });
-    if(best&&(best.d<15||!pts.length)){assign[pc.no]={poly:best.i,flag:pts.length?'ok':'area-only'};used[best.i]=1}
-    else if(pts.length){
-      var c=[];polys.forEach(function(p,i){if(!used[i]&&pts.some(function(q){return mkInPoly(q,p.pts)}))c.push(i)});
-      if(c.length){c.sort(function(a,b){return polys[a].area-polys[b].area});assign[pc.no]={poly:c[0],flag:'area-mismatch'};used[c[0]]=1}
-    }
+    /* 只有「圖上的地號文字就在這一塊旁邊、面積也對得上」才自動配;只靠面積猜的、面積對不上的一律留空,等使用者用「指定圖塊」自己配 */
+    if(best&&pts.length&&best.d<15){assign[pc.no]={poly:best.i,flag:'ok'};used[best.i]=1}
   });
   return {K:K,assign:assign,n:Object.keys(assign).length};
 }
@@ -4065,7 +4062,7 @@ async function handleUpdateFiles(fileList){
     var f=files[i];
     var fk2=f.name+'|'+f.size+'|'+(f.lastModified||0);UP.keys=UP.keys||[];
     if(UP.keys.indexOf(fk2)>=0){UP.msgs.push('「'+f.name+'」已經讀過了');continue}UP.keys.push(fk2);
-    try{addUpdatePages(await readPdfPages(f),f.name)}
+    try{addUpdatePages(await readPdfPages(f),f.name);if(UP.files.indexOf(f.name)>=0){UP.blobs=UP.blobs||{};UP.blobs[f.name]=f}}
     catch(err){UP.msgs.push('「'+f.name+'」讀取失敗:'+(err&&err.message?err.message:err)+'。可以改用「貼上謄本文字」。')}
   }
   buildUpdateItems();renderDeeds();
@@ -5049,7 +5046,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-23-f';
+var FRONT_VER='2026-11-23-g';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -5114,6 +5111,7 @@ function applyGeo(pr,plist,geo){
       if(!gq&&!p.sec&&byNo[p.no])gq=byNo[p.no];
       if(gq){p.pts=gq.pts;p.cx=gq.c[0];p.cy=gq.c[1];p.lf=gq.lf;p.mix=gq.mix;p.polyArea=gq.poly_m2;p.planZone=domZone(gq)}
       else miss.push(p);
+      p.noPos=!gq;
     });
     // 地號字體大小統一:取全部有圖形地號的中間值,大塊地不再出現超大的字
     var lfs=[];plist.forEach(function(p){if(miss.indexOf(p)<0&&p.lf>0)lfs.push(p.lf)});
@@ -5933,7 +5931,7 @@ async function createFromImport(opt){
       var DF=window.DEEDFILES_||{},names=((IM.deed&&IM.deed.files)||[]).filter(function(n){return DF[n]});
       for(var di=0;di<names.length;di++){
         var df=DF[names[di]];
-        try{await api('addProjectDoc',{projectId:r.projectId,area:'公司存檔',folder:'土地謄本',desc:'新增專案時上傳的謄本',file:{name:df.name,mime:df.type||'application/pdf',data:await fileToB64(df)}});deedPdf.push(df.name)}
+        try{await api('addProjectDoc',{projectId:r.projectId,area:'公司存檔',folder:'土地謄本_原始_'+iso(new Date()),desc:'新增專案時上傳的原始謄本',file:{name:df.name,mime:df.type||'application/pdf',data:await fileToB64(df)}});deedPdf.push(df.name)}
         catch(pe){if(pe.auth)throw pe;pdfFail++}
       }
     }catch(pe2){if(pe2.auth){showLogin('登入已過期,請重新登入');return}}
@@ -6031,8 +6029,17 @@ async function applyUpdateGroup(cat){
   try{
     var r=await api('applyDeedUpdate',{projectId:UP.pid,ops:ops});
     list.forEach(function(it){if(!r.skipped.some(function(t){return t.indexOf(it.text)===0}))it.applied=true});
+    var saved=0,failed=0;
+    if(r.applied>0&&UP.blobs){
+      UP.saved=UP.saved||{};
+      for(var bn in UP.blobs){
+        if(UP.saved[bn])continue;var bf=UP.blobs[bn];
+        try{await api('addProjectDoc',{projectId:UP.pid,area:'公司存檔',folder:'土地謄本_更新_'+iso(new Date()),desc:'謄本更新 '+iso(new Date()),file:{name:bf.name,mime:bf.type||'application/pdf',data:await fileToB64(bf)}});UP.saved[bn]=1;saved++}
+        catch(x2){failed++}
+      }
+    }
     await refreshData();renderDeeds();
-    toast('已套用 '+r.applied+' 項更新。'+(r.skipped.length?'有 '+r.skipped.length+' 項沒有套用:'+r.skipped.join(';'):''));
+    toast('已套用 '+r.applied+' 項更新。'+(saved?'謄本 PDF '+saved+' 份已存到雲端「公司存檔 › 土地謄本_更新_'+iso(new Date())+'」。':'')+(failed?'有 '+failed+' 份 PDF 沒存成功,請到專案檔案手動上傳。':'')+''+(r.skipped.length?'有 '+r.skipped.length+' 項沒有套用:'+r.skipped.join(';'):''));
   }catch(e){
     if(e.auth){showLogin('登入已過期,請重新登入')}else{toast('套用失敗:'+(e.userMessage||e.message));if(btn){btn.disabled=false;btn.textContent='套用勾選的項目'}}
   }finally{UPB.busy=false}
@@ -8452,6 +8459,28 @@ function visitSearchBar_(){
     if(t.closest('[data-vq-clear]')){S.vq='';renderVisits('vq');return}
   });
 })();
+
+/* ---- 還沒配到圖上位置的地號:列在左側面板,點一下就進入「指定圖塊」 ---- */
+function sideUnplaced_(){
+  var pr=PRJ[S.proj];if(!pr||!pr.geo)return '';
+  var list=PP(S.proj).filter(function(p){return p.noPos});if(!list.length)return '';
+  var adm=S.role==='admin';
+  return '<div id="unplaced" class="notice" style="margin-top:14px;border-color:#E3C07A;background:#FFF6E3"><b>有 '+list.length+' 筆地號還沒配到圖上位置</b>'
+    +'<div class="small muted" style="margin:4px 0 8px">圖上找不到、或無法確定是哪一塊,系統不會亂配。'+(adm?'點地號,再點圖上對應的那一塊。':'請管理員指定位置。')+'</div>'
+    +'<div style="max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:4px">'
+    +list.map(function(p){var o=(p.owners&&p.owners.length)?p.owners.length+' 位地主':'';
+      return (adm?'<button type="button" class="btn small" data-unplaced="'+p.id+'" style="justify-content:space-between;display:flex;text-align:left;width:100%">':'<div class="small" style="display:flex;justify-content:space-between;padding:4px 2px">')
+        +'<span><b>'+esc(pname(p))+'</b></span><span class="small muted">'+Math.round(p.area||0).toLocaleString('en-US')+' ㎡'+(o?' · '+o:'')+'</span>'
+        +(adm?'</button>':'</div>')}).join('')
+    +'</div></div>';
+}
+document.addEventListener('click',function(e){
+  var b=e.target&&e.target.closest&&e.target.closest('[data-unplaced]');if(!b)return;
+  if(S.role!=='admin'){toast('只有管理員可以指定圖塊。');return}
+  var p=DB.parcels[+b.getAttribute('data-unplaced')];if(!p)return;
+  selectParcel(p.id,false);MAPASG=p;MAPDRAW=null;var sv=document.getElementById('map');if(sv)sv.style.cursor='crosshair';mapAsgBar_();
+  toast('請在圖上點選「'+pname(p)+'」對應的那一塊。');
+});
 
 /* ---------- start ---------- */
 function pickStart(){
