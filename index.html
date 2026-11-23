@@ -530,6 +530,7 @@ a.btn{text-decoration:none}
   #view-map.on #maptools.collapsed>.tsep{display:block!important}
 }
 
+#ged-svg.gedrag path{stroke:none!important}#ged-svg.gedrag text,#ged-svg.gedrag rect{display:none}
 .seg button{white-space:nowrap;min-width:0}
 .side .seg{padding:3px;gap:2px}.side .seg button{padding:0 2px!important;font-size:14px!important}
 @media (max-width:760px){.seg button{padding:0 4px;font-size:14px}}
@@ -2688,7 +2689,7 @@ function mkAssign(polys,texts,parcels){
   });
   var K=mkMedian(ratios);
   var KT=0;texts.some(function(t){var s0=String(t.s);if(s0.charAt(0)==='原')return false;var m=s0.match(/比例尺[\uFF1A:]?\s*1\s*\/\s*(\d+)/);if(m){KT=parseInt(m[1],10)*0.000352778;return true}return false});
-  if(KT&&(!K||Math.abs(K/KT-1)<0.05))K=KT;
+  if(KT&&(!K||ratios.length<3||Math.abs(K/KT-1)<0.05))K=KT;   /* 圖上印的比例尺優先;只有 1~2 塊可以推算時不採用(跨頁被切一半的地塊會讓推算值偏掉) */
   if(!K)return {K:0,assign:{},n:0};
   var used={},assign={},order=parcels.slice().sort(function(a,b){return b.area-a.area});
   order.forEach(function(pc){
@@ -2867,7 +2868,18 @@ function geoReset(){GEOIM={cad:null,zon:null,as:null,reg:null,cp:null,groups:[],
 function geoTick(){return new Promise(function(r){setTimeout(r,30)})}
 async function geoExtract(file){
   var lib=await loadPdfJs(),buf=await fileToBuffer(file);
-  var doc=await lib.getDocument({data:new Uint8Array(buf)}).promise,page=await doc.getPage(1);
+  var doc=await lib.getDocument({data:new Uint8Array(buf)}).promise,pn=1;
+  /* 地籍圖謄本常有「封面/接續圖 + 好幾頁分幅圖」:挑出含有最多清冊地號的那一頁來讀 */
+  GEOIM.pageNote='';
+  if(doc.numPages>1&&geoRegList().length){
+    var want={};geoRegList().forEach(function(r){want[String(r.no)]=1});var best=0,bestN=-1;
+    for(var pi=1;pi<=doc.numPages;pi++){
+      try{var tc=await (await doc.getPage(pi)).getTextContent(),seen={};tc.items.forEach(function(t){var x=String(t.str||'').trim();if(want[x])seen[x]=1});var n=Object.keys(seen).length;if(n>bestN){bestN=n;best=pi}}catch(e){}
+    }
+    if(best>0&&bestN>0)pn=best;
+    GEOIM.pageNote='這份地籍圖共 '+doc.numPages+' 頁,系統讀了第 '+pn+' 頁(這頁找到清冊裡 '+Math.max(bestN,0)+' 筆地號)。分在其他頁、或被切在頁面邊界的地號不會自動配,請用「指定圖塊」或「描形狀」自己配。';
+  }
+  var page=await doc.getPage(pn);
   return mkExtract(page,lib.OPS);
 }
 function geoSegs(ex,filter){var segs=[];ex.items.forEach(function(it){if(it.kind!=='stroke'||!filter(it))return;it.rings.forEach(function(r){for(var i=0;i<r.pts.length-1;i++)segs.push([r.pts[i][0],r.pts[i][1],r.pts[i+1][0],r.pts[i+1][1]])})});return segs}
@@ -2881,7 +2893,7 @@ function geoAssignNow(){
   if(K){GEOIM.cp=GEOIM.cad.polys.map(function(p){return {pts:p.pts.map(function(q){return [q[0]*K,q[1]*K]}),area:p.area*K*K}})}
 }
 async function handleCadFile(file){
-  GEOIM.busy='正在讀取地籍圖…';GEOIM.err='';renderGeoPanel();await geoTick();
+  GEOIM.busy='正在讀取地籍圖…';GEOIM.err='';GEOIM.pageNote='';renderGeoPanel();await geoTick();
   try{
     var ex=await geoExtract(file),cnt={};
     ex.items.forEach(function(it){if(it.kind!=='stroke'||it.width>=2)return;var n=0;it.rings.forEach(function(r){n+=r.pts.length-1});cnt[it.color]=(cnt[it.color]||0)+n});
@@ -2962,6 +2974,7 @@ function renderGeoPanel(){
   h+='<div class="row2" style="margin-top:8px"><div class="field" style="margin-top:0"><label for="cad-file">地籍圖謄本 PDF</label><input type="file" id="cad-file" accept="application/pdf"></div><div class="field" style="margin-top:0"><label for="zon-file">細部計畫圖 PDF(選填)</label><input type="file" id="zon-file" accept="application/pdf"></div></div>';
   if(GEOIM.busy)h+='<p class="small" style="margin:6px 0 0"><b>'+esc(GEOIM.busy)+'</b></p>';
   if(GEOIM.err)h+='<p class="small bad" style="margin:6px 0 0">'+esc(GEOIM.err)+'</p>';
+  if(GEOIM.pageNote)h+='<p class="small" style="margin:6px 0 0;color:#8a5a00">'+esc(GEOIM.pageNote)+'</p>';
   if(GEOIM.cad&&GEOIM.as){
     var as=GEOIM.as,miss=reg.filter(function(p){return !as.assign[p.no]}).map(function(p){return p.no});
     var off=0;reg.forEach(function(p){var a=as.assign[p.no];if(a&&p.area>0){var A=GEOIM.cad.polys[a.poly].area*as.K*as.K;if(Math.abs(A/p.area-1)>0.05)off++}});
@@ -5046,7 +5059,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-23-g';
+var FRONT_VER='2026-11-23-i';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -6894,7 +6907,7 @@ function geoCombineJS_(old,add,caption,place,areas){
       var q=g.parcels[key],i=key.indexOf('|'),sec=q.sec||(i>=0?key.slice(0,i):''),no=i>=0?key.slice(i+1):key,o={};
       Object.keys(q).forEach(function(f){o[f]=q[f]});
       o.sec=sec;o.pts=q.pts.map(T);o.c=T(q.c);o.lf=Math.max(2.2,r1(q.lf*k));o.pc=pf(q.pc);
-      if(a[2]&&out.parcels[sec+'|'+no]){var ex=out.parcels[sec+'|'+no];if(geoBetterJS_(ex,o,sec+'|'+no,areas)){out.ctx.push(ex.pts);out.ctxpc.push(ex.pc);out.parcels[sec+'|'+no]=o;return}out.ctx.push(o.pts);out.ctxpc.push(o.pc);return}
+      if(a[2]&&out.parcels[sec+'|'+no]){var ex=out.parcels[sec+'|'+no];if((c.aligned>0&&o.flag==='ok')||geoBetterJS_(ex,o,sec+'|'+no,areas)){out.ctx.push(ex.pts);out.ctxpc.push(ex.pc);out.parcels[sec+'|'+no]=o;return}out.ctx.push(o.pts);out.ctxpc.push(o.pc);return}
       out.parcels[sec+'|'+no]=o;
     });
     (g.ctx||[]).forEach(function(r,ri){out.ctx.push(r.map(T));out.ctxpc.push(pf((g.ctxpc||[])[ri]))});
@@ -6918,8 +6931,9 @@ function cadPvHTML_(k){
   var x0=Math.min(c.ob[0],c.nb[0]+c.dx),y0=Math.min(c.ob[1],c.nb[1]+c.dy),x1=Math.max(c.ob[2],c.nb[2]+c.dx),y1=Math.max(c.ob[3],c.nb[3]+c.dy);
   var pad=Math.max(x1-x0,y1-y0)*0.06,vb=[x0-pad,y0-pad,x1-x0+pad*2,y1-y0+pad*2];
   function poly(g,s,color,fill){var h='';Object.keys(g.parcels).forEach(function(key){h+='<polygon points="'+g.parcels[key].pts.map(function(q){return (q[0]*s).toFixed(1)+','+(q[1]*s).toFixed(1)}).join(' ')+'" fill="'+fill+'" stroke="'+color+'" stroke-width="1" vector-effect="non-scaling-stroke"/>'});return h}
-  var fs=Math.max(vb[2],vb[3])/28;
-  var h=(c.aligned?'<p class="small" style="margin:0 0 6px;color:var(--brand);font-weight:700">這一份和現有地圖有 '+c.aligned+' 筆相同的地號,已依相同地號自動對齊,不用選方位。</p>':'')+'<svg id="'+k+'-svg" viewBox="'+vb.map(function(v){return v.toFixed(1)}).join(' ')+'" style="width:100%;height:min(72vh,620px);min-height:380px;touch-action:none;background:#f4f7f5;border:1px solid var(--line);border-radius:10px" role="img" aria-label="擺放位置預覽">';
+  var fs=Math.max(vb[2],vb[3])/28,bvb=vb.slice(),zm=P.zm||1;
+  if(zm!==1||P.pcx||P.pcy){var vcx=vb[0]+vb[2]/2+(P.pcx||0),vcy=vb[1]+vb[3]/2+(P.pcy||0);vb=[vcx-vb[2]/zm/2,vcy-vb[3]/zm/2,vb[2]/zm,vb[3]/zm]}
+  var h=(c.aligned?'<p class="small" style="margin:0 0 6px;color:var(--brand);font-weight:700">這一份和現有地圖有 '+c.aligned+' 筆相同的地號,已依相同地號自動對齊,不用選方位。</p>':'')+'<svg id="'+k+'-svg" tabindex="0" data-bvb="'+bvb.join(',')+'" viewBox="'+vb.map(function(v){return v.toFixed(1)}).join(' ')+'" style="outline:none;width:100%;height:min(72vh,620px);min-height:380px;touch-action:none;background:#f4f7f5;border:1px solid var(--line);border-radius:10px" role="img" aria-label="擺放位置預覽">';
   h+='<g>'+poly(old,so,'#1F5C46','#cfe6da')+'<text x="'+((c.ob[0]+c.ob[2])/2)+'" y="'+(c.ob[1]-fs*0.4)+'" text-anchor="middle" font-size="'+fs+'" fill="#1F5C46" font-weight="700">'+(k==='cb'?'前面已排好的':'現有地圖')+'</text></g>';
   h+='<g id="'+k+'-new" data-plxnew="1" data-bx="'+c.dx+'" data-by="'+c.dy+'" transform="translate('+c.dx.toFixed(1)+' '+c.dy.toFixed(1)+')" style="cursor:grab">'
     +'<rect x="'+c.nb[0]+'" y="'+c.nb[1]+'" width="'+(c.nb[2]-c.nb[0])+'" height="'+(c.nb[3]-c.nb[1])+'" fill="#e8892b" fill-opacity="0.08" stroke="#e8892b" stroke-dasharray="6 4" stroke-width="1.5" vector-effect="non-scaling-stroke"/>'
@@ -6940,6 +6954,7 @@ function cadPlaceHTML_(k,show){
     +'<div style="display:grid;grid-template-columns:repeat(3,44px);gap:4px"><span></span><button type="button" class="btn" data-cad-nudge="N" aria-label="往北(上)" style="min-height:40px;padding:0">↑</button><span></span><button type="button" class="btn" data-cad-nudge="W" aria-label="往西(左)" style="min-height:40px;padding:0">←</button><button type="button" class="btn" data-cad-nudge="S" aria-label="往南(下)" style="min-height:40px;padding:0">↓</button><button type="button" class="btn" data-cad-nudge="E" aria-label="往東(右)" style="min-height:40px;padding:0">→</button></div>'
     +'<label class="small muted" style="display:flex;align-items:center;gap:6px">每按一下移<select id="'+k+'-step" style="width:auto">'+[10,50,100,300].map(function(n){return '<option value="'+n+'"'+(P.step===n?' selected':'')+'>'+n+' 公尺</option>'}).join('')+'</select></label>'
     +'<button type="button" class="btn small" data-cad-reset>歸零</button></div>';
+  h+='<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px"><span class="small muted">縮放預覽</span><button type="button" class="btn" data-cad-zoom="in" aria-label="放大" style="min-height:40px;min-width:44px">＋</button><button type="button" class="btn" data-cad-zoom="out" aria-label="縮小" style="min-height:40px;min-width:44px">－</button><button type="button" class="btn small" data-cad-zoom="fit">全部</button><span class="small muted">滾輪或雙指也能縮放;空白處拖動可平移;點一下預覽後可用鍵盤方向鍵微調(Shift 一次移 5 倍)</span></div>';
   h+='<div class="field" style="margin-top:10px"><label for="'+k+'-gap" style="display:flex;justify-content:space-between"><span>和前面地圖的間隔</span><span id="'+k+'-gap-v">'+P.gap+' 公尺</span></label><input type="range" id="'+k+'-gap" min="0" max="500" step="10" value="'+Math.min(500,P.gap)+'" style="width:100%"></div>';
   h+='<p class="small muted" id="'+k+'-off" style="margin:4px 0 0"></p>';
   h+='<input type="hidden" id="'+k+'-dir" value="'+esc(P.dir)+'"><input type="hidden" id="'+k+'-e" value="'+P.east+'"><input type="hidden" id="'+k+'-n" value="'+P.north+'"></div>';
@@ -6954,6 +6969,57 @@ function cadPvSync_(k){
   [].slice.call(document.querySelectorAll('#'+k+'-place [data-cad-dir]')).forEach(function(b){var on=b.dataset.cadDir===P.dir;b.setAttribute('aria-pressed',on);b.style.background=on?'var(--brand)':'';b.style.color=on?'var(--on-brand)':'';b.style.borderColor=on?'var(--brand)':''});
   if(k==='cb')cbFinalRefresh_();
 }
+function pvSet_(k,svg,vb){
+  var X=plx_(k);if(!X||!svg.dataset.bvb)return;var b=svg.dataset.bvb.split(',').map(Number),P=X.pl;
+  var zm=Math.max(0.5,Math.min(60,b[2]/vb[2])),w=b[2]/zm,h=b[3]/zm,cx=vb[0]+vb[2]/2,cy=vb[1]+vb[3]/2;
+  P.zm=zm;P.pcx=cx-(b[0]+b[2]/2);P.pcy=cy-(b[1]+b[3]/2);
+  svg.setAttribute('viewBox',[cx-w/2,cy-h/2,w,h].map(function(v){return v.toFixed(2)}).join(' '));
+}
+function pvZoom_(k,f,cx,cy){
+  var svg=document.getElementById(k+'-svg');if(!svg)return;var v=svg.viewBox.baseVal,p={x:v.x+v.width/2,y:v.y+v.height/2};
+  if(cx!=null){var ctm=svg.getScreenCTM();if(ctm){var pt=svg.createSVGPoint();pt.x=cx;pt.y=cy;p=pt.matrixTransform(ctm.inverse())}}
+  pvSet_(k,svg,[p.x-(p.x-v.x)/f,p.y-(p.y-v.y)/f,v.width/f,v.height/f]);
+}
+(function(){   // 預覽縮放:滾輪、雙指、平移、方向鍵
+  var ptrs={},pan=null,pinch=null,active=false;
+  function svgOf(t){var s=t&&t.closest&&t.closest('svg[id$="-svg"]');return s&&s.closest('[data-plx]')?s:null}
+  document.addEventListener('wheel',function(e){var s=svgOf(e.target);if(!s)return;e.preventDefault();var k=s.closest('[data-plx]').dataset.plx;pvZoom_(k,e.deltaY<0?1.2:1/1.2,e.clientX,e.clientY)},{passive:false});
+  document.addEventListener('pointerdown',function(e){
+    var s=svgOf(e.target);active=!!s;if(!s)return;try{s.focus({preventScroll:true})}catch(x){}
+    var box=s.closest('[data-plx]'),k=box.dataset.plx;ptrs[e.pointerId]={x:e.clientX,y:e.clientY};
+    var ids=Object.keys(ptrs);
+    if(ids.length===2){
+      var a=ptrs[ids[0]],b=ptrs[ids[1]],ctm=s.getScreenCTM(),v=s.viewBox.baseVal;if(!ctm)return;
+      var pt=s.createSVGPoint();pt.x=(a.x+b.x)/2;pt.y=(a.y+b.y)/2;
+      pinch={k:k,s:s,d0:Math.hypot(a.x-b.x,a.y-b.y)||1,p:pt.matrixTransform(ctm.inverse()),v:[v.x,v.y,v.width,v.height]};pan=null;
+      var g=s.querySelector('[data-plxnew]');if(g&&g.dataset.bx!=null)g.setAttribute('transform','translate('+Number(g.dataset.bx).toFixed(1)+' '+Number(g.dataset.by).toFixed(1)+')');
+      return;
+    }
+    if(!e.target.closest('[data-plxnew]')){
+      var c2=s.getScreenCTM();if(!c2)return;var pt2=s.createSVGPoint();pt2.x=e.clientX;pt2.y=e.clientY;var v2=s.viewBox.baseVal;
+      pan={k:k,s:s,inv:c2.inverse(),p0:pt2.matrixTransform(c2.inverse()),v:[v2.x,v2.y,v2.width,v2.height]};
+      try{s.setPointerCapture(e.pointerId)}catch(x){}
+    }
+  },true);
+  document.addEventListener('pointermove',function(e){
+    if(ptrs[e.pointerId]){ptrs[e.pointerId].x=e.clientX;ptrs[e.pointerId].y=e.clientY}
+    if(pinch){var ids=Object.keys(ptrs);if(ids.length>=2){var a=ptrs[ids[0]],b=ptrs[ids[1]],f=(Math.hypot(a.x-b.x,a.y-b.y)||1)/pinch.d0,v=pinch.v,p=pinch.p;pvSet_(pinch.k,pinch.s,[p.x-(p.x-v[0])/f,p.y-(p.y-v[1])/f,v[2]/f,v[3]/f])}return}
+    if(pan){var pt=pan.s.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;var p=pt.matrixTransform(pan.inv);pvSet_(pan.k,pan.s,[pan.v[0]-(p.x-pan.p0.x),pan.v[1]-(p.y-pan.p0.y),pan.v[2],pan.v[3]])}
+  });
+  function up(e){delete ptrs[e.pointerId];if(Object.keys(ptrs).length<2)pinch=null;if(!Object.keys(ptrs).length)pan=null}
+  document.addEventListener('pointerup',up);document.addEventListener('pointercancel',up);
+  document.addEventListener('keydown',function(e){
+    if(!/^Arrow(Up|Down|Left|Right)$/.test(e.key)||e.ctrlKey||e.metaKey||e.altKey)return;
+    var el=document.activeElement,tag=el&&el.tagName;if(tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA')return;
+    var svg=null,boxes=[].slice.call(document.querySelectorAll('[data-plx]'));
+    for(var i=0;i<boxes.length;i++){var s=boxes[i].querySelector('svg[id$="-svg"]');if(s&&s.getClientRects().length){svg=s;break}}
+    if(!svg||!(active||el===svg))return;
+    var k=svg.closest('[data-plx]').dataset.plx,X=plx_(k);if(!X)return;
+    var P=X.pl,s5=(P.step||50)*(e.shiftKey?5:1);
+    if(e.key==='ArrowRight')P.east+=s5;else if(e.key==='ArrowLeft')P.east-=s5;else if(e.key==='ArrowUp')P.north+=s5;else P.north-=s5;
+    e.preventDefault();cadPvSync_(k);var n=document.getElementById(k+'-svg');if(n){try{n.focus({preventScroll:true})}catch(x){}}
+  });
+})();
 (function(){
   var drag=null;
   document.addEventListener('click',function(e){
@@ -6961,6 +7027,7 @@ function cadPvSync_(k){
     if((b=t.closest('[data-cad-dir]'))){P.dir=b.dataset.cadDir;P.east=0;P.north=0;cadPvSync_(k);return}
     if((b=t.closest('[data-cad-nudge]'))){var s=P.step||50,d=b.dataset.cadNudge;if(d==='E')P.east+=s;else if(d==='W')P.east-=s;else if(d==='N')P.north+=s;else P.north-=s;cadPvSync_(k);return}
     if(t.closest('[data-cad-reset]')){P.east=0;P.north=0;cadPvSync_(k);return}
+    if((b=t.closest('[data-cad-zoom]'))){var zz=b.dataset.cadZoom;if(zz==='fit'){P.zm=1;P.pcx=0;P.pcy=0;cadPvSync_(k)}else pvZoom_(k,zz==='in'?1.5:1/1.5);return}
   });
   document.addEventListener('input',function(e){var t=e.target;if(!t||!t.closest)return;var box=t.closest('[data-plx]');if(!box||t.id!==box.dataset.plx+'-gap')return;var X=plx_(box.dataset.plx);if(!X)return;X.pl.gap=Number(t.value)||0;cadPvSync_(box.dataset.plx)});
   document.addEventListener('change',function(e){var t=e.target;if(!t)return;
@@ -7109,7 +7176,7 @@ function cadApply(){
   var btn=$('[data-cad-apply]');if(btn)btn.disabled=true;toast('處理中…');
   var pid=CAD.pid;
   api('mergeGeo',{projectId:pid,geo:r.geo,replace:replace,areas:cadAreasMap_(pid),place:{dir:($('#cad-dir')||{}).value||'E',gap:($('#cad-gap')||{}).value,east:($('#cad-e')||{}).value,north:($('#cad-n')||{}).value},caption:replace?'':(r.sec||'')}).then(function(x){
-    GEOC[pid]=undefined;geoLsDel_(pid);if(PRJ[pid])PRJ[pid]._geoLazy=true;AP.list=null;toast('完成:現在圖上有 '+x.parcels+' 筆地號('+x.sections.join('、')+')。'+(x.skipped?'其中 '+x.skipped+' 筆兩份都有,保留現有的。':''));
+    GEOC[pid]=undefined;geoLsDel_(pid);if(PRJ[pid])PRJ[pid]._geoLazy=true;AP.list=null;toast('完成:現在圖上有 '+x.parcels+' 筆地號('+x.sections.join('、')+')。'+(x.skipped?'其中 '+x.skipped+' 筆兩份都有、這次沒有換掉(新圖對不上位置,現有的保留)。':'')+(x.replaced?'已用新上傳的圖更新 '+x.replaced+' 筆地號。':''));
     var d=$('#dlg-cad');if(d&&d.open)d.close();CAD=null;return ensureGeo(pid)}).then(function(){renderAdmin()}).catch(function(er){if(btn)btn.disabled=false;if(er.auth)showLogin('登入已過期,請重新登入');else toast('失敗:'+(er.userMessage||er.message))});
 }
 document.addEventListener('click',function(e){
@@ -7464,6 +7531,15 @@ function geoEdPath_(pc){
   Object.keys(g.parcels).forEach(function(k){var q=g.parcels[k];if((q.pc||first)!==pc)return;d+='M'+q.pts.map(function(pt){return pt[0]+','+pt[1]}).join('L')+'Z'});
   return d;
 }
+var GEQT=0;
+/* 只移動那一段(不重畫整張圖),稍等一下才補畫一次整張圖和下方表格:圖大的時候按方向鍵、放開拖曳才不會卡 */
+function geoEdQuick_(q){
+  var svg=$('#ged-svg'),g=svg&&svg.querySelector('[data-gepc="'+q.id+'"]');
+  if(!g||!GE||!GE.g){geoEdRender_();return}
+  var sc=GE.g.scale||1,dx=q.east/sc,dy=-q.north/sc;
+  g.setAttribute('transform','translate('+dx.toFixed(1)+' '+dy.toFixed(1)+')');g.dataset.bx=dx;g.dataset.by=dy;
+  clearTimeout(GEQT);GEQT=setTimeout(function(){if(GE)geoEdRender_()},80);
+}
 function geoEdRender_(){
   var el=$('#geoed-body');if(!el||!GE)return;
   var h='<h2>調整圖資位置</h2>';
@@ -7512,7 +7588,7 @@ function geoEdRender_(){
     if(t.closest('[data-ged-cancel]')){var d=$('#dlg-geoed');if(d&&d.open)d.close();GE=null;return}
     if((b=t.closest('[data-ged-sel]'))){GE.sel=b.dataset.gedSel;geoEdRender_();return}
     if((b=t.closest('[data-ged-nudge]'))){var a=b.dataset.gedNudge.split('|'),q=pcOf(a[0]);if(!q)return;GE.sel=q.id;var s=GE.step;
-      if(a[1]==='E')q.east+=s;else if(a[1]==='W')q.east-=s;else if(a[1]==='N')q.north+=s;else q.north-=s;geoEdRender_();return}
+      if(a[1]==='E')q.east+=s;else if(a[1]==='W')q.east-=s;else if(a[1]==='N')q.north+=s;else q.north-=s;geoEdQuick_(q);return}
     if((b=t.closest('[data-ged-zoom]'))){geoEdZoomBtn_(b.dataset.gedZoom);return}
     if((b=t.closest('[data-ged-reset]'))){var q2=pcOf(b.dataset.gedReset);if(q2){q2.east=0;q2.north=0;geoEdRender_()}return}
     if((b=t.closest('[data-ged-del]'))){var q3=pcOf(b.dataset.gedDel);if(q3){q3.del=!q3.del;if(GE.pieces.every(function(x){return x.del})){q3.del=false;toast('不能把所有圖都刪掉。要整張重來請用「取代圖資」。')}geoEdRender_()}return}
@@ -7531,7 +7607,7 @@ function geoEdRender_(){
     var pt=svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;var p0=pt.matrixTransform(ctm.inverse());
     dg={g:g,svg:svg,inv:ctm.inverse(),x:p0.x,y:p0.y,bx:Number(g.dataset.bx),by:Number(g.dataset.by),ddx:0,ddy:0,id:q.id};
     try{svg.setPointerCapture(e.pointerId)}catch(x){}
-    g.style.cursor='grabbing';svg.style.shapeRendering='optimizeSpeed';e.preventDefault();
+    g.style.cursor='grabbing';svg.style.shapeRendering='optimizeSpeed';svg.classList.add('gedrag');g.style.willChange='transform';e.preventDefault();
   });
   document.addEventListener('pointermove',function(e){
     if(!dg)return;var pt=dg.svg.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;var p=pt.matrixTransform(dg.inv);
@@ -7540,8 +7616,8 @@ function geoEdRender_(){
     d0.raf=requestAnimationFrame(function(){d0.raf=0;d0.g.setAttribute('transform','translate('+(d0.bx+d0.ddx).toFixed(1)+' '+(d0.by+d0.ddy).toFixed(1)+')')});
   });
   function end(){
-    if(!dg)return;var d=dg;dg=null;if(d.raf)cancelAnimationFrame(d.raf);d.svg.style.shapeRendering='';
-    if(GE){var q=pcOf(d.id);if(q&&(d.ddx||d.ddy)){var sc=GE.g.scale||1;q.east+=d.ddx*sc;q.north-=d.ddy*sc}geoEdRender_()}
+    if(!dg)return;var d=dg;dg=null;if(d.raf)cancelAnimationFrame(d.raf);d.svg.style.shapeRendering='';d.svg.classList.remove('gedrag');d.g.style.willChange='';
+    if(GE){var q=pcOf(d.id);if(q&&(d.ddx||d.ddy)){var sc=GE.g.scale||1;q.east+=d.ddx*sc;q.north-=d.ddy*sc;geoEdQuick_(q);return}geoEdRender_()}
   }
   document.addEventListener('pointerup',end);document.addEventListener('pointercancel',end);
 })();
@@ -7603,7 +7679,7 @@ function geoEdZoomBtn_(k){
     e.preventDefault();GE.sel=q.id;
     var st=e.altKey?1:(GE.step||20)*(e.shiftKey?5:1);
     if(dir==='E')q.east+=st;else if(dir==='W')q.east-=st;else if(dir==='N')q.north+=st;else q.north-=st;
-    geoEdRender_();
+    geoEdQuick_(q);
   });
 })();
 function geoEdSave_(){
