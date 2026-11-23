@@ -614,6 +614,8 @@ a.btn{text-decoration:none}
   #dlg-int .actions .btn{flex:1;min-height:52px;font-size:16px}
   #dlg-int .actions .btn.primary{flex:2}
 }
+button.link{text-align:left;font:inherit;font-weight:700;display:inline;max-width:100%;overflow-wrap:anywhere;word-break:break-all;line-height:1.5}
+.wrapcell{text-align:left}
 </style>
 <script>
 (function(){
@@ -5098,7 +5100,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-23-q';
+var FRONT_VER='2026-11-23-r';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
