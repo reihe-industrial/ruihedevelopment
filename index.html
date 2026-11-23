@@ -438,7 +438,8 @@ input[type=file]::file-selector-button:hover{background:var(--surface-2)}
 .setgrid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .setstages{grid-template-columns:repeat(4,minmax(0,1fr))}
 td .btn.small{margin:0 4px 4px 0}
-@media (max-width:1180px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:minmax(0,1fr)}.setgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.setstages{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:760px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:1180px){.grid2{grid-template-columns:minmax(0,1fr)}.setgrid{grid-template-columns:repeat(2,minmax(0,1fr))}.setstages{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:640px){.setgrid{grid-template-columns:minmax(0,1fr)}.row2{grid-template-columns:minmax(0,1fr)}}
 
 .top{min-height:56px;padding:6px 20px}
@@ -452,10 +453,12 @@ select,input[type=text],input[type=search],input[type=date],input[type=number],i
 .panel{padding:18px}
 .card{padding:14px}
 .metric{border-radius:var(--r);padding:12px 14px;background:var(--surface);min-height:64px}
-.metric .v{font-size:24px}
+.metric .v{font-size:19px;white-space:normal;word-break:keep-all;overflow-wrap:normal;line-height:1.25}
+.side details.side-more>.filesbtn{width:calc(100% - 24px)}
+.metric .v small,.metric .v span{font-size:.75em}
 .kpi{border-radius:var(--r);padding:12px 14px}
 .kpi .k{font-size:13px}
-.kpi .v{font-size:24px}
+.kpi .v{font-size:24px;overflow-wrap:anywhere}
 .tablewrap{border-radius:var(--r)}
 th{font-size:12px;font-weight:700;letter-spacing:.02em;padding:10px 12px}
 td{padding:12px}
@@ -490,7 +493,7 @@ a.btn{text-decoration:none}
   .pfbar input[type=search]{flex:1 1 100%}
   #visits-page input[type=search]{width:100%}
   h1{font-size:22px}
-  .metric .v{font-size:22px}
+  .metric .v{font-size:19px}
   .panel{padding:14px}
   #mnav{border-radius:0}
   #mnav a,#mnav button{min-height:62px;font-size:11px}
@@ -511,6 +514,11 @@ a.btn{text-decoration:none}
   #visits-page td::before{content:attr(data-label);flex:none;font-size:12px;color:var(--ink-2);text-align:left;padding-top:2px}
   #visits-page td:first-child{font-weight:700}
   #visits-page td[colspan]::before{content:none}
+}
+@media (min-width:761px) and (max-width:1180px){
+  #visits-page .bar-tools:has(select){display:grid;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr);gap:8px 10px;align-items:center}
+  #visits-page .bar-tools:has(select)>.seg{grid-column:1/-1;min-width:0!important;width:100%}
+  #visits-page .bar-tools:has(select) select{width:100%}
 }
 @media (min-width:761px) and (max-width:1180px){
   /* 平板:功能列改成左側直條 */
@@ -4989,7 +4997,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-23-b';
+var FRONT_VER='2026-11-23-d';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
