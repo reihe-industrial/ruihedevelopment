@@ -530,7 +530,8 @@ a.btn{text-decoration:none}
   #view-map.on #maptools.collapsed>.tsep{display:block!important}
 }
 
-.seg button{white-space:nowrap}
+.seg button{white-space:nowrap;min-width:0}
+.side .seg{padding:3px;gap:2px}.side .seg button{padding:0 2px!important;font-size:14px!important}
 @media (max-width:760px){.seg button{padding:0 4px;font-size:14px}}
 .expcard .btn,.expcard button{white-space:nowrap;flex:none}
 @media (max-width:760px){
@@ -3072,6 +3073,8 @@ function approxShare(f){
   return {txt:(Math.round(f*1000)/10)+'%',f:f};
 }
 function normShare(v){
+  var jm=String(v==null?'':v).match(/^(.*?)\s*[\(（]?公同共有\s*(\d+)\s*人[\)）]?$/);   /* 公同共有:整組共用一份持分,例「18/500(公同共有5人)」每人算 1/5,面積才不會重複 */
+  if(jm){var jb=normShare(jm[1]),jn=+jm[2];if(!jb||!(jn>1))return jb;return {txt:jb.txt+'(公同共有'+jn+'人)',f:jb.f/jn}}
   var t=toHalf(v).replace(/\s+/g,'').replace(/\*/g,'').replace(/^(權利範圍|持分|應有部分)[::]?/,'');if(!t)return null;
   if(/^(全部|全|1|100%|1\/1|1\.0+)$/.test(t))return {txt:'1',f:1};
   var m=t.match(/^([一二兩三四五六七八九十\d]+)分之([一二兩三四五六七八九十\d]+)$/);
@@ -3576,6 +3579,12 @@ function deedRestrictDetail_(e){
   if((m=t.match(/[，,](\d+年\d+月\d+日)登記[。]?$/)))d.push(m[1]+'登記');
   return (who?who+(sh?' '+sh:'')+':':'')+ty+(d.length?'('+d.join(';')+')':'');
 }
+/* 所有權部其他登記事項寫「主登記次序17~21公同共有」:這幾列是同一組公同共有人,共用同一份持分,在持分後面標上人數 */
+function deedJointMark_(arr){
+  var g={};
+  (arr||[]).forEach(function(e){var m=String(e.other||'').match(/主登記次序\s*([\d~～、,，]+)\s*公同共有/);if(m&&e.share)(g[m[1]]=g[m[1]]||[]).push(e)});
+  Object.keys(g).forEach(function(k){var n=g[k].length;if(n<2)return;g[k].forEach(function(e){if(!/公同共有\s*\d+\s*人/.test(e.share))e.share=String(e.share)+'(公同共有'+n+'人)'})});
+}
 function deedParseOwnership_(lines){
   var entries=[],cur=null,waiting='',cont=false,oc=false;
   function start(){cur={date:'',reason:'',name:'',id:'',share:'',addr:'',order:'',link:'',other:'',declared:0,prev:0};entries.push(cur);waiting='';cont=false;oc=false}
@@ -3675,6 +3684,7 @@ function parseOneDeed_(rawPages){
       var vm=content.join('\n').match(/公告土地現值\s*:?\s*\**\s*([\d,]+(?:\.\d+)?)\s*元/);
       rec.value=vm?deedNum_(vm[1]):0;
       rec.ownership=deedParseOwnership_(own);
+      deedJointMark_(rec.ownership);
       rec.ownership.forEach(function(e){if(e.name==='中華民國')e.id=''});   /* 中華民國的「統一編號」是政府機關代號(例如 0000000158),不是身分證字號 */
       rec.liens=deedParseLiens_(lien);rec.markOther=deedMarkOther_(content);rec.lienDetail=deedLienDetail_(lien);
       /* 當期申報地價、前次移轉現值、限制登記:每位所有權人各有一段,整筆地號取最新登記的那一位;限制登記取全部所有權人的聯集 */
@@ -8061,7 +8071,7 @@ function rlSave_(){
 }
 function rlNoParts_(n){var m=String(n).split('-');return [parseInt(m[0],10)||0,parseInt(m[1]||'0',10)||0]}
 function rlNo_(n){var a=rlNoParts_(n);return ('000'+a[0]).slice(-4)+'-'+('000'+a[1]).slice(-4)}
-function rlFrac_(sh){var m=String(sh||'').match(/(\d+)分之(\d+)/);return m?{n:+m[2],d:+m[1]}:null}
+function rlFrac_(sh){var m=String(sh||'').match(/(\d+)分之(\d+)/),j=String(sh||'').match(/公同共有\s*(\d+)\s*人/);return m?{n:+m[2],d:+m[1],j:j&&+j[1]>1?+j[1]:1}:null}
 var RLC={pid:'',recs:[],saved:'',state:'',err:''};   // 雲端已存的謄本資料(依匯入匯出頁選的專案)
 function rlAll_(){return RLC.recs.map(function(r){return {rec:r,fileName:'(雲端)'}}).concat(RL.recs)}
 function rlProj_(){return (typeof DX!=='undefined'&&DX.proj)||S.proj}
@@ -8228,11 +8238,11 @@ async function rlExport_(){
     });
     // 歸戶總表(每位所有權人 × 每個地號一列,可篩選)
     var w2=wb.addWorksheet('歸戶總表');
-    var H2=['所有權人','統一編號','住址','鄉鎮市區','段','地號','面積(㎡)','持分比例','持分面積(㎡)','主登記次序','登記日期','登記原因','所有權部其他登記事項','土地標示部其他登記事項','相關他項權利','公告土地現值'];
+    var H2=['所有權人','統一編號','住址','鄉鎮市區','段','地號','面積(㎡)','持分比例','持分面積(㎡)(公同共有已平均分攤)','主登記次序','登記日期','登記原因','所有權部其他登記事項','土地標示部其他登記事項','相關他項權利','公告土地現值'];
     rlAddRow_(w2,H2);
     owners.forEach(function(g){g.rows.forEach(function(r){
       var p=r.p,o=r.o,f=rlFrac_(o.share);
-      rlAddRow_(w2,[g.name,g.id,rlAddr_(g,o),p.town||'',p.district||'',rlNo_(p.number),p.areaM2==null?'':p.areaM2,f?(f.n+'/'+f.d):(o.share||''),(f&&p.areaM2!=null)?Math.round(p.areaM2*f.n/f.d*100)/100:'',parseInt(o.order,10)||o.order||'',o.date||'',o.reason||'',deedBlank_(o.other),p.markOther||'',rlLien_(p,o),p.value||'']);
+      rlAddRow_(w2,[g.name,g.id,rlAddr_(g,o),p.town||'',p.district||'',rlNo_(p.number),p.areaM2==null?'':p.areaM2,f?(f.n+'/'+f.d):(o.share||''),(f&&p.areaM2!=null)?Math.round(p.areaM2*f.n/f.d/f.j*100)/100:'',parseInt(o.order,10)||o.order||'',o.date||'',o.reason||'',deedBlank_(o.other),p.markOther||'',rlLien_(p,o),p.value||'']);
     })});
     [12,14,24,9,8,11,10,9,12,9,14,10,60,40,40,14].forEach(function(w,i){w2.getColumn(i+1).width=w});
     w2.getRow(1).font={bold:true};w2.views=[{state:'frozen',ySplit:1}];w2.autoFilter={from:{row:1,column:1},to:{row:1,column:H2.length}};
@@ -8241,7 +8251,7 @@ async function rlExport_(){
     rlAddRow_(w3,['段','地號','面積(㎡)','所有權人筆數','持分加總是否=1','謄本列印日','土地標示部其他登記事項']);
     var bad=0;
     parcels.slice().sort(rlParcelCmp_).forEach(function(p){
-      var s=0,okf=true;(p.ownership||[]).forEach(function(o){var f=rlFrac_(o.share);if(f)s+=f.n/f.d;else okf=false});
+      var s=0,okf=true;(p.ownership||[]).forEach(function(o){var f=rlFrac_(o.share);if(f)s+=f.n/f.d/f.j;else okf=false});
       var ok=okf&&Math.abs(s-1)<0.0001;if(!ok)bad++;
       rlAddRow_(w3,[p.district||'',rlNo_(p.number),p.areaM2==null?'':p.areaM2,(p.ownership||[]).length,ok?'是':'否(請對照謄本)',p.printDate||'',p.markOther||'']);
     });
