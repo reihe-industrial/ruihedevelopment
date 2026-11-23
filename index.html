@@ -420,8 +420,14 @@ textarea.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
 .flag.bad{background:#FDE3E1;color:#8A1F17}.flag.ok{background:#E1F1E8;color:#14573A}
 .pfoot{display:flex;justify-content:flex-end}
 .pkpis{margin-top:10px}
+.field input[type=email],.field input[type=number],.field input[type=password],.field input[type=tel],.field input[type=url]{width:100%;min-height:44px;border:1px solid var(--line);background:var(--surface);border-radius:var(--r-s);padding:0 12px}
+input[type=file]{max-width:100%;font-size:14px}
+input[type=file]::file-selector-button{min-height:40px;margin-right:12px;padding:0 16px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--surface);color:var(--ink);font:inherit;cursor:pointer}
+input[type=file]::file-selector-button:hover{background:var(--surface-2)}
+.page{max-width:1180px;margin-left:auto;margin-right:auto}
 /* 格子要整齊:同一排一樣高、欄寬一樣、按鈕固定在卡片底部 */
-.kpis,.metrics,.pcards,.grid2,.setgrid,.setstages{align-items:stretch;grid-auto-rows:1fr}
+.kpis,.metrics,.pcards,.setgrid,.setstages{align-items:stretch;grid-auto-rows:1fr}
+.grid2{align-items:stretch;grid-auto-rows:auto}
 .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
 .kpi,.metric,.pcards>*{height:100%;box-sizing:border-box}
 .pcards>*{display:flex;flex-direction:column}
@@ -447,7 +453,9 @@ select,input[type=text],input[type=search],input[type=date],input[type=number],i
 .card{padding:14px}
 .metric{border-radius:var(--r);padding:12px 14px;background:var(--surface);min-height:64px}
 .metric .v{font-size:24px}
-.kpi{border-radius:var(--r)}
+.kpi{border-radius:var(--r);padding:12px 14px}
+.kpi .k{font-size:13px}
+.kpi .v{font-size:24px}
 .tablewrap{border-radius:var(--r)}
 th{font-size:12px;font-weight:700;letter-spacing:.02em;padding:10px 12px}
 td{padding:12px}
@@ -474,6 +482,13 @@ a.btn{text-decoration:none}
   td{padding:12px 10px}
 }
 @media (max-width:760px){
+  .bar-tools,.pfbar{display:flex;flex-wrap:wrap;gap:6px 10px}
+  .bar-tools .seg{min-width:0!important;width:100%;grid-template-columns:repeat(4,1fr)!important}
+  .bar-tools .seg button{padding:0 2px;font-size:14px}
+  .bar-tools label,.pfbar label{flex:1 1 100%;margin:6px 0 -2px}
+  .bar-tools select,.pfbar select{flex:1 1 100%;width:100%}
+  .pfbar input[type=search]{flex:1 1 100%}
+  #visits-page input[type=search]{width:100%}
   h1{font-size:22px}
   .metric .v{font-size:22px}
   .panel{padding:14px}
@@ -4974,7 +4989,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-23-a';
+var FRONT_VER='2026-11-23-b';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
