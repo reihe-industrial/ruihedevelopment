@@ -586,6 +586,11 @@ a.btn{text-decoration:none}
   #view-map.on .detail .dact .dtoggle{flex:1}
   #view-map.on .detail[data-has="1"].open .dact{position:sticky;bottom:-12px;z-index:2;margin:12px -16px 0!important;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line)}
 }
+@media (min-width:761px) and (max-width:1180px){
+  /* 平板:功能列在左邊(76px),底部詳細資料卡要讓開左邊的功能列、貼著畫面底部,不要被切掉 */
+  #view-map.on .detail[data-has="1"]{left:76px;bottom:0;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+  #view-map.on .detail[data-has="1"].open{max-height:68vh}
+}
 @media (max-width:760px){
   /* 填訪談紀錄:整個畫面,字夠大(16px 以上手機不會自動放大),儲存鍵固定在底部 */
   #dlg-int{width:100%;max-width:none;height:100dvh;max-height:none;margin:0;padding:0;border:0;border-radius:0}
@@ -5086,7 +5091,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-23-o';
+var FRONT_VER='2026-11-23-p';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
