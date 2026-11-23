@@ -590,6 +590,13 @@ a.btn{text-decoration:none}
   /* 平板:功能列在左邊(76px),底部詳細資料卡要讓開左邊的功能列、貼著畫面底部,不要被切掉 */
   #view-map.on .detail[data-has="1"]{left:76px;bottom:0;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
   #view-map.on .detail[data-has="1"].open{max-height:68vh}
+  /* 選了地號、底部出現卡片時,圖例和比例尺往上移,不要被卡片蓋住 */
+  #view-map.on:has(.detail[data-has="1"]) .maplegend{bottom:156px!important}
+  #view-map.on:has(.detail[data-has="1"]) #mapscale{bottom:156px!important}
+}
+@media (max-width:760px){
+  #view-map.on:has(.detail[data-has="1"]) .maplegend{bottom:218px!important}
+  #view-map.on:has(.detail[data-has="1"]) #mapscale{bottom:218px!important}
 }
 @media (max-width:760px){
   /* 填訪談紀錄:整個畫面,字夠大(16px 以上手機不會自動放大),儲存鍵固定在底部 */
@@ -5091,7 +5098,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-23-p';
+var FRONT_VER='2026-11-23-q';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
