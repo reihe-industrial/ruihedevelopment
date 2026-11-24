@@ -1258,7 +1258,7 @@ function renderSide(){
   h+='<h3>著色方式</h3><div class="seg" role="group" aria-label="著色方式" style="'+(pr.geo?'grid-template-columns:repeat(4,1fr)':'')+'">'
     +'<button type="button" data-mode="int" aria-pressed="'+(S.mode==='int')+'">意願</button>'
     +'<button type="button" data-mode="own" aria-pressed="'+(S.mode==='own')+'">承辦人</button>'
-    +'<button type="button" data-mode="fu" aria-pressed="'+(S.mode==='fu')+'">跟進</button>'+(pr.geo?'<button type="button" data-mode="zone" aria-pressed="'+(S.mode==='zone')+'">分區</button>':'')+'</div>'+(pr.geo?'<label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-top:8px"><input type="checkbox" id="show-zones" '+(S.showZones===false?'':'checked')+' style="width:auto"> 疊上細部計畫分區(橘:產業專用區、粉:道路、綠:公園綠地)</label><p class="small muted" style="margin:6px 0 0">地籍形狀取自地籍圖謄本;分區取自細部計畫示意圖,用線條比對對位,誤差約數公尺,僅供參考。</p>':'');
+    +'<button type="button" data-mode="fu" aria-pressed="'+(S.mode==='fu')+'">跟進</button>'+(pr.geo?'<button type="button" data-mode="zone" aria-pressed="'+(S.mode==='zone')+'">分區</button>':'')+'</div>'+(pr.geo?'<label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-top:8px"><input type="checkbox" id="show-zones" '+(S.showZones===false?'':'checked')+' style="width:auto"> '+(pr.geo.zones&&pr.geo.zones['產業專用區']?'疊上細部計畫分區(橘:產業專用區、粉:道路、綠:公園綠地)':'疊上分區色塊(顏色對照見地圖左下角圖例)')+'</label><p class="small muted" style="margin:6px 0 0">'+(pr.geo.zones&&pr.geo.zones['產業專用區']?'地籍形狀取自地籍圖謄本;分區取自細部計畫示意圖,用線條比對對位,誤差約數公尺,僅供參考。':'地籍形狀取自地籍圖謄本;分區取自城鄉分區圖截圖,用地籍線對位,誤差約一兩公尺,橫跨兩種分區的地號僅供參考。')+'</p>':'');
   var opts='<option value="all">全部區塊</option>'+pr.blocks.map(function(b,i){return '<option value="'+i+'">'+esc(b.name)+'('+esc(b.use)+')</option>'}).join('');
   h+='<h3>篩選</h3><div class="field" style="margin-top:0"><label for="f-block-s">區塊</label><select id="f-block-s">'+opts+'</select></div>';
   h+='<div class="field"><span class="lab">意願等級(點一下顯示或隱藏)</span><div class="chips">';
@@ -5100,7 +5100,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-23-r';
+var FRONT_VER='2026-11-24-a';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -8654,6 +8654,24 @@ document.addEventListener('click',function(e){
   selectParcel(p.id,false);MAPASG=p;MAPDRAW=null;var sv=document.getElementById('map');if(sv)sv.style.cursor='crosshair';mapAsgBar_();
   toast('請在圖上點選「'+pname(p)+'」對應的那一塊。');
 });
+
+/* ===== 地圖圖例:底下疊的分區色塊也要看得到「顏色 = 哪個分區」(任何著色模式都顯示,切到「分區」模式時由原本的圖例負責) ===== */
+var ZC_FIX_={'產業專用區':'#D98C1E','細部計畫道路用地':'#E86CE8','公園用地兼滯洪池使用':'#2FBF55','綠地用地':'#8EE05A','廣場用地兼供停車場使用':'#C21DC2'};
+function zoneSwatch_(g,k){
+  var c=ZC_FIX_[k]||(g.zc&&g.zc[k])||'#999999',m=/^#?([0-9a-f]{6})$/i.exec(String(c));if(!m)return c;
+  var v=parseInt(m[1],16),bg=[223,229,224],a=0.34;
+  return 'rgb('+[v>>16&255,v>>8&255,v&255].map(function(x,i){return Math.round(x*a+bg[i]*(1-a))}).join(',')+')';
+}
+function zoneLegend_(){
+  var el=$('#maplegend'),pr=PRJ[S.proj],g=pr&&pr.geo;
+  if(!el||!g||S.mode==='zone'||S.showZones===false)return;
+  var ks=Object.keys(g.zones||{}).filter(function(k){return (g.zones[k]||[]).length});if(!ks.length)return;
+  var h='<span style="flex-basis:100%;height:0;padding:0"></span><span class="small"><b>底圖分區:</b></span>';
+  ks.forEach(function(k){h+='<span><i class="dot" style="width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.3);background:'+zoneSwatch_(g,k)+'"></i>'+esc(k)+'</span>'});
+  el.insertAdjacentHTML('beforeend',h);
+}
+(function(){var o=paintLegend;paintLegend=function(){o.apply(this,arguments);try{zoneLegend_()}catch(e){}}})();
+document.addEventListener('change',function(e){if(e.target&&e.target.id==='show-zones')setTimeout(function(){paintLegend()},0)});
 
 /* ---------- start ---------- */
 function pickStart(){
