@@ -517,6 +517,8 @@ a.btn{text-decoration:none}
   #view-map.on .detail:not([data-has="1"]){display:none}
   #view-map.on .zoom{left:332px;top:auto;bottom:16px;z-index:6}
   #view-map.on .maplegend,#view-map.on .maphint{display:none}
+  #view-map.on .maplegend.has-zone{display:flex;left:392px;bottom:84px;top:auto;z-index:6;max-width:min(560px,calc(100% - 800px))}
+  #view-map.on .maplegend.has-zone:not(.zmode)>span:not(.zl){display:none}
   #view-map.on #mapscale{right:16px!important;bottom:16px!important;left:auto!important;top:auto!important}
   #view-map.on:has(.detail[data-has="1"]) #mapscale{right:372px!important}
   #view-map.on #mapnorth{top:16px!important;left:332px!important;right:auto!important}
@@ -1519,7 +1521,7 @@ function openOwner0(id){
   var h='<div class="dlg-h"><div><h2>'+esc(o.name)+(o.pending?' <span class="pill">待確認姓名</span>':'')+(o.win&&o.win[pid]?' <span class="pill">窗口</span>':'')+'</h2><div class="muted small">'+esc(o.type)+(o.family?' · '+esc(o.family):'')+'</div></div><button class="btn small" type="button" data-close>關閉</button></div>';
   if(see)h+=ownerBriefHTML(o,pid);
   h+='<div class="orow" style="margin:8px 0">'+pill(os.lv)+'<span class="small">電話 '+phoneText(o,pid)+(see?'':'(只有負責的業務看得到)')+'</span></div>';
-  h+=addrLines(o,pid)+(see?'<div class="small muted" style="margin-top:4px">身分證字號/統編 '+(o._priv?esc(o.idno||'未填'):'載入中…')+'</div>'+(o.contact?'<div class="small muted" style="margin-top:4px">聯絡方式 '+esc(o.contact)+'</div>':'')+(o.note?'<div class="small muted" style="margin-top:4px">備註 '+esc(o.note)+'</div>':''):'');
+  h+=addrLines(o,pid)+(see?'<div class="small muted" style="margin-top:4px">身分證字號/統編 '+(o._priv?esc(o.idno||'未填'):'載入中…')+'</div>'+(o.contact?'<div class="small muted" style="margin-top:4px">聯絡方式 '+esc(o.contact)+'</div>':'')+(o.note?'<div class="small muted" style="margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere">備註 '+esc(o.note)+'</div>':''):'');
   var asgHtml=esc(asgText(o,pid));
   if(canAssign)asgHtml='主要 <select id="asg-sel" data-asg-owner="'+o.id+'" aria-label="主要承辦人" style="width:auto">'+pr.staff.map(function(x){return '<option value="'+esc(x)+'"'+(x===asgOf(o,pid)?' selected':'')+'>承辦人'+esc(x)+'</option>'}).join('')+'</select> 次要 <select id="asg2-sel" data-asg2-owner="'+o.id+'" aria-label="次要承辦人" style="width:auto"><option value="">(無)</option>'+pr.staff.map(function(x){return '<option value="'+esc(x)+'"'+(x===asg2Of(o,pid)?' selected':'')+'>承辦人'+esc(x)+'</option>'}).join('')+'</select>';
   h+='<dl><dt>目前專案</dt><dd>'+esc(pr.name)+'</dd><dt>承辦(主要與次要)</dt><dd>'+asgHtml+'</dd><dt>下次跟進</dt><dd>'+(os.next?dueText(os.next):'未排程')+'</dd></dl>';
@@ -1559,6 +1561,7 @@ function ownerEditHTML(o){
   h+='<div class="field"><label for="ed-reg">戶籍地</label><input type="text" id="ed-reg" value="'+esc(regOf(o))+'" placeholder="謄本上的住址"></div>';
   h+='<div class="field"><label for="ed-res">居住地</label><input type="text" id="ed-res" value="'+esc(o.resSame?regOf(o):(o.resAddr||''))+'"'+(o.resSame?' disabled':'')+' placeholder="實際居住的地址">'
     +'<label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;color:var(--ink)"><input type="checkbox" id="ed-same"'+(o.resSame?' checked':'')+' style="width:auto"> 同上(居住地和戶籍地相同)</label></div>';
+  h+='<div class="field"><label for="ed-note">備註</label><textarea id="ed-note" rows="3" maxlength="500" placeholder="例:平日白天不方便接電話,晚上七點後再聯絡">'+esc(o.note||'')+'</textarea></div>';
   return h+'<div class="actions"><button class="btn primary" type="button" data-owner-save="'+o.id+'">儲存</button></div></div>';
 }
 /* ---------- follow-up view ---------- */
@@ -3942,6 +3945,7 @@ function saveOwner(id){
   if(ph){var np=normPhone(ph);if(np!==o.phone){o.phone=np;changed.push('電話')}}
   var idEl=$('#ed-id');if(idEl){var idv=idEl.value.trim().toUpperCase();if(idv!==(o.idno||'')){o.idno=idv;changed.push('身分證字號/統編')}}
   if(reg!==regOf(o)){o.regAddr=reg;changed.push('戶籍地')}
+  var ntEl=$('#ed-note');if(ntEl){var nv=ntEl.value.trim();if(nv!==(o.note||'')){o.note=nv;changed.push('備註')}}
   var newRes=same?'':res;
   if(!!o.resSame!==same||(!same&&newRes!==(o.resAddr||''))){o.resSame=same;o.resAddr=newRes;changed.push('居住地')}
   var ex=null;
@@ -5063,6 +5067,7 @@ function ownerFieldsFor(o,changed){
     else if(k==='電話')f['電話']=o.phone;
     else if(k==='身分證字號/統編')f['身分證字號/統編']=o.idno||'';
     else if(k==='戶籍地')f['戶籍地']=o.regAddr||'';
+    else if(k==='備註')f['備註']=String(o.note||'').slice(0,500);
     else if(k==='居住地'){f['居住地']=o.resAddr||'';f['居住地同戶籍']=o.resSame?'是':'否'}
   });
   return f;
@@ -5130,7 +5135,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-24-b';
+var FRONT_VER='2026-11-24-d';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -8694,15 +8699,18 @@ function zoneSwatch_(g,k){
 }
 function zoneLegend_(){
   var el=$('#maplegend'),pr=PRJ[S.proj],g=pr&&pr.geo;
-  if(!el||!g||S.mode==='zone'||S.showZones===false)return;
+  if(!el)return;el.classList.remove('has-zone','zmode');
+  if(!g||S.showZones===false)return;
+  var any=Object.keys(g.zones||{}).some(function(k){return (g.zones[k]||[]).length});if(!any)return;
+  if(S.mode==='zone'){el.classList.add('has-zone','zmode');return}
   var sz=S.showZl||{},h='';
   ['cur','plan'].forEach(function(L){
     if(sz[L]===false)return;
     var ks=Object.keys(g.zones||{}).filter(function(k){return zLayer_(k)===L&&(g.zones[k]||[]).length});if(!ks.length)return;
-    h+='<span style="flex-basis:100%;height:0;padding:0"></span><span class="small"><b>'+ZLAYER_NAME_[L]+(L==='plan'?'(未實施)':'')+':</b></span>';
-    ks.forEach(function(k){h+='<span><i class="dot" style="width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.3);background:'+zoneSwatch_(g,k)+'"></i>'+esc(zBase_(k))+'</span>'});
+    h+='<span class="zl" style="flex-basis:100%;height:0;padding:0"></span><span class="zl small"><b>'+ZLAYER_NAME_[L]+(L==='plan'?'(未實施)':'')+':</b></span>';
+    ks.forEach(function(k){h+='<span class="zl"><i class="dot" style="width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.3);background:'+zoneSwatch_(g,k)+'"></i>'+esc(zBase_(k))+'</span>'});
   });
-  if(h)el.insertAdjacentHTML('beforeend',h);
+  if(h){el.insertAdjacentHTML('beforeend',h);el.classList.add('has-zone')}
 }
 (function(){var o=paintLegend;paintLegend=function(){o.apply(this,arguments);try{zoneLegend_()}catch(e){}}})();
 document.addEventListener('change',function(e){if(e.target&&e.target.id==='show-zones')setTimeout(function(){paintLegend()},0)});
