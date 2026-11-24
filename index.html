@@ -1045,11 +1045,13 @@ function buildMap(){
     var ZC={'產業專用區':'#D98C1E','細部計畫道路用地':'#E86CE8','公園用地兼滯洪池使用':'#2FBF55','綠地用地':'#8EE05A','廣場用地兼供停車場使用':'#C21DC2'};
     var gz=mk('g',{id:'gz','pointer-events':'none'});
     if(S.showZones===false)gz.style.display='none';
-    Object.keys(pr.geo.zones).forEach(function(k){
-      var zcol=ZC[k]||(pr.geo.zc&&pr.geo.zc[k])||'#999';
+    var zgs={cur:mk('g',{id:'gz-cur'},gz),plan:mk('g',{id:'gz-plan'},gz)},zsh=S.showZl||{};
+    if(zsh.cur===false)zgs.cur.style.display='none';if(zsh.plan===false)zgs.plan.style.display='none';
+    Object.keys(pr.geo.zones).sort(function(a,b){return (zLayer_(a)==='plan')-(zLayer_(b)==='plan')}).forEach(function(k){
+      var zcol=ZC[zBase_(k)]||(pr.geo.zc&&pr.geo.zc[k])||'#999',zg=zgs[zLayer_(k)];
       pr.geo.zones[k].forEach(function(rings){
         var d=rings.map(function(rg){return 'M'+rg.map(function(q){return q.join(',')}).join('L')+'Z'}).join('');
-        mk('path',{d:d,fill:zcol,'fill-opacity':0.34,'fill-rule':'evenodd',stroke:'none'},gz);
+        mk('path',{d:d,fill:zcol,'fill-opacity':0.34,'fill-rule':'evenodd',stroke:'none'},zg);
       });
     });
     var dv=pr.geo.dev.map(function(rings){return rings.map(function(rg){return 'M'+rg.map(function(q){return q.join(',')}).join('L')+'Z'}).join('')}).join('');
@@ -1076,7 +1078,7 @@ function paintMap(){
     var p=e.p,s=pState(p),fill,t2;
     if(S.mode==='int'){fill=PAL.int[s.lv];t2=s.lv==='N'?'—':s.lv}
     else if(S.mode==='own'){fill=ownColor(s.assignee);t2=String(s.assignee).slice(0,1)}
-    else if(S.mode==='zone'){var dz=p.planZone||'';fill=zFill(dz);t2=dz?(ZABB[dz]||dz.charAt(0)):''}
+    else if(S.mode==='zone'){var dz=zoneDom_(p);fill=zFill(dz);t2=dz?(ZABB[zBase_(dz)]||zBase_(dz).charAt(0)):''}
     else{var f=fuClass(s.next);fill=PAL.fu[f.k];t2=f.ch}
     e.poly.setAttribute('fill',fill);
     e.l1.setAttribute('fill',TXT[S.mode]);
@@ -1120,10 +1122,10 @@ function paintMap(){
 }
 function paintLegendStar(){return PP().some(isFactory)?'<span><b>*</b> 有特定工廠</span>':''}
 function paintLegend(){
-  var h='<span class="small"><b>'+({int:'依意願著色',own:'依承辦人著色',fu:'依「下次跟進日」著色',zone:'依細部計畫分區著色'})[S.mode]+':</b></span>';
+  var h='<span class="small"><b>'+({int:'依意願著色',own:'依承辦人著色',fu:'依「下次跟進日」著色',zone:'依'+ZLAYER_NAME_[zLayerNow_()]+'著色'})[S.mode]+':</b></span>';
   if(S.mode==='int')LEVELS.forEach(function(l){h+='<span><i class="dot" style="background:'+l.c+'"></i>'+lvl(l)+'</span>'});
   else if(S.mode==='own')staffIds().forEach(function(a){h+='<span><i class="dot" style="background:'+ownColor(a)+'"></i>承辦人'+esc(a)+'</span>'});
-  else if(S.mode==='zone'){var gz2=PRJ[S.proj]&&PRJ[S.proj].geo?Object.keys(PRJ[S.proj].geo.zones):[];gz2.forEach(function(k){h+='<span><i class="dot" style="background:'+zFill(k)+'"></i>'+(ZABB[k]||k.charAt(0))+' '+esc(k)+'</span>'})}
+  else if(S.mode==='zone'){var gz2=PRJ[S.proj]&&PRJ[S.proj].geo?Object.keys(PRJ[S.proj].geo.zones).filter(function(k){return zLayer_(k)===zLayerNow_()&&(PRJ[S.proj].geo.zones[k]||[]).length}):[];gz2.forEach(function(k){h+='<span><i class="dot" style="background:'+zFill(k)+'"></i>'+(ZABB[zBase_(k)]||zBase_(k).charAt(0))+' '+esc(zBase_(k))+'</span>'})}
   else[['over','逾 逾期(跟進日已過)'],['soon','近 未來 7 天內要跟進'],['later','後 7 天以後才要跟進'],['none','— 還沒排下次跟進']].forEach(function(x){h+='<span><i class="dot" style="background:'+PAL.fu[x[0]]+'"></i>'+x[1]+'</span>'});
   h+=paintLegendStar();$('#maplegend').innerHTML=h;
 }
@@ -1258,7 +1260,7 @@ function renderSide(){
   h+='<h3>著色方式</h3><div class="seg" role="group" aria-label="著色方式" style="'+(pr.geo?'grid-template-columns:repeat(4,1fr)':'')+'">'
     +'<button type="button" data-mode="int" aria-pressed="'+(S.mode==='int')+'">意願</button>'
     +'<button type="button" data-mode="own" aria-pressed="'+(S.mode==='own')+'">承辦人</button>'
-    +'<button type="button" data-mode="fu" aria-pressed="'+(S.mode==='fu')+'">跟進</button>'+(pr.geo?'<button type="button" data-mode="zone" aria-pressed="'+(S.mode==='zone')+'">分區</button>':'')+'</div>'+(pr.geo?'<label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-top:8px"><input type="checkbox" id="show-zones" '+(S.showZones===false?'':'checked')+' style="width:auto"> '+(pr.geo.zones&&pr.geo.zones['產業專用區']?'疊上細部計畫分區(橘:產業專用區、粉:道路、綠:公園綠地)':'疊上分區色塊(顏色對照見地圖左下角圖例)')+'</label><p class="small muted" style="margin:6px 0 0">'+(pr.geo.zones&&pr.geo.zones['產業專用區']?'地籍形狀取自地籍圖謄本;分區取自細部計畫示意圖,用線條比對對位,誤差約數公尺,僅供參考。':'地籍形狀取自地籍圖謄本;分區取自城鄉分區圖截圖,用地籍線對位,誤差約一兩公尺,橫跨兩種分區的地號僅供參考。')+'</p>':'');
+    +'<button type="button" data-mode="fu" aria-pressed="'+(S.mode==='fu')+'">跟進</button>'+(pr.geo?'<button type="button" data-mode="zone" aria-pressed="'+(S.mode==='zone')+'">分區</button>':'')+'</div>'+zoneToggleHTML_(pr);
   var opts='<option value="all">全部區塊</option>'+pr.blocks.map(function(b,i){return '<option value="'+i+'">'+esc(b.name)+'('+esc(b.use)+')</option>'}).join('');
   h+='<h3>篩選</h3><div class="field" style="margin-top:0"><label for="f-block-s">區塊</label><select id="f-block-s">'+opts+'</select></div>';
   h+='<div class="field"><span class="lab">意願等級(點一下顯示或隱藏)</span><div class="chips">';
@@ -1289,7 +1291,7 @@ function renderDetail(){
   }
   var p=DB.parcels[S.sel],s=pState(p);
   var h='<div class="d-head"><div><h2>'+pname(p)+'</h2><div class="muted small">'+esc(PRJ[p.proj].name)+' · '+PRJ[p.proj].blocks[p.block].name+' · '+p.use+' · 現況'+p.status+'</div></div>'+pill(s.lv)+'</div>';
-  h+='<dl>'+(p.region?'<dt>位置</dt><dd>'+esc(p.region)+'</dd>':'')+'<dt>面積</dt><dd>'+areaText(p.area)+'</dd>'+(p.cat?'<dt>使用地類別</dt><dd>'+esc(p.cat)+'</dd>':'')+(p.value?'<dt>公告現值</dt><dd>'+comma(p.value)+' 元/㎡</dd>':'')+'<dt>他項權利</dt><dd>'+(p.lien?esc(p.lienTxt||'有(抵押)'):'無')+'</dd><dt>下次跟進</dt><dd>'+(s.next?dueText(s.next):'未排程')+'</dd><dt>謄本取得</dt><dd>'+deedBadge(p)+'</dd>'+(p.mix&&Object.keys(p.mix).length?'<dt>細部計畫分區</dt><dd>'+zoneMixText(p)+'</dd>':'')+'</dl>';
+  h+='<dl>'+(p.region?'<dt>位置</dt><dd>'+esc(p.region)+'</dd>':'')+'<dt>面積</dt><dd>'+areaText(p.area)+'</dd>'+(p.cat?'<dt>使用地類別</dt><dd>'+esc(p.cat)+'</dd>':'')+(p.value?'<dt>公告現值</dt><dd>'+comma(p.value)+' 元/㎡</dd>':'')+'<dt>他項權利</dt><dd>'+(p.lien?esc(p.lienTxt||'有(抵押)'):'無')+'</dd><dt>下次跟進</dt><dd>'+(s.next?dueText(s.next):'未排程')+'</dd><dt>謄本取得</dt><dd>'+deedBadge(p)+'</dd>'+(p.mix&&Object.keys(p.mix).length?zoneMixRows_(p):'')+'</dl>';
   if(p.changed)h+='<div class="notice" style="margin-top:10px"><b>謄本有異動</b><div class="small" style="margin:4px 0">'+p.changeNotes.slice(0,6).map(esc).join('<br>')+'</div><button class="btn small" type="button" data-changed-clear="'+p.id+'">我看過了,標示已處理</button></div>';
   h+='<p style="margin:14px 0 0"><button class="btn primary" type="button" id="add-int">新增訪談</button></p>';
   h+='<h3>地主與持分</h3>';
@@ -3310,16 +3312,42 @@ function layoutCells(k){
   for(var i=0;i<k;i++){var col=i%2,row=Math.floor(i/2);out.push({x0:c[col].x0,w:c[col].w,y0:row?350:70,h:240})}
   return out;
 }
-function zoneMixText(p){
+var ZPLAN_NAMES_={'產業專用區':1,'細部計畫道路用地':1,'公園用地兼滯洪池使用':1,'綠地用地':1,'廣場用地兼供停車場使用':1};
+function zLayer_(k){k=String(k);if(k.indexOf('擬變更:')===0)return 'plan';if(k.indexOf('現行:')===0)return 'cur';return ZPLAN_NAMES_[k]?'plan':'cur'}
+function zBase_(k){return String(k).replace(/^(擬變更|現行):/,'')}
+function zLayers_(pr){var g=pr&&pr.geo,o={cur:false,plan:false};if(g&&g.zones)Object.keys(g.zones).forEach(function(k){if((g.zones[k]||[]).length)o[zLayer_(k)]=true});return o}
+function zLayerNow_(){var L=zLayers_(PRJ[S.proj]);if(S.zoneLayer==='cur'&&L.cur)return 'cur';if(S.zoneLayer==='plan'&&L.plan)return 'plan';return L.cur?'cur':'plan'}
+var ZLAYER_NAME_={cur:'現行分區',plan:'擬變更細部計畫'};
+function zoneDom_(p){if(!p.mix)return '';var L=zLayerNow_(),tot=p.polyArea||p.area,best='',bv=0;Object.keys(p.mix).forEach(function(k){if(zLayer_(k)===L&&p.mix[k]>bv){bv=p.mix[k];best=k}});return (tot&&bv/tot>0.4)?best:''}
+function zoneToggleHTML_(pr){
+  if(!pr.geo)return '';
+  var L=zLayers_(pr),sz=S.showZl||{},h='',lab='display:flex;align-items:center;gap:6px;font-size:13px;margin-top:8px';
+  if(L.cur&&L.plan){
+    h+='<label style="'+lab+'"><input type="checkbox" id="show-zl-cur" '+(sz.cur===false?'':'checked')+' style="width:auto"> 疊上現行分區</label>'
+      +'<label style="'+lab+'"><input type="checkbox" id="show-zl-plan" '+(sz.plan===false?'':'checked')+' style="width:auto"> 疊上擬變更細部計畫(未實施)</label>';
+    if(S.mode==='zone'){var zl=zLayerNow_();h+='<div class="seg" role="group" aria-label="分區著色用哪一套" style="margin-top:8px;grid-template-columns:repeat(2,1fr)"><button type="button" data-zlayer="cur" aria-pressed="'+(zl==='cur')+'">現行分區</button><button type="button" data-zlayer="plan" aria-pressed="'+(zl==='plan')+'">擬變更</button></div>'}
+    h+='<p class="small muted" style="margin:6px 0 0">現行分區取自城鄉分區圖截圖;擬變更細部計畫是還沒實施的規劃。都用地籍線對位,誤差約一兩公尺,橫跨兩種分區的地號僅供參考。</p>';
+  }else if(L.plan){
+    h+='<label style="'+lab+'"><input type="checkbox" id="show-zones" '+(S.showZones===false?'':'checked')+' style="width:auto"> 疊上擬變更細部計畫(橘:產業專用區、粉:道路、綠:公園綠地)</label><p class="small muted" style="margin:6px 0 0">擬變更的細部計畫,目前還沒實施。地籍形狀取自地籍圖謄本;分區取自細部計畫示意圖,用線條比對對位,誤差約數公尺,僅供參考。</p>';
+  }else{
+    h+='<label style="'+lab+'"><input type="checkbox" id="show-zones" '+(S.showZones===false?'':'checked')+' style="width:auto"> 疊上現行分區色塊(顏色對照見地圖左下角圖例)</label><p class="small muted" style="margin:6px 0 0">地籍形狀取自地籍圖謄本;分區取自城鄉分區圖截圖,用地籍線對位,誤差約一兩公尺,橫跨兩種分區的地號僅供參考。</p>';
+  }
+  return h;
+}
+function zoneMixText(p,layer){
   var tot=p.polyArea||p.area,parts=[],sum=0;
-  Object.keys(p.mix).sort(function(a,b){return p.mix[b]-p.mix[a]}).forEach(function(k){var v=p.mix[k]/tot;sum+=v;if(v>=0.03)parts.push(esc(k)+' '+Math.round(v*100)+'%')});
+  Object.keys(p.mix).filter(function(k){return !layer||zLayer_(k)===layer}).sort(function(a,b){return p.mix[b]-p.mix[a]}).forEach(function(k){var v=p.mix[k]/tot;sum+=v;if(v>=0.03)parts.push(esc(zBase_(k))+' '+Math.round(v*100)+'%')});
   return parts.join('、')||'—';
 }
+function zoneMixRows_(p){var o='';['cur','plan'].forEach(function(L){var t=zoneMixText(p,L);if(t!=='—')o+='<dt>'+ZLAYER_NAME_[L]+'</dt><dd>'+t+'</dd>'});return o}
 function zoneStatsHTML(pr,ps){
+  var L=zLayers_(pr);return (L.cur?zoneStatsLayer_(ps,'cur'):'')+(L.plan?zoneStatsLayer_(ps,'plan'):'');
+}
+function zoneStatsLayer_(ps,layer){
   var by={},touch={},tot=0;
-  ps.forEach(function(p){if(!p.mix)return;tot+=p.polyArea||p.area;var inz=0;Object.keys(p.mix).forEach(function(k){by[k]=(by[k]||0)+p.mix[k];touch[k]=(touch[k]||0)+1;inz+=p.mix[k]});});
-  var keys=Object.keys(by).sort(function(a,b){return by[b]-by[a]});tot=0;keys.forEach(function(k){tot+=by[k]});
-  return '<div class="panel"><h2>細部計畫分區(依圖面量測)</h2><div class="tablewrap" style="margin-top:0"><table><thead><tr><th>分區</th><th>涉及地號</th><th>地號內面積</th><th>占分區面積</th></tr></thead><tbody>'+keys.map(function(k){return '<tr><td>'+esc(k)+'</td><td>'+touch[k]+' 筆</td><td>'+comma(by[k])+' ㎡</td><td>'+(tot?Math.round(by[k]/tot*100):0)+'%</td></tr>'}).join('')+'</tbody></table></div><p class="small muted" style="margin:8px 0 0">面積是用地籍圖形和計畫分區套疊量測的概估,不等於登記面積,正式面積以地政機關和都市計畫公告為準。</p></div>';
+  ps.forEach(function(p){if(!p.mix)return;Object.keys(p.mix).forEach(function(k){if(zLayer_(k)!==layer)return;by[k]=(by[k]||0)+p.mix[k];touch[k]=(touch[k]||0)+1})});
+  var keys=Object.keys(by).sort(function(a,b){return by[b]-by[a]});keys.forEach(function(k){tot+=by[k]});
+  return '<div class="panel"><h2>'+ZLAYER_NAME_[layer]+'(依圖面量測)</h2><div class="tablewrap" style="margin-top:0"><table><thead><tr><th>分區</th><th>涉及地號</th><th>地號內面積</th><th>占分區面積</th></tr></thead><tbody>'+keys.map(function(k){return '<tr><td>'+esc(zBase_(k))+'</td><td>'+touch[k]+' 筆</td><td>'+comma(by[k])+' ㎡</td><td>'+(tot?Math.round(by[k]/tot*100):0)+'%</td></tr>'}).join('')+'</tbody></table></div><p class="small muted" style="margin:8px 0 0">面積是用地籍圖形和'+(layer==='plan'?'擬變更的細部計畫':'現行分區')+'套疊量測的概估,不等於登記面積,正式面積以地政機關公告和使用分區證明為準。</p></div>';
 }
 function domZone(gq){var best='',bv=0;for(var k in gq.mix){if(gq.mix[k]>bv){bv=gq.mix[k];best=k}}return (bv/gq.poly_m2>0.4)?best:''}
 function createFromImport(opt){
@@ -4301,6 +4329,7 @@ document.addEventListener('click',function(e){
   if((b=t.closest('[data-int-owner]'))){var id=+b.dataset.intOwner;$('#dlg-owner').close();openInterview([id],id);return}
   if(t.closest('#add-int')){var p=DB.parcels[S.sel];openInterview(p.owners.map(function(po){return po.owner}));return}
   if((b=t.closest('[data-mode]'))){S.mode=b.dataset.mode;renderSide();paintMap();return}
+  if((b=t.closest('[data-zlayer]'))){S.zoneLayer=b.dataset.zlayer;renderSide();paintMap();return}
   if((b=t.closest('[data-lv]'))){var k=b.dataset.lv;S.levels[k]=S.levels[k]?0:1;renderSide();paintMap();return}
   if(t.closest('[data-im-sample2]')){IM.text=sampleText2();IM.map=null;processImport();renderImport();toast('已填入謄本整理範例,並完成自動整理。');return}
   if(t.closest('[data-im-dl-sample2]')){saveFile('土地開發_謄本整理範例.csv',toCSV(sampleRows2()),'謄本整理範例');return}
@@ -4437,6 +4466,7 @@ document.addEventListener('change',function(e){
   if(e.target.getAttribute&&e.target.getAttribute('data-usplit')){var us=UP.items.filter(function(x){return String(x.id)===e.target.getAttribute('data-usplit')})[0];if(us){us.split=e.target.value==='1';renderDeeds()}}
   if(e.target.getAttribute&&e.target.getAttribute('data-pstaff-cb')){var pa=e.target.getAttribute('data-pstaff-cb').split('|');setProjStaff(pa[0],pa[1],e.target.checked);return}
   if(e.target.getAttribute&&e.target.getAttribute('data-imstaff-cb')!==null&&e.target.getAttribute('data-imstaff-cb')!==undefined&&e.target.type==='checkbox'){IM.opts.staffSel=$$('[data-imstaff-cb]').filter(function(c){return c.checked}).map(function(c){return c.getAttribute('data-imstaff-cb')});renderImResult();return}
+  if(e.target.id==='show-zl-cur'||e.target.id==='show-zl-plan'){S.showZl=S.showZl||{};var lk=e.target.id==='show-zl-cur'?'cur':'plan';S.showZl[lk]=e.target.checked;var gl=$('#gz-'+lk);if(gl)gl.style.display=e.target.checked?'':'none';paintLegend();return}
   if(e.target.id==='show-zones'){S.showZones=e.target.checked;var gzz=$('#gz');if(gzz)gzz.style.display=e.target.checked?'':'none';return}
   if(e.target.id==='cal-fu'){TK.fu=e.target.checked;renderTasks();return}
   if(e.target.getAttribute&&e.target.getAttribute('data-zname')){GEOIM.names[e.target.getAttribute('data-zname')]=e.target.value.trim();return}
@@ -5100,7 +5130,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-24-a';
+var FRONT_VER='2026-11-24-b';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
@@ -8658,17 +8688,21 @@ document.addEventListener('click',function(e){
 /* ===== 地圖圖例:底下疊的分區色塊也要看得到「顏色 = 哪個分區」(任何著色模式都顯示,切到「分區」模式時由原本的圖例負責) ===== */
 var ZC_FIX_={'產業專用區':'#D98C1E','細部計畫道路用地':'#E86CE8','公園用地兼滯洪池使用':'#2FBF55','綠地用地':'#8EE05A','廣場用地兼供停車場使用':'#C21DC2'};
 function zoneSwatch_(g,k){
-  var c=ZC_FIX_[k]||(g.zc&&g.zc[k])||'#999999',m=/^#?([0-9a-f]{6})$/i.exec(String(c));if(!m)return c;
+  var c=ZC_FIX_[zBase_(k)]||(g.zc&&g.zc[k])||'#999999',m=/^#?([0-9a-f]{6})$/i.exec(String(c));if(!m)return c;
   var v=parseInt(m[1],16),bg=[223,229,224],a=0.34;
   return 'rgb('+[v>>16&255,v>>8&255,v&255].map(function(x,i){return Math.round(x*a+bg[i]*(1-a))}).join(',')+')';
 }
 function zoneLegend_(){
   var el=$('#maplegend'),pr=PRJ[S.proj],g=pr&&pr.geo;
   if(!el||!g||S.mode==='zone'||S.showZones===false)return;
-  var ks=Object.keys(g.zones||{}).filter(function(k){return (g.zones[k]||[]).length});if(!ks.length)return;
-  var h='<span style="flex-basis:100%;height:0;padding:0"></span><span class="small"><b>底圖分區:</b></span>';
-  ks.forEach(function(k){h+='<span><i class="dot" style="width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.3);background:'+zoneSwatch_(g,k)+'"></i>'+esc(k)+'</span>'});
-  el.insertAdjacentHTML('beforeend',h);
+  var sz=S.showZl||{},h='';
+  ['cur','plan'].forEach(function(L){
+    if(sz[L]===false)return;
+    var ks=Object.keys(g.zones||{}).filter(function(k){return zLayer_(k)===L&&(g.zones[k]||[]).length});if(!ks.length)return;
+    h+='<span style="flex-basis:100%;height:0;padding:0"></span><span class="small"><b>'+ZLAYER_NAME_[L]+(L==='plan'?'(未實施)':'')+':</b></span>';
+    ks.forEach(function(k){h+='<span><i class="dot" style="width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,.3);background:'+zoneSwatch_(g,k)+'"></i>'+esc(zBase_(k))+'</span>'});
+  });
+  if(h)el.insertAdjacentHTML('beforeend',h);
 }
 (function(){var o=paintLegend;paintLegend=function(){o.apply(this,arguments);try{zoneLegend_()}catch(e){}}})();
 document.addEventListener('change',function(e){if(e.target&&e.target.id==='show-zones')setTimeout(function(){paintLegend()},0)});
