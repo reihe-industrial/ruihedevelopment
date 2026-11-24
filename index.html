@@ -940,9 +940,10 @@ function indexDB(){
 function oState(o,pid){return STP[pid||S.proj][o.id]}
 function pState(p){
   var T=STP[p.proj],minR=99,lv='N',next=null,last=null;
+  var mx=0;p.owners.forEach(function(po){if((po.frac||0)>mx)mx=po.frac||0});
   p.owners.forEach(function(po){
     var s=T[po.owner],r=LV[s.lv].rank;
-    if(r<minR){minR=r;lv=s.lv}
+    if((po.frac||0)>=mx-1e-9&&r<minR){minR=r;lv=s.lv}   /* 意願以持分最大的所有人為準;持分一樣大就取其中最低的等級 */
     if(s.next&&(!next||s.next<next))next=s.next;
     if(s.last&&(!last||s.last.date>last.date))last=s.last;
   });
@@ -1306,7 +1307,7 @@ function renderDetail(){
       +((po.reason||po.rdate)?'<div class="small muted" style="margin-top:4px">登記:'+esc((po.rdate||'')+' '+(po.reason||'')).trim()+'</div>':'')
       +'<div class="small" style="margin-top:4px">'+(os.last?'最近:'+fmt(os.last.date)+' '+esc(os.last.method)+' · '+esc(os.last.summary):'尚未接觸')+'</div></div>';
   });
-  if(p.owners.length>1)h+='<p class="small muted" style="margin:0">共有地號的意願取共有人中最低的等級。</p>';
+  if(p.owners.length>1)h+='<p class="small muted" style="margin:0">共有地號的意願以持分最大的所有人為準(持分一樣大時取其中最低的等級)。</p>';
   h+=parcelExtraHTML(p);
   if(p.goneOwners&&p.goneOwners.length){
     h+='<h3>已轉手或已成交的地主</h3>';
@@ -5135,7 +5136,7 @@ async function onGoogle(resp){
   }catch(e){$('#lg-msg').textContent=e.userMessage||e.message}
 }
 /* ---- 後台可調的設定(過期天數、關注標籤、階段顯示名稱) ---- */
-var FRONT_VER='2026-11-24-d';
+var FRONT_VER='2026-11-24-e';
 var CFG={stageNames:null,headPct:50,sharePct:50,expireDays:180,tags:[],rolePerms:null,rlCols:null,ver:''};
 function stageLbl(s){var i=STAGES.indexOf(s);return (CFG.stageNames&&i>=0&&CFG.stageNames[i])||s}
 function applyCfg(c){
