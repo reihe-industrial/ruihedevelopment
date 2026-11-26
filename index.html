@@ -1517,6 +1517,11 @@ function renderVisits(refocus){
   el.innerHTML=h;
   if(refocus==='vq'){var q=$('#vq');if(q){q.focus();var n=q.value.length;q.setSelectionRange(n,n)}}
 }
+/* 持分面積顯示:㎡ 與坪(坪 = ㎡ × 0.3025) */
+function shareAreaTxt_(m2,short){
+  var a=Math.round(m2*100)/100,p=Math.round(m2*0.3025*100)/100;
+  return a.toLocaleString('en-US',{maximumFractionDigits:2})+' ㎡'+(short?'':'(約 '+p.toLocaleString('en-US',{maximumFractionDigits:2})+' 坪)');
+}
 function openOwner0(id){
   var o=OWN[id],pid=S.proj,pr=PRJ[pid],os=oState(o),ps=ownerParcels(o),see=canSeeOwner(o,pid),canAssign=S.role==='admin'||S.role==='lead';
   var h='<div class="dlg-h"><div><h2>'+esc(o.name)+(o.pending?' <span class="pill">待確認姓名</span>':'')+(o.win&&o.win[pid]?' <span class="pill">窗口</span>':'')+'</h2><div class="muted small">'+esc(o.type)+(o.family?' · '+esc(o.family):'')+'</div></div><button class="btn small" type="button" data-close>關閉</button></div>';
@@ -1525,9 +1530,10 @@ function openOwner0(id){
   h+=addrLines(o,pid)+(see?'<div class="small muted" style="margin-top:4px">身分證字號/統編 '+(o._priv?esc(o.idno||'未填'):'載入中…')+'</div>'+(o.contact?'<div class="small muted" style="margin-top:4px">聯絡方式 '+esc(o.contact)+'</div>':'')+(o.note?'<div class="small muted" style="margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere">備註 '+esc(o.note)+'</div>':''):'');
   var asgHtml=esc(asgText(o,pid));
   if(canAssign)asgHtml='主要 <select id="asg-sel" data-asg-owner="'+o.id+'" aria-label="主要承辦人" style="width:auto">'+pr.staff.map(function(x){return '<option value="'+esc(x)+'"'+(x===asgOf(o,pid)?' selected':'')+'>承辦人'+esc(x)+'</option>'}).join('')+'</select> 次要 <select id="asg2-sel" data-asg2-owner="'+o.id+'" aria-label="次要承辦人" style="width:auto"><option value="">(無)</option>'+pr.staff.map(function(x){return '<option value="'+esc(x)+'"'+(x===asg2Of(o,pid)?' selected':'')+'>承辦人'+esc(x)+'</option>'}).join('')+'</select>';
-  h+='<dl><dt>目前專案</dt><dd>'+esc(pr.name)+'</dd><dt>承辦(主要與次要)</dt><dd>'+asgHtml+'</dd><dt>下次跟進</dt><dd>'+(os.next?dueText(os.next):'未排程')+'</dd></dl>';
+  var shA=0;ps.forEach(function(x){shA+=(x.p.area||0)*(x.po.frac||0)});
+  h+='<dl><dt>目前專案</dt><dd>'+esc(pr.name)+'</dd>'+(shA>0?'<dt>持分面積合計</dt><dd>'+shareAreaTxt_(shA)+'</dd>':'')+'<dt>承辦(主要與次要)</dt><dd>'+asgHtml+'</dd><dt>下次跟進</dt><dd>'+(os.next?dueText(os.next):'未排程')+'</dd></dl>';
   h+='<h3>名下地號(點一下到地圖)</h3><div>';
-  ps.forEach(function(x){h+='<button class="chipbtn" type="button" data-go="'+x.p.id+'">'+esc(secOf(x.p))+' '+x.p.no+(isFactory(x.p)?'*':'')+' · 持分 '+x.po.share+'</button>'});
+  ps.forEach(function(x){h+='<button class="chipbtn" type="button" data-go="'+x.p.id+'">'+esc(secOf(x.p))+' '+x.p.no+(isFactory(x.p)?'*':'')+' · 持分 '+x.po.share+((x.p.area||0)*(x.po.frac||0)>0?' · 持分面積 '+shareAreaTxt_((x.p.area||0)*(x.po.frac||0),1):'')+'</button>'});
   h+='</div><p style="margin:10px 0 0"><button class="btn primary" type="button" data-int-owner="'+o.id+'">新增訪談</button> <button class="btn" type="button" data-focus-owner="'+o.id+'">在地圖上框出他的全部地號</button></p>';
   if(see){
     var inh=o.inherit&&o.inherit.status;
